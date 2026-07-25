@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { Panel } from "@/components/ui/Panel";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Metric } from "@/components/ui/Metric";
-import { Pill } from "@/components/ui/Badge";
 import { GearIcon, LockIcon, TrophyIcon } from "@/components/icons";
-import { StandingsList, type RankedMember } from "@/components/group/StandingsList";
+import { StandingsGrid, type RankedMember } from "@/components/group/StandingsGrid";
 import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
 import {
   CURRENT_WEEK,
   DEMO_NOW,
+  FINAL_WEEK,
   GROUP,
   MEMBERS,
   SEASON,
@@ -35,7 +35,7 @@ function rankMembers(members: Member[]): RankedMember[] {
   return ordered.map((member, i) => ({ member, rank: i + 1 }));
 }
 
-export default function GroupPage() {
+export default function StandingsPage() {
   const me = you();
   const isAdmin = me.role === "admin";
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -52,7 +52,7 @@ export default function GroupPage() {
         <Panel className="p-card">
           <div className="flex items-start justify-between">
             <div>
-              <MonoLabel className="text-onsurface-mute">League standings</MonoLabel>
+              <MonoLabel className="text-onsurface-mute">Standings</MonoLabel>
               <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">{GROUP.name}</h1>
               <MonoLabel className="mt-1 block text-onsurface-mute">
                 Season {SEASON} · Week {CURRENT_WEEK}
@@ -81,10 +81,11 @@ export default function GroupPage() {
       </div>
 
       <div>
-        <StandingsList
+        <StandingsGrid
           ranked={ranked}
           viewerId={me.id}
-          week={CURRENT_WEEK}
+          currentWeek={CURRENT_WEEK}
+          finalWeek={FINAL_WEEK}
           rules={GROUP.rules}
           now={DEMO_NOW}
           gameForTeam={gameForTeam}

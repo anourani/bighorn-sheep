@@ -26,8 +26,8 @@ This is the **v1 foundation**: a fully-built, installable, statically-rendered a
 A hard design constraint: **minimal screens, no deep navigation.** Everything is one of these four.
 
 1. **Login / Join** (`/login`) — passwordless magic-link auth (login/signup toggle), invite-code auto-fill from the URL (`/login?invite=CODE`), and a prominent check-your-spam reminder after sending.
-2. **My Picks** (`/`, the home screen) — your status (alive/eliminated + why), your current pick with a per-game lock countdown, the full 32-team grid split into **available / used (week-tagged) / on-bye**, and an expandable schedule look-ahead.
-3. **Group** (`/group`) — the standings table with alive/eliminated status and strikes, current-week picks behind the **per-game privacy lock**, expandable pick history, and admin controls (settings, invite, members) in a modal behind a gear — not a separate page.
+2. **My Picks** (`/`, the home screen) — your status (alive/eliminated + why), your current pick with a per-game lock countdown, and the week's **matchups as a radio group** (one pick per week; teams already used or whose game has kicked off are shown but disabled). A **Change Week** dropdown browses upcoming weeks read-only, keeping used teams flagged so you can plan which to save.
+3. **Standings** (`/standings`) — a season grid: one row per player, one column per week, each cell the team they picked. Alive/eliminated status and strikes ride the sticky name column; losses and pushes are washed so a player's strikes read straight down their row. Current-week picks stay behind the **per-game privacy lock** (a padlock until each team's game kicks off). Admin controls (settings, invite, members) live in a modal behind a gear — not a separate page.
 4. **Account** (`/account`) — profile, your leagues, create-a-group / join-by-code, timezone, install hint, logout.
 
 ## Key rules, implemented in the engine

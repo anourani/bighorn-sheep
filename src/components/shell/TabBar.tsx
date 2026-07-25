@@ -7,7 +7,7 @@ import { GridIcon, UsersIcon, UserIcon } from "@/components/icons";
 
 const tabs = [
   { href: "/", label: "My Picks", Icon: GridIcon },
-  { href: "/group", label: "Group", Icon: UsersIcon },
+  { href: "/standings", label: "Standings", Icon: UsersIcon },
   { href: "/account", label: "Account", Icon: UserIcon },
 ] as const;
 

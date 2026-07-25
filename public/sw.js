@@ -9,13 +9,13 @@
  *
  * Bump VERSION to invalidate old caches on the next activation.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `lms-shell-${VERSION}`;
 const RUNTIME_CACHE = `lms-runtime-${VERSION}`;
 
 const SHELL = [
   "/",
-  "/group",
+  "/standings",
   "/account",
   "/login",
   "/offline",
