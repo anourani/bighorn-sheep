@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PickStatusHeader } from "@/components/picks/PickStatusHeader";
+import { PickHero } from "@/components/picks/PickHero";
 import { WeekSchedule } from "@/components/picks/WeekSchedule";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { ChevronDownIcon } from "@/components/icons";
@@ -11,7 +11,6 @@ import {
   CURRENT_WEEK,
   DEMO_NOW,
   FINAL_WEEK,
-  GROUP,
   WEEK_GAMES,
   gameForTeam,
   weekFinalKickoff,
@@ -22,7 +21,6 @@ import type { HistoryPick } from "@/lib/league/types";
 export default function MyPicksPage() {
   const me = you();
   const now = DEMO_NOW;
-  const rules = GROUP.rules;
 
   const [viewWeek, setViewWeek] = useState(CURRENT_WEEK);
   const [pickTeam, setPickTeam] = useState<TeamId | null>(me.currentPick?.teamId ?? null);
@@ -48,9 +46,7 @@ export default function MyPicksPage() {
 
   return (
     <div className="stagger space-y-4">
-      <PickStatusHeader
-        member={me}
-        rules={rules}
+      <PickHero
         week={CURRENT_WEEK}
         teamId={pickTeam}
         game={pickGame}
