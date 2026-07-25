@@ -1,12 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { StatusHero } from "@/components/picks/StatusHero";
-import { CurrentPickCard } from "@/components/picks/CurrentPickCard";
+import { useMemo, useState } from "react";
+import { PickStatusHeader } from "@/components/picks/PickStatusHeader";
 import { WeekSchedule } from "@/components/picks/WeekSchedule";
-import { Panel } from "@/components/ui/Panel";
 import { MonoLabel } from "@/components/ui/MonoLabel";
-import { ChevronDownIcon, InfoIcon } from "@/components/icons";
+import { ChevronDownIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import {
   BYES_BY_WEEK,
@@ -28,7 +26,6 @@ export default function MyPicksPage() {
 
   const [viewWeek, setViewWeek] = useState(CURRENT_WEEK);
   const [pickTeam, setPickTeam] = useState<TeamId | null>(me.currentPick?.teamId ?? null);
-  const scheduleRef = useRef<HTMLDivElement>(null);
 
   const isCurrent = viewWeek === CURRENT_WEEK;
   const games = WEEK_GAMES[viewWeek] ?? [];
@@ -41,34 +38,31 @@ export default function MyPicksPage() {
     [me.history],
   );
 
-  const pickGame = isCurrent && pickTeam ? gameForTeam(CURRENT_WEEK, pickTeam) : undefined;
+  // The pick always reflects the current week — you can only pick for it.
+  const pickGame = pickTeam ? gameForTeam(CURRENT_WEEK, pickTeam) : undefined;
 
   const weekOptions = useMemo(
     () => Array.from({ length: FINAL_WEEK - CURRENT_WEEK + 1 }, (_, i) => CURRENT_WEEK + i),
     [],
   );
 
-  function scrollToSchedule() {
-    scheduleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
-    <div className="stagger space-y-4 md:grid md:grid-cols-[340px_minmax(0,1fr)] md:items-start md:gap-5 md:space-y-0">
-      {/* Left rail — status + pick controls. Stacks above the schedule on phones. */}
-      <div className="space-y-4">
-        <StatusHero member={me} rules={rules} week={CURRENT_WEEK} />
+    <div className="stagger space-y-4">
+      <PickStatusHeader
+        member={me}
+        rules={rules}
+        week={CURRENT_WEEK}
+        teamId={pickTeam}
+        game={pickGame}
+        now={now}
+        weekFinalKickoff={weekFinalKickoff(CURRENT_WEEK)}
+      />
 
-        <div>
-          <div className="mb-3">
+      <div>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
             <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>
-            <h2 className="mt-0.5 text-sm font-semibold text-ink">
-              {isCurrent ? "Your pick" : `Week ${viewWeek} preview`}
-            </h2>
-            <p className="mt-1 text-sm text-ink-soft">
-              {isCurrent
-                ? "Choose the team you think will win. Editable until each game kicks off — a team can only be used once all season."
-                : "Browsing a future week. You can only set your current-week pick, but used teams stay flagged so you can plan ahead."}
-            </p>
+            <h2 className="mt-0.5 text-sm font-semibold text-ink">Schedule</h2>
           </div>
 
           <label className="block">
@@ -77,7 +71,7 @@ export default function MyPicksPage() {
               <select
                 value={viewWeek}
                 onChange={(e) => setViewWeek(Number(e.target.value))}
-                className="w-full appearance-none rounded-control border border-line bg-white px-3 py-2.5 pr-10 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
+                className="w-full min-w-[9.5rem] appearance-none rounded-control border border-line bg-white px-3 py-2 pr-9 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
               >
                 {weekOptions.map((w) => (
                   <option key={w} value={w}>
@@ -91,38 +85,12 @@ export default function MyPicksPage() {
           </label>
         </div>
 
-        {isCurrent ? (
-          <CurrentPickCard
-            teamId={pickTeam}
-            game={pickGame}
-            week={CURRENT_WEEK}
-            rules={rules}
-            now={now}
-            weekFinalKickoff={weekFinalKickoff(CURRENT_WEEK)}
-            onChange={scrollToSchedule}
-          />
-        ) : (
-          <Panel tone="light" className="flex items-start gap-2.5 p-card">
-            <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-strong" />
-            <p className="text-sm text-ink-soft">
-              Picks are open for <span className="font-semibold text-ink">Week {CURRENT_WEEK}</span> only.
-              You&apos;re viewing Week {viewWeek} to look ahead — switch back to make or change your pick.
-            </p>
-          </Panel>
-        )}
-      </div>
-
-      {/* Right — the week's schedule (flows into multiple card columns as width allows). */}
-      <div ref={scheduleRef} className="scroll-mt-20">
-        <div className="mb-3 flex items-baseline justify-between">
-          <div>
-            <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>
-            <h2 className="mt-0.5 text-sm font-semibold text-ink">Schedule</h2>
-          </div>
-          <MonoLabel className="text-ink-mute">
-            {isCurrent ? "Select a team" : "Preview"}
-          </MonoLabel>
-        </div>
+        {!isCurrent ? (
+          <p className="mb-2.5 text-xs text-ink-mute">
+            Picks are open for <span className="font-semibold text-ink-soft">Week {CURRENT_WEEK}</span> only —
+            you&apos;re previewing Week {viewWeek}. Used teams stay flagged so you can plan ahead.
+          </p>
+        ) : null}
 
         {byes.length > 0 ? (
           <p className="mb-2.5 text-xs text-ink-mute">
