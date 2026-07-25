@@ -1,0 +1,134 @@
+import type { Config } from "tailwindcss";
+
+/**
+ * Design tokens transcribed from the "Ecosystem Visualization" direction.
+ *
+ *   primary  #E48B59   secondary/accent #ED7B46
+ *   bg       #FFFFFF   surface (slate panels) #53617A
+ *   text     #111827 / #4B5563   border #D8DADF
+ *   type     Inter (display + body), JetBrains Mono (labels/metrics)
+ *   radii    card 16 · control 8 · pill 9999
+ *
+ * The signature look is dark slate "data panels" floating on a white page,
+ * lit by a warm orange accent — an operational dashboard aesthetic that maps
+ * naturally onto live scores, standings, and metric tiles.
+ *
+ * Status hues (alive / out / live / strike) extend the base palette; they are
+ * deliberately desaturated so they read as instrumentation, not decoration.
+ */
+const config: Config = {
+  content: ["./src/**/*.{ts,tsx,mdx}"],
+  theme: {
+    extend: {
+      colors: {
+        bg: "#FFFFFF",
+        line: "#D8DADF",
+        // Warm accent — the single lit element on every panel.
+        brand: {
+          DEFAULT: "#E48B59",
+          strong: "#ED7B46",
+          soft: "#F4B48C",
+          wash: "#FCEDE3",
+        },
+        // Near-black / grey ink used on the light page.
+        ink: {
+          DEFAULT: "#111827",
+          soft: "#4B5563",
+          mute: "#6B7280",
+        },
+        // Slate surfaces (the operational panels) + text that rides on them.
+        surface: {
+          DEFAULT: "#53617A",
+          strong: "#454F63",
+          deep: "#3A4356",
+          muted: "#5E6C86",
+          raised: "#64728C",
+          line: "#6C7A93",
+        },
+        onsurface: {
+          DEFAULT: "#F5F7FA",
+          soft: "#C7CEDB",
+          mute: "#9AA5B9",
+        },
+        // Instrumentation status hues.
+        alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
+        out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },
+        live: { DEFAULT: "#ED7B46", wash: "#FBE9DE" },
+        strike: { DEFAULT: "#E0A458", wash: "#FBF0DD" },
+      },
+      fontFamily: {
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-jetbrains)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
+      fontSize: {
+        // display-lg token, plus a responsive step down for phones.
+        "display-lg": ["clamp(2.5rem, 6vw, 4rem)", { lineHeight: "1.04", letterSpacing: "-0.02em", fontWeight: "500" }],
+        "display-md": ["clamp(2rem, 5vw, 2.75rem)", { lineHeight: "1.06", letterSpacing: "-0.02em", fontWeight: "500" }],
+        "display-sm": ["1.625rem", { lineHeight: "1.1", letterSpacing: "-0.015em", fontWeight: "500" }],
+        // label-md token (mono, technical metadata).
+        "label-md": ["0.75rem", { lineHeight: "1.2", letterSpacing: "0.06em", fontWeight: "600" }],
+        "label-sm": ["0.6875rem", { lineHeight: "1.2", letterSpacing: "0.08em", fontWeight: "600" }],
+        // Oversized metric readout for stat tiles.
+        metric: ["2.25rem", { lineHeight: "1.0", letterSpacing: "-0.02em", fontWeight: "600" }],
+      },
+      borderRadius: {
+        card: "16px",
+        control: "8px",
+        pill: "9999px",
+      },
+      spacing: {
+        card: "24px", // card-padding token
+        section: "80px", // section-padding token
+      },
+      maxWidth: {
+        app: "480px", // mobile-first single-column shell
+        wide: "1120px",
+      },
+      boxShadow: {
+        // Soft, layered depth for slate panels sitting on white.
+        panel: "0 1px 2px rgba(17,24,39,0.04), 0 18px 40px -24px rgba(17,24,39,0.45)",
+        "panel-sm": "0 1px 2px rgba(17,24,39,0.05), 0 8px 20px -14px rgba(17,24,39,0.35)",
+        lift: "0 1px 2px rgba(17,24,39,0.06), 0 24px 48px -20px rgba(17,24,39,0.5)",
+        glow: "0 0 0 1px rgba(237,123,70,0.35), 0 8px 28px -10px rgba(237,123,70,0.45)",
+        inset: "inset 0 1px 0 rgba(255,255,255,0.06)",
+      },
+      backgroundImage: {
+        "brand-sheen": "linear-gradient(135deg, #ED7B46 0%, #E48B59 100%)",
+        "surface-sheen": "linear-gradient(160deg, #5E6C86 0%, #53617A 42%, #454F63 100%)",
+        grid: "linear-gradient(rgba(108,122,147,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(108,122,147,0.14) 1px, transparent 1px)",
+      },
+      keyframes: {
+        "reveal-up": {
+          from: { opacity: "0", transform: "translateY(12px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "reveal-mask": {
+          from: { opacity: "0", clipPath: "inset(0 0 100% 0)" },
+          to: { opacity: "1", clipPath: "inset(0 0 0 0)" },
+        },
+        "pulse-live": {
+          "0%, 100%": { opacity: "1", transform: "scale(1)" },
+          "50%": { opacity: "0.45", transform: "scale(0.85)" },
+        },
+        drift: {
+          "0%, 100%": { transform: "translate3d(0,0,0)" },
+          "50%": { transform: "translate3d(0,-14px,0)" },
+        },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+      },
+      animation: {
+        "reveal-up": "reveal-up 0.5s cubic-bezier(0.22,1,0.36,1) both",
+        "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
+        "pulse-live": "pulse-live 1.6s ease-in-out infinite",
+        drift: "drift 9s ease-in-out infinite",
+        shimmer: "shimmer 1.6s infinite",
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;

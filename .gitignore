@@ -1,0 +1,46 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# generated service worker (built from src/sw at deploy time if using a builder)
+# (our SW is hand-written in /public/sw.js and IS committed)
+
+# testing
+/coverage
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env
+.env*.local
+.env.local
+
+# vercel / netlify
+.vercel
+.netlify
+
+# typescript
+*.tsbuildinfo
+
+# editor
+.idea
+.vscode/*
+!.vscode/extensions.json
