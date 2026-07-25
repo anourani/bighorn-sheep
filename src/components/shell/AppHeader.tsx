@@ -9,7 +9,7 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-line/80 bg-white/85 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-app items-center justify-between px-4">
+      <div className="mx-auto flex h-14 max-w-shell items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5 rounded-control py-1" aria-label="My Picks — home">
           <BrandMark />
           <span className="flex flex-col leading-none">

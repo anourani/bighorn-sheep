@@ -19,7 +19,7 @@ export function TabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="Primary"
     >
-      <div className="mx-auto flex max-w-app items-stretch">
+      <div className="mx-auto flex max-w-shell items-stretch">
         {tabs.map(({ href, label, Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (

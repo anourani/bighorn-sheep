@@ -53,46 +53,45 @@ export default function MyPicksPage() {
   }
 
   return (
-    <div className="stagger space-y-4">
-      <div>
+    <div className="stagger space-y-4 md:grid md:grid-cols-[340px_minmax(0,1fr)] md:items-start md:gap-5 md:space-y-0">
+      {/* Left rail — status + pick controls. Stacks above the schedule on phones. */}
+      <div className="space-y-4">
         <StatusHero member={me} rules={rules} week={CURRENT_WEEK} />
-      </div>
 
-      <div>
-        <div className="mb-3">
-          <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>
-          <h2 className="mt-0.5 text-sm font-semibold text-ink">
-            {isCurrent ? "Your pick" : `Week ${viewWeek} preview`}
-          </h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            {isCurrent
-              ? "Choose the team you think will win. Editable until each game kicks off — a team can only be used once all season."
-              : "Browsing a future week. You can only set your current-week pick, but used teams stay flagged so you can plan ahead."}
-          </p>
+        <div>
+          <div className="mb-3">
+            <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>
+            <h2 className="mt-0.5 text-sm font-semibold text-ink">
+              {isCurrent ? "Your pick" : `Week ${viewWeek} preview`}
+            </h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              {isCurrent
+                ? "Choose the team you think will win. Editable until each game kicks off — a team can only be used once all season."
+                : "Browsing a future week. You can only set your current-week pick, but used teams stay flagged so you can plan ahead."}
+            </p>
+          </div>
+
+          <label className="block">
+            <MonoLabel className="mb-1.5 block text-ink-mute">Change week</MonoLabel>
+            <div className="relative">
+              <select
+                value={viewWeek}
+                onChange={(e) => setViewWeek(Number(e.target.value))}
+                className="w-full appearance-none rounded-control border border-line bg-white px-3 py-2.5 pr-10 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
+              >
+                {weekOptions.map((w) => (
+                  <option key={w} value={w}>
+                    Week {w}
+                    {w === CURRENT_WEEK ? " · current" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
+            </div>
+          </label>
         </div>
 
-        <label className="block">
-          <MonoLabel className="mb-1.5 block text-ink-mute">Change week</MonoLabel>
-          <div className="relative">
-            <select
-              value={viewWeek}
-              onChange={(e) => setViewWeek(Number(e.target.value))}
-              className="w-full appearance-none rounded-control border border-line bg-white px-3 py-2.5 pr-10 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
-            >
-              {weekOptions.map((w) => (
-                <option key={w} value={w}>
-                  Week {w}
-                  {w === CURRENT_WEEK ? " · current" : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
-          </div>
-        </label>
-      </div>
-
-      {isCurrent ? (
-        <div>
+        {isCurrent ? (
           <CurrentPickCard
             teamId={pickTeam}
             game={pickGame}
@@ -102,9 +101,7 @@ export default function MyPicksPage() {
             weekFinalKickoff={weekFinalKickoff(CURRENT_WEEK)}
             onChange={scrollToSchedule}
           />
-        </div>
-      ) : (
-        <div>
+        ) : (
           <Panel tone="light" className="flex items-start gap-2.5 p-card">
             <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-strong" />
             <p className="text-sm text-ink-soft">
@@ -112,10 +109,11 @@ export default function MyPicksPage() {
               You&apos;re viewing Week {viewWeek} to look ahead — switch back to make or change your pick.
             </p>
           </Panel>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div ref={scheduleRef} className="scroll-mt-20 pt-1">
+      {/* Right — the week's schedule (flows into multiple card columns as width allows). */}
+      <div ref={scheduleRef} className="scroll-mt-20">
         <div className="mb-3 flex items-baseline justify-between">
           <div>
             <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>

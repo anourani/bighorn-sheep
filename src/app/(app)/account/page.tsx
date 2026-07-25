@@ -43,7 +43,7 @@ export default function AccountPage() {
   const aliveCount = MEMBERS.filter((m) => m.status === "alive").length;
 
   return (
-    <div className="stagger space-y-4">
+    <div className="stagger mx-auto max-w-2xl space-y-4">
       {/* Profile */}
       <div>
         <Panel className="p-card">
