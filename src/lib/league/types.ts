@@ -68,3 +68,13 @@ export interface Member {
 export function strikeAllowance(type: EliminationType): number {
   return type === "single" ? 1 : 2;
 }
+
+/**
+ * A team's season win-loss record. Standings data (time-varying, fed from the
+ * provider/Postgres in production) — kept out of the static `Team` domain type.
+ */
+export interface TeamRecord {
+  w: number;
+  l: number;
+  t: number;
+}
