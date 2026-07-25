@@ -37,12 +37,13 @@ export function TeamLogo({
   className,
 }: {
   teamId: TeamId;
-  size?: keyof typeof SIZES;
+  /** A named size token, or an explicit pixel size. */
+  size?: keyof typeof SIZES | number;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const team = getTeam(teamId);
-  const px = SIZES[size];
+  const px = typeof size === "number" ? size : SIZES[size];
 
   if (!team || failed) {
     const bg = team?.color ?? "#64748B";

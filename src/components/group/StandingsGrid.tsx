@@ -116,11 +116,7 @@ export function StandingsGrid({
                         >
                           {member.name}
                         </span>
-                        {isYou ? (
-                          <MonoLabel className="shrink-0 rounded bg-brand-strong/15 px-1 text-[10px] text-brand-strong">
-                            You
-                          </MonoLabel>
-                        ) : member.role === "admin" ? (
+                        {!isYou && member.role === "admin" ? (
                           <MonoLabel className="shrink-0 rounded bg-ink/10 px-1 text-[10px] text-ink-mute">
                             Admin
                           </MonoLabel>
@@ -212,8 +208,8 @@ function cellFor(
 function WeekCell({ cell }: { cell: WeekCell }) {
   if (cell.kind === "empty") {
     return (
-      <span className="inline-block h-8 w-8 align-middle" aria-hidden>
-        <span className="mx-auto mt-2.5 block h-3 w-3 rounded-full border border-line/80" />
+      <span className="mx-auto grid h-10 w-10 place-items-center" aria-hidden>
+        <span className="h-3 w-3 rounded-full border border-line/80" />
         <span className="sr-only">No pick</span>
       </span>
     );
@@ -222,10 +218,10 @@ function WeekCell({ cell }: { cell: WeekCell }) {
   if (cell.kind === "hidden") {
     return (
       <span
-        className="mx-auto grid h-8 w-8 place-items-center rounded-md bg-[#EEF1F6] text-ink-mute"
+        className="mx-auto grid h-10 w-10 place-items-center rounded-lg bg-[#EEF1F6] text-ink-mute"
         title="Hidden until kickoff"
       >
-        <LockIcon className="h-3.5 w-3.5" />
+        <LockIcon className="h-4 w-4" />
         <span className="sr-only">Pick hidden until kickoff</span>
       </span>
     );
@@ -244,10 +240,10 @@ function WeekCell({ cell }: { cell: WeekCell }) {
 
   return (
     <span
-      className={cn("relative mx-auto grid h-8 w-8 place-items-center rounded-md", wash)}
+      className={cn("relative mx-auto grid h-10 w-10 place-items-center rounded-lg", wash)}
       title={team ? `${team.location} ${team.name}${resultLabel ? ` · ${resultLabel}` : ""}` : cell.teamId}
     >
-      <TeamLogo teamId={cell.teamId} size="xs" />
+      <TeamLogo teamId={cell.teamId} size={32} />
       {cell.live ? (
         <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-pulse-live rounded-full bg-live" />
