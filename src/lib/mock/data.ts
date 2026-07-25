@@ -1,6 +1,6 @@
 import type { Game, GameStatus, TeamId } from "../nfl/types";
 import { TEAMS } from "../nfl/teams";
-import type { Group, Member } from "../league/types";
+import type { Group, Member, TeamRecord } from "../league/types";
 
 /**
  * Demo seed data. This lets every screen render fully — with a lifelike
@@ -150,6 +150,52 @@ export function weekFinalKickoff(week: number): Date | null {
     const k = new Date(g.kickoff);
     return k > latest ? k : latest;
   }, new Date(0));
+}
+
+// ── Team standings (demo) ────────────────────────────────────────────────────
+/**
+ * Cosmetic season records through the current week, used only to power the
+ * "Best record" sort in the team picker. Real standings come from the provider
+ * feed / Postgres; nothing here is load-bearing.
+ */
+export const STANDINGS: Record<TeamId, TeamRecord> = {
+  ari: { w: 2, l: 4, t: 0 },
+  atl: { w: 3, l: 3, t: 0 },
+  bal: { w: 4, l: 2, t: 0 },
+  buf: { w: 4, l: 2, t: 0 },
+  car: { w: 1, l: 5, t: 0 },
+  chi: { w: 2, l: 4, t: 0 },
+  cin: { w: 3, l: 3, t: 0 },
+  cle: { w: 1, l: 5, t: 0 },
+  dal: { w: 3, l: 3, t: 0 },
+  den: { w: 4, l: 2, t: 0 },
+  det: { w: 5, l: 1, t: 0 },
+  gb: { w: 4, l: 2, t: 0 },
+  hou: { w: 3, l: 3, t: 0 },
+  ind: { w: 4, l: 2, t: 0 },
+  jax: { w: 3, l: 3, t: 0 },
+  kc: { w: 5, l: 1, t: 0 },
+  lv: { w: 2, l: 4, t: 0 },
+  lac: { w: 4, l: 2, t: 0 },
+  lar: { w: 4, l: 2, t: 0 },
+  mia: { w: 1, l: 5, t: 0 },
+  min: { w: 4, l: 2, t: 0 },
+  ne: { w: 2, l: 4, t: 0 },
+  no: { w: 1, l: 5, t: 0 },
+  nyg: { w: 2, l: 4, t: 0 },
+  nyj: { w: 0, l: 6, t: 0 },
+  phi: { w: 4, l: 2, t: 0 },
+  pit: { w: 4, l: 2, t: 0 },
+  sf: { w: 4, l: 2, t: 0 },
+  sea: { w: 4, l: 2, t: 0 },
+  tb: { w: 4, l: 2, t: 0 },
+  ten: { w: 1, l: 5, t: 0 },
+  wsh: { w: 3, l: 3, t: 0 },
+};
+
+/** A team's season record (defaults to 0-0-0 for safety under strict indexing). */
+export function teamRecord(id: TeamId): TeamRecord {
+  return STANDINGS[id] ?? { w: 0, l: 0, t: 0 };
 }
 
 // ── The league ──────────────────────────────────────────────────────────────

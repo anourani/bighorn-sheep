@@ -3,12 +3,13 @@
 import { useMemo, useRef, useState } from "react";
 import { StatusHero } from "@/components/picks/StatusHero";
 import { CurrentPickCard } from "@/components/picks/CurrentPickCard";
-import { TeamGrid } from "@/components/picks/TeamGrid";
+import { TeamList } from "@/components/picks/TeamList";
 import { LookAhead, type LookAheadWeek } from "@/components/picks/LookAhead";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { LocalTime } from "@/components/ui/LocalTime";
+import { TeamLogo } from "@/components/ui/TeamLogo";
 import { InfoIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import {
@@ -16,9 +17,9 @@ import {
   CURRENT_WEEK,
   DEMO_NOW,
   GROUP,
-  MEMBERS,
   WEEK_GAMES,
   gameForTeam,
+  teamRecord,
   weekFinalKickoff,
   you,
 } from "@/lib/mock/data";
@@ -34,7 +35,6 @@ export default function MyPicksPage() {
   const [confirmTeam, setConfirmTeam] = useState<TeamId | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const aliveCount = MEMBERS.filter((m) => m.status === "alive").length;
   const byes = BYES_BY_WEEK[week] ?? [];
 
   const states = useMemo(() => {
@@ -71,13 +71,7 @@ export default function MyPicksPage() {
   return (
     <div className="stagger space-y-4">
       <div>
-        <StatusHero
-          member={me}
-          rules={rules}
-          aliveCount={aliveCount}
-          totalCount={MEMBERS.length}
-          week={week}
-        />
+        <StatusHero member={me} rules={rules} week={week} />
       </div>
 
       <div>
@@ -94,10 +88,19 @@ export default function MyPicksPage() {
 
       <div ref={gridRef} className="scroll-mt-20 pt-1">
         <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold text-ink">Pick your team</h2>
+          <div>
+            <MonoLabel className="text-ink-mute">Week {week}</MonoLabel>
+            <h2 className="mt-0.5 text-sm font-semibold text-ink">Pick your team</h2>
+          </div>
           <MonoLabel className="text-ink-mute">Tap to select</MonoLabel>
         </div>
-        <TeamGrid states={states} counts={counts} onSelect={(t) => setConfirmTeam(t)} />
+        <TeamList
+          states={states}
+          counts={counts}
+          recordFor={teamRecord}
+          gameFor={(id) => gameForTeam(week, id)}
+          onSelect={(t) => setConfirmTeam(t)}
+        />
       </div>
 
       <div>
@@ -131,10 +134,11 @@ export default function MyPicksPage() {
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-control border border-line bg-[#FAFAFB] p-3">
               <span
-                className="h-10 w-10 rounded-[10px] ring-1 ring-black/10"
-                style={{ backgroundColor: confirmTeamObj.color }}
-                aria-hidden
-              />
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-white ring-1 ring-black/5"
+                style={{ boxShadow: `0 0 0 1.5px ${confirmTeamObj.color}` }}
+              >
+                <TeamLogo teamId={confirmTeam!} size="md" />
+              </span>
               <div>
                 <div className="font-mono text-lg font-bold tracking-wide text-ink">{confirmTeamObj.abbr}</div>
                 <div className="text-sm text-ink-soft">
