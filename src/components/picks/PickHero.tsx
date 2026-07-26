@@ -6,9 +6,17 @@ import { isHome, opponentOf } from "@/lib/league/view";
 
 /**
  * The My Picks hero: an unapologetically fan-first banner for the team you
- * picked. The card is washed in the team's primary color (a faint tint up top
- * deepening to near-solid at the bottom) with the team's logo ghosted behind
- * the name — so opening the app *feels* like the team you're riding with.
+ * picked. The card is washed in the team's primary color with the team logo
+ * ghosted behind the name — so opening the app *feels* like the team you ride
+ * with.
+ *
+ * Text color is chosen per team so it always clears WCAG AA (4.5:1), and every
+ * bit of text in the section stays on one side of light/dark (never a mix):
+ *  - Bright teams keep dark text on a light→saturated gradient; the gradient's
+ *    bottom is capped at the darkest tint where dark text still passes.
+ *  - Dark teams flip to white text on a deep team-color card; the top is
+ *    darkened until white passes, and the lock line moves inside the card so it
+ *    is white too.
  */
 export function PickHero({
   teamId,
@@ -32,16 +40,20 @@ export function PickHero({
   const home = isHome(game, teamId);
   const kicked = isKickedOff(game, now);
   const cd = countdown(new Date(game.kickoff), now);
-  const [r, g, b] = hexToRgb(team.color);
+  const theme = heroTheme(team.color);
+
+  const lockLine = kicked
+    ? [<span key="k">This game has kicked off — your pick is now visible to the group.</span>]
+    : [
+        <span key="l">Locks in {cd.label}</span>,
+        <span key="p">Only you can see this pick until the game kicks off.</span>,
+      ];
 
   return (
     <section className="border-b border-line pb-4">
       <div
-        className="relative isolate flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-4 text-center"
-        style={{
-          backgroundColor: "#fff",
-          backgroundImage: `linear-gradient(180deg, rgba(${r},${g},${b},0.05) 0%, rgba(${r},${g},${b},0.8) 100%)`,
-        }}
+        className="relative isolate flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-center"
+        style={{ backgroundColor: "#fff", backgroundImage: theme.gradient }}
       >
         {/* Team logo, ghosted into the background. */}
         <span
@@ -50,36 +62,44 @@ export function PickHero({
           style={{ backgroundImage: `url(https://a.espncdn.com/i/teamlogos/nfl/500/${teamId}.png)` }}
         />
 
-        <span className="relative z-10 font-sans text-[15px] font-bold uppercase leading-[1.4] tracking-[0.04em] text-[#757575] sm:text-base">
+        <span
+          className="relative z-10 font-sans text-[15px] font-bold uppercase leading-[1.4] tracking-[0.04em] sm:text-base"
+          style={{ color: theme.label }}
+        >
           Your Pick · Week {week}
         </span>
 
-        <h1 className="relative z-10 mt-2 max-w-full break-words px-2 font-sans font-bold leading-[0.9] tracking-tight text-[#1E1E1E] text-[clamp(2.5rem,12vw,5rem)]">
+        <h1
+          className="relative z-10 mt-2 max-w-full break-words px-2 font-sans font-bold leading-[0.9] tracking-tight text-[clamp(2.5rem,12vw,5rem)]"
+          style={{ color: theme.text }}
+        >
           {team.name}
         </h1>
 
-        <div className="relative z-10 mt-4 flex flex-col items-center gap-1">
-          <p className="text-[15px] font-semibold leading-[1.2] text-[#1E1E1E] sm:text-base">
-            {home ? "Home Game" : "Away Game"}
-            <span className="text-[#1E1E1E]/60">
-              {" · "}
-              {home ? "vs" : "@"} {opp?.name ?? "TBD"}
-            </span>
+        <div className="relative z-10 mt-4 flex flex-col items-center gap-1" style={{ color: theme.text }}>
+          <p className="text-[15px] font-semibold leading-[1.2] sm:text-base">
+            {home ? "Home Game" : "Away Game"} · {home ? "vs" : "@"} {opp?.name ?? "TBD"}
           </p>
-          <LocalTime iso={game.kickoff} mode="full" className="text-xs font-medium text-[#1E1E1E]/80" />
+          <LocalTime iso={game.kickoff} mode="full" className="text-xs font-medium" />
         </div>
+
+        {/* Dark-team cards carry the lock line inside so all text stays white. */}
+        {theme.light ? (
+          <div
+            className="relative z-10 mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs font-medium"
+            style={{ color: theme.text }}
+          >
+            {lockLine}
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
-        {kicked ? (
-          <span>This game has kicked off — your pick is now visible to the group.</span>
-        ) : (
-          <>
-            <span>Locks in {cd.label}</span>
-            <span>Only you can see this pick until the game kicks off.</span>
-          </>
-        )}
-      </div>
+      {/* Bright-team cards keep the lock line below on the light page (also dark). */}
+      {theme.light ? null : (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
+          {lockLine}
+        </div>
+      )}
     </section>
   );
 }
@@ -97,19 +117,19 @@ function NoPickHero({
   return (
     <section className="border-b border-line pb-4">
       <div
-        className="relative flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-4 text-center"
+        className="relative flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-center"
         style={{
           backgroundColor: "#fff",
-          backgroundImage: "linear-gradient(180deg, rgba(83,97,122,0.05) 0%, rgba(83,97,122,0.32) 100%)",
+          backgroundImage: "linear-gradient(180deg, rgba(83,97,122,0.05) 0%, rgba(83,97,122,0.3) 100%)",
         }}
       >
-        <span className="font-sans text-[15px] font-bold uppercase tracking-[0.04em] text-[#757575] sm:text-base">
+        <span className="font-sans text-[15px] font-bold uppercase tracking-[0.04em] text-[#4B5563] sm:text-base">
           Your Pick · Week {week}
         </span>
         <h1 className="mt-2 font-sans font-bold leading-[0.9] tracking-tight text-[#1E1E1E] text-[clamp(2rem,9vw,3.5rem)]">
           No pick yet
         </h1>
-        <p className="mt-4 text-sm font-medium text-[#1E1E1E]/80">
+        <p className="mt-4 text-sm font-medium text-[#1E1E1E]">
           Choose your team from the schedule below.
         </p>
       </div>
@@ -121,10 +141,93 @@ function NoPickHero({
   );
 }
 
+// ── Team-colored, AA-safe theming ────────────────────────────────────────────
+
+const INK = "#1E1E1E";
+const WHITE = "#FFFFFF";
+const LABEL_DARK = "#4B5563"; // muted eyebrow that still clears AA on the near-white top
+const INK_LUM = relLuminance(30, 30, 30);
+
+interface HeroTheme {
+  /** true when the card is dark and text is white. */
+  light: boolean;
+  gradient: string;
+  text: string;
+  label: string;
+}
+
+/**
+ * Pick a text treatment that clears AA (4.5:1) across the whole card. Capping
+ * one gradient endpoint guarantees the chosen color passes at the worst point
+ * (and therefore everywhere), independent of where each line of text sits.
+ */
+function heroTheme(hex: string): HeroTheme {
+  const rgb = hexToRgb(hex);
+
+  // Darkest tint (≤ 0.80) at which dark ink still clears AA against white base.
+  let darkBottom = 0;
+  for (let a = 80; a >= 30; a--) {
+    if (contrast(INK_LUM, tintLuminance(rgb, a / 100)) >= 4.5) {
+      darkBottom = a / 100;
+      break;
+    }
+  }
+
+  // A team bright enough to carry a punchy dark-text wash keeps the light look.
+  if (darkBottom >= 0.6) {
+    return {
+      light: false,
+      gradient: gradient(rgb, 0.05, darkBottom),
+      text: INK,
+      label: LABEL_DARK,
+    };
+  }
+
+  // Otherwise go dark: deepen the top until white clears AA, so white passes
+  // across the whole card (the bottom is darker still).
+  let lightTop = 1;
+  for (let a = 72; a <= 100; a++) {
+    if (contrast(1, tintLuminance(rgb, a / 100)) >= 4.5) {
+      lightTop = a / 100;
+      break;
+    }
+  }
+  return {
+    light: true,
+    gradient: gradient(rgb, lightTop, 1),
+    text: WHITE,
+    label: WHITE,
+  };
+}
+
+function gradient([r, g, b]: [number, number, number], top: number, bottom: number): string {
+  return `linear-gradient(180deg, rgba(${r},${g},${b},${top}) 0%, rgba(${r},${g},${b},${bottom}) 100%)`;
+}
+
 /** "#RRGGBB" (or "#RGB") → [r, g, b]. */
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
   const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
   const n = parseInt(full, 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Relative luminance of the team color at `alpha` composited over white. */
+function tintLuminance([r, g, b]: [number, number, number], alpha: number): number {
+  const mix = (c: number) => alpha * c + (1 - alpha) * 255;
+  return relLuminance(mix(r), mix(g), mix(b));
+}
+
+function relLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(l1: number, l2: number): number {
+  const hi = Math.max(l1, l2);
+  const lo = Math.min(l1, l2);
+  return (hi + 0.05) / (lo + 0.05);
 }
