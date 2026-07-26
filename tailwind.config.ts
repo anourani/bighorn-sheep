@@ -82,7 +82,8 @@ const config: Config = {
         section: "80px", // section-padding token
       },
       maxWidth: {
-        app: "480px", // mobile-first single-column shell
+        app: "480px", // mobile-first single-column shell (modals, auth, narrow content)
+        shell: "1000px", // widened app shell on desktop — responsive down to phones
         wide: "1120px",
       },
       boxShadow: {

@@ -7,7 +7,7 @@ import { GridIcon, UsersIcon, UserIcon } from "@/components/icons";
 
 const tabs = [
   { href: "/", label: "My Picks", Icon: GridIcon },
-  { href: "/group", label: "Group", Icon: UsersIcon },
+  { href: "/standings", label: "Standings", Icon: UsersIcon },
   { href: "/account", label: "Account", Icon: UserIcon },
 ] as const;
 
@@ -19,7 +19,7 @@ export function TabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="Primary"
     >
-      <div className="mx-auto flex max-w-app items-stretch">
+      <div className="mx-auto flex max-w-shell items-stretch">
         {tabs.map(({ href, label, Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (

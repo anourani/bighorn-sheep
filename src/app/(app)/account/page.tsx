@@ -43,7 +43,7 @@ export default function AccountPage() {
   const aliveCount = MEMBERS.filter((m) => m.status === "alive").length;
 
   return (
-    <div className="stagger space-y-4">
+    <div className="stagger mx-auto max-w-2xl space-y-4">
       {/* Profile */}
       <div>
         <Panel className="p-card">
@@ -70,7 +70,7 @@ export default function AccountPage() {
           <MonoLabel className="text-ink-mute">{aliveCount} alive</MonoLabel>
         </div>
         <Panel tone="light" className="divide-y divide-line p-0">
-          <Link href="/group" className="flex items-center gap-3 px-card py-4 transition-colors hover:bg-[#FAFAFB]">
+          <Link href="/standings" className="flex items-center gap-3 px-card py-4 transition-colors hover:bg-[#FAFAFB]">
             <div className="grid h-10 w-10 place-items-center rounded-control bg-brand-wash text-brand-strong">
               <TrophyIcon className="h-5 w-5" />
             </div>

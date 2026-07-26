@@ -1,178 +1,113 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { StatusHero } from "@/components/picks/StatusHero";
-import { CurrentPickCard } from "@/components/picks/CurrentPickCard";
-import { TeamList } from "@/components/picks/TeamList";
-import { LookAhead, type LookAheadWeek } from "@/components/picks/LookAhead";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
+import { useMemo, useState } from "react";
+import { PickHero } from "@/components/picks/PickHero";
+import { WeekSchedule } from "@/components/picks/WeekSchedule";
 import { MonoLabel } from "@/components/ui/MonoLabel";
-import { LocalTime } from "@/components/ui/LocalTime";
-import { TeamLogo } from "@/components/ui/TeamLogo";
-import { InfoIcon } from "@/components/icons";
+import { ChevronDownIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import {
   BYES_BY_WEEK,
   CURRENT_WEEK,
   DEMO_NOW,
-  GROUP,
+  FINAL_WEEK,
   WEEK_GAMES,
   gameForTeam,
-  teamRecord,
   weekFinalKickoff,
   you,
 } from "@/lib/mock/data";
-import { buildTeamStates, countStates, isHome, opponentOf } from "@/lib/league/view";
+import type { HistoryPick } from "@/lib/league/types";
 
 export default function MyPicksPage() {
   const me = you();
   const now = DEMO_NOW;
-  const week = CURRENT_WEEK;
-  const rules = GROUP.rules;
 
+  const [viewWeek, setViewWeek] = useState(CURRENT_WEEK);
   const [pickTeam, setPickTeam] = useState<TeamId | null>(me.currentPick?.teamId ?? null);
-  const [confirmTeam, setConfirmTeam] = useState<TeamId | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
 
-  const byes = BYES_BY_WEEK[week] ?? [];
+  const isCurrent = viewWeek === CURRENT_WEEK;
+  const games = WEEK_GAMES[viewWeek] ?? [];
+  const byes = BYES_BY_WEEK[viewWeek] ?? [];
 
-  const states = useMemo(() => {
-    const effective = {
-      ...me,
-      currentPick: pickTeam
-        ? { week, teamId: pickTeam, gameId: gameForTeam(week, pickTeam)?.id ?? "" }
-        : null,
-    };
-    return buildTeamStates(effective, week, byes);
-  }, [me, pickTeam, week, byes]);
-
-  const counts = countStates(states);
-  const pickGame = pickTeam ? gameForTeam(week, pickTeam) : undefined;
-  const usedTeams = useMemo(() => new Set(me.history.map((h) => h.teamId)), [me.history]);
-
-  const lookaheadWeeks: LookAheadWeek[] = useMemo(
-    () =>
-      [1, 2, 3, 4].map((offset) => {
-        const w = week + offset;
-        return { week: w, games: WEEK_GAMES[w] ?? [], byes: BYES_BY_WEEK[w] ?? [] };
-      }),
-    [week],
+  // Teams already spent this season — burned for every week, so they stay
+  // flagged even while browsing ahead ("plan which teams to save").
+  const usedByTeam = useMemo(
+    () => new Map<TeamId, HistoryPick>(me.history.map((h) => [h.teamId, h])),
+    [me.history],
   );
 
-  function scrollToGrid() {
-    gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  // The pick always reflects the current week — you can only pick for it.
+  const pickGame = pickTeam ? gameForTeam(CURRENT_WEEK, pickTeam) : undefined;
 
-  const confirmGame = confirmTeam ? gameForTeam(week, confirmTeam) : undefined;
-  const confirmTeamObj = confirmTeam ? getTeam(confirmTeam) : undefined;
-  const replacing = pickTeam && confirmTeam && pickTeam !== confirmTeam ? getTeam(pickTeam) : undefined;
+  const weekOptions = useMemo(
+    () => Array.from({ length: FINAL_WEEK - CURRENT_WEEK + 1 }, (_, i) => CURRENT_WEEK + i),
+    [],
+  );
 
   return (
     <div className="stagger space-y-4">
-      <div>
-        <StatusHero member={me} rules={rules} week={week} />
-      </div>
+      <PickHero
+        week={CURRENT_WEEK}
+        teamId={pickTeam}
+        game={pickGame}
+        now={now}
+        weekFinalKickoff={weekFinalKickoff(CURRENT_WEEK)}
+      />
 
       <div>
-        <CurrentPickCard
-          teamId={pickTeam}
-          game={pickGame}
-          week={week}
-          rules={rules}
-          now={now}
-          weekFinalKickoff={weekFinalKickoff(week)}
-          onChange={scrollToGrid}
-        />
-      </div>
-
-      <div ref={gridRef} className="scroll-mt-20 pt-1">
-        <div className="mb-3 flex items-baseline justify-between">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <MonoLabel className="text-ink-mute">Week {week}</MonoLabel>
-            <h2 className="mt-0.5 text-sm font-semibold text-ink">Pick your team</h2>
+            <MonoLabel className="text-ink-mute">Week {viewWeek}</MonoLabel>
+            <h2 className="mt-0.5 text-sm font-semibold text-ink">Schedule</h2>
           </div>
-          <MonoLabel className="text-ink-mute">Tap to select</MonoLabel>
+
+          <label className="block">
+            <MonoLabel className="mb-1.5 block text-ink-mute">Change week</MonoLabel>
+            <div className="relative">
+              <select
+                value={viewWeek}
+                onChange={(e) => setViewWeek(Number(e.target.value))}
+                className="w-full min-w-[9.5rem] appearance-none rounded-control border border-line bg-white px-3 py-2 pr-9 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
+              >
+                {weekOptions.map((w) => (
+                  <option key={w} value={w}>
+                    Week {w}
+                    {w === CURRENT_WEEK ? " · current" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
+            </div>
+          </label>
         </div>
-        <TeamList
-          states={states}
-          counts={counts}
-          recordFor={teamRecord}
-          gameFor={(id) => gameForTeam(week, id)}
-          onSelect={(t) => setConfirmTeam(t)}
+
+        {!isCurrent ? (
+          <p className="mb-2.5 text-xs text-ink-mute">
+            Picks are open for <span className="font-semibold text-ink-soft">Week {CURRENT_WEEK}</span> only —
+            you&apos;re previewing Week {viewWeek}. Used teams stay flagged so you can plan ahead.
+          </p>
+        ) : null}
+
+        {byes.length > 0 ? (
+          <p className="mb-2.5 text-xs text-ink-mute">
+            On bye this week:{" "}
+            <span className="font-mono font-semibold text-ink-soft">
+              {byes.map((b) => getTeam(b)?.abbr).filter(Boolean).join(", ")}
+            </span>{" "}
+            — not pickable.
+          </p>
+        ) : null}
+
+        <WeekSchedule
+          week={viewWeek}
+          games={games}
+          usedByTeam={usedByTeam}
+          selectedTeam={isCurrent ? pickTeam : null}
+          interactive={isCurrent}
+          now={now}
+          onSelect={setPickTeam}
         />
       </div>
-
-      <div>
-        <LookAhead weeks={lookaheadWeeks} usedTeams={usedTeams} />
-      </div>
-
-      <Modal
-        open={confirmTeam !== null}
-        onClose={() => setConfirmTeam(null)}
-        eyebrow={`Week ${week} pick`}
-        title={confirmTeamObj ? `Pick the ${confirmTeamObj.name}?` : "Confirm pick"}
-        footer={
-          <div className="flex gap-2">
-            <Button variant="outline" block onClick={() => setConfirmTeam(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              block
-              onClick={() => {
-                if (confirmTeam) setPickTeam(confirmTeam);
-                setConfirmTeam(null);
-              }}
-            >
-              Confirm pick
-            </Button>
-          </div>
-        }
-      >
-        {confirmTeamObj ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 rounded-control border border-line bg-[#FAFAFB] p-3">
-              <span
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-white ring-1 ring-black/5"
-                style={{ boxShadow: `0 0 0 1.5px ${confirmTeamObj.color}` }}
-              >
-                <TeamLogo teamId={confirmTeam!} size="md" />
-              </span>
-              <div>
-                <div className="font-mono text-lg font-bold tracking-wide text-ink">{confirmTeamObj.abbr}</div>
-                <div className="text-sm text-ink-soft">
-                  {confirmTeamObj.location} {confirmTeamObj.name}
-                </div>
-              </div>
-              {confirmGame ? (
-                <div className="ml-auto text-right text-sm text-ink-soft">
-                  {isHome(confirmGame, confirmTeam!) ? "vs" : "@"}{" "}
-                  {getTeam(opponentOf(confirmGame, confirmTeam!))?.abbr}
-                  <div className="mt-0.5">
-                    <LocalTime iso={confirmGame.kickoff} className="font-mono text-xs text-ink-mute" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {replacing ? (
-              <p className="text-sm text-ink-soft">
-                This replaces your current pick, the{" "}
-                <span className="font-medium text-ink">{replacing.name}</span>.
-              </p>
-            ) : null}
-
-            <div className="flex items-start gap-2 rounded-control bg-brand-wash px-3 py-2.5 text-xs leading-relaxed text-[#8A4A24]">
-              <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                You can change this freely until kickoff. Once locked, the {confirmTeamObj.name} are used for the
-                season — you can&apos;t pick them again.
-              </span>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }
