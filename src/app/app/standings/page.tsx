@@ -6,6 +6,7 @@ import { MonoLabel } from "@/components/ui/MonoLabel";
 import { GearIcon, LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember } from "@/components/group/StandingsGrid";
 import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
+import { RosterPanel } from "@/components/group/RosterPanel";
 import {
   CURRENT_WEEK,
   DEMO_NOW,
@@ -16,6 +17,7 @@ import {
   gameForTeam,
   you,
 } from "@/lib/mock/data";
+import { seasonPhase } from "@/lib/game/season";
 import type { Member } from "@/lib/league/types";
 
 function rankMembers(members: Member[]): RankedMember[] {
@@ -40,6 +42,7 @@ export default function StandingsPage() {
 
   const ranked = useMemo(() => rankMembers(MEMBERS), []);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://bighorn.example";
+  const isPreseason = seasonPhase(new Date(GROUP.entryClosesAt), DEMO_NOW) === "preseason";
 
   return (
     <div className="stagger space-y-4">
@@ -50,7 +53,7 @@ export default function StandingsPage() {
               <MonoLabel className="text-onsurface-mute">Standings</MonoLabel>
               <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">{GROUP.name}</h1>
               <MonoLabel className="mt-1 block text-onsurface-mute">
-                Season {SEASON} · Week {CURRENT_WEEK}
+                {isPreseason ? `Season ${SEASON} · Pre-season` : `Season ${SEASON} · Week ${CURRENT_WEEK}`}
               </MonoLabel>
             </div>
             {isAdmin ? (
@@ -67,22 +70,28 @@ export default function StandingsPage() {
         </Panel>
       </div>
 
-      <div>
-        <StandingsGrid
-          ranked={ranked}
-          viewerId={me.id}
-          currentWeek={CURRENT_WEEK}
-          finalWeek={FINAL_WEEK}
-          rules={GROUP.rules}
-          now={DEMO_NOW}
-          gameForTeam={gameForTeam}
-        />
-      </div>
+      {isPreseason ? (
+        <RosterPanel group={GROUP} members={MEMBERS} now={DEMO_NOW} appUrl={appUrl} />
+      ) : (
+        <>
+          <div>
+            <StandingsGrid
+              ranked={ranked}
+              viewerId={me.id}
+              currentWeek={CURRENT_WEEK}
+              finalWeek={FINAL_WEEK}
+              rules={GROUP.rules}
+              now={DEMO_NOW}
+              gameForTeam={gameForTeam}
+            />
+          </div>
 
-      <p className="flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
-        <LockIcon className="h-3.5 w-3.5" />
-        Current-week picks stay hidden until each team&apos;s game kicks off.
-      </p>
+          <p className="flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
+            <LockIcon className="h-3.5 w-3.5" />
+            Current-week picks stay hidden until each team&apos;s game kicks off.
+          </p>
+        </>
+      )}
 
       {isAdmin ? (
         <AdminSettingsModal

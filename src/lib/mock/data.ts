@@ -16,11 +16,23 @@ import type { Group, Member, TeamRecord } from "../league/types";
  */
 
 export const SEASON = 2025;
-export const CURRENT_WEEK = 6;
 export const FINAL_WEEK = 18;
 
+/**
+ * Demo preview toggle. Default is the mid-season Week 6 snapshot. Set
+ * NEXT_PUBLIC_DEMO_PRESEASON=1 to freeze the clock before Week 1 kickoff and
+ * preview the pre-season experience (a fresh entrant: no history, entry open,
+ * countdown to kickoff, roster of who's joined). Production ignores this — it
+ * derives the phase from the real clock vs. the league's entry deadline.
+ */
+const PRESEASON_PREVIEW = process.env.NEXT_PUBLIC_DEMO_PRESEASON === "1";
+
+export const CURRENT_WEEK = PRESEASON_PREVIEW ? 1 : 6;
+
 /** Frozen "now" for the demo. Real app uses the actual clock. */
-export const DEMO_NOW = new Date("2025-10-12T17:30:00.000Z");
+export const DEMO_NOW = new Date(
+  PRESEASON_PREVIEW ? "2025-08-28T12:00:00.000Z" : "2025-10-12T17:30:00.000Z",
+);
 
 export const YOU_ID = "u_alex";
 
@@ -113,6 +125,15 @@ function generatedWeek(
   });
 }
 
+// Week 1 — no byes in the NFL's opening week. The Thursday kickoff matches the
+// league's entryClosesAt, so a preseason preview shows a full, pickable slate.
+const week1 = generatedWeek(1, [], {
+  thu: "2025-09-05T00:20:00.000Z",
+  sun1: "2025-09-07T17:00:00.000Z",
+  sun4: "2025-09-07T20:25:00.000Z",
+  mnf: "2025-09-09T00:15:00.000Z",
+});
+
 const week7 = generatedWeek(7, ["mia", "den"], {
   thu: "2025-10-17T00:15:00.000Z",
   sun1: "2025-10-19T17:00:00.000Z",
@@ -131,12 +152,14 @@ const week8 = generatedWeek(8, ["sf", "pit"], {
  * released" state the UI must handle gracefully.
  */
 export const WEEK_GAMES: Record<number, Game[]> = {
+  1: week1,
   6: week6,
   7: week7,
   8: week8,
 };
 
 export const BYES_BY_WEEK: Record<number, TeamId[]> = {
+  1: [],
   6: WEEK6_BYES,
   7: ["mia", "den"],
   8: ["sf", "pit"],

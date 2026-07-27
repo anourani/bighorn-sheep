@@ -5,9 +5,10 @@ import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Pill, StrikePips } from "@/components/ui/Badge";
-import { Button, buttonVariants } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { CreateGroupModal } from "@/components/account/CreateGroupModal";
 import { PlusIcon, LogOutIcon, DownloadIcon, ClockIcon, TrophyIcon } from "@/components/icons";
+import { createClient } from "@/lib/supabase/client";
 import { GROUP, MEMBERS, you } from "@/lib/mock/data";
 import { strikeAllowance } from "@/lib/league/types";
 import { timeZoneLabel } from "@/lib/time";
@@ -39,6 +40,15 @@ export default function AccountPage() {
   const me = you();
   const [createOpen, setCreateOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+
+  async function handleLogout() {
+    try {
+      await createClient().auth.signOut();
+    } catch {
+      // Supabase not configured — just return to the sign-in screen.
+    }
+    window.location.href = "/login";
+  }
   const allowance = strikeAllowance(GROUP.rules.eliminationType);
   const aliveCount = MEMBERS.filter((m) => m.status === "alive").length;
 
@@ -70,7 +80,7 @@ export default function AccountPage() {
           <MonoLabel className="text-ink-mute">{aliveCount} alive</MonoLabel>
         </div>
         <Panel tone="light" className="divide-y divide-line p-0">
-          <Link href="/standings" className="flex items-center gap-3 px-card py-4 transition-colors hover:bg-[#FAFAFB]">
+          <Link href="/app/standings" className="flex items-center gap-3 px-card py-4 transition-colors hover:bg-[#FAFAFB]">
             <div className="grid h-10 w-10 place-items-center rounded-control bg-brand-wash text-brand-strong">
               <TrophyIcon className="h-5 w-5" />
             </div>
@@ -133,10 +143,10 @@ export default function AccountPage() {
       </div>
 
       {/* Logout */}
-      <Link href="/login" className={buttonVariants({ variant: "outline", block: true })}>
+      <Button variant="outline" block onClick={handleLogout}>
         <LogOutIcon />
         Log out
-      </Link>
+      </Button>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>

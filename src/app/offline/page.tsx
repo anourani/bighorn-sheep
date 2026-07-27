@@ -14,7 +14,7 @@ export default function OfflinePage() {
       <p className="mt-2 max-w-[34ch] text-sm leading-relaxed text-ink-soft">
         The app shell loaded from cache, but live scores and picks need a connection. Reconnect to see the latest.
       </p>
-      <Link href="/" className={`${buttonVariants({ variant: "primary" })} mt-6`}>
+      <Link href="/app" className={`${buttonVariants({ variant: "primary" })} mt-6`}>
         Try again
       </Link>
     </main>
