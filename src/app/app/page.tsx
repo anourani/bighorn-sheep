@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { PickHero } from "@/components/picks/PickHero";
 import { WeekSchedule } from "@/components/picks/WeekSchedule";
 import { MonoLabel } from "@/components/ui/MonoLabel";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { ChevronDownIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import {
@@ -11,29 +12,39 @@ import {
   CURRENT_WEEK,
   DEMO_NOW,
   FINAL_WEEK,
+  GROUP,
   WEEK_GAMES,
   gameForTeam,
   weekFinalKickoff,
   you,
 } from "@/lib/mock/data";
+import { seasonPhase } from "@/lib/game/season";
 import type { HistoryPick } from "@/lib/league/types";
 
 export default function MyPicksPage() {
   const me = you();
   const now = DEMO_NOW;
+  const isPreseason = seasonPhase(new Date(GROUP.entryClosesAt), now) === "preseason";
 
   const [viewWeek, setViewWeek] = useState(CURRENT_WEEK);
-  const [pickTeam, setPickTeam] = useState<TeamId | null>(me.currentPick?.teamId ?? null);
+  // In preseason a fresh entrant has no standing pick yet.
+  const [pickTeam, setPickTeam] = useState<TeamId | null>(
+    isPreseason ? null : (me.currentPick?.teamId ?? null),
+  );
 
   const isCurrent = viewWeek === CURRENT_WEEK;
   const games = WEEK_GAMES[viewWeek] ?? [];
   const byes = BYES_BY_WEEK[viewWeek] ?? [];
 
   // Teams already spent this season — burned for every week, so they stay
-  // flagged even while browsing ahead ("plan which teams to save").
+  // flagged even while browsing ahead ("plan which teams to save"). A preseason
+  // entrant has spent none.
   const usedByTeam = useMemo(
-    () => new Map<TeamId, HistoryPick>(me.history.map((h) => [h.teamId, h])),
-    [me.history],
+    () =>
+      isPreseason
+        ? new Map<TeamId, HistoryPick>()
+        : new Map<TeamId, HistoryPick>(me.history.map((h) => [h.teamId, h])),
+    [me.history, isPreseason],
   );
 
   // The pick always reflects the current week — you can only pick for it.
@@ -46,6 +57,17 @@ export default function MyPicksPage() {
 
   return (
     <div className="stagger space-y-4">
+      {isPreseason ? (
+        <div className="rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
+          <MonoLabel className="text-[#8A4A24]">Pre-season</MonoLabel>
+          <p className="mt-1 text-sm leading-relaxed text-ink">
+            The season kicks off{" "}
+            <LocalTime iso={GROUP.entryClosesAt} mode="full" className="font-semibold" />. Make your Week 1
+            pick now — it locks when your team plays, and you can change it anytime until then.
+          </p>
+        </div>
+      ) : null}
+
       <PickHero
         week={CURRENT_WEEK}
         teamId={pickTeam}
