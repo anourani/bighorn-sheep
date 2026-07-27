@@ -130,6 +130,21 @@ export interface Database {
     Functions: {
       is_group_member: { Args: { gid: string }; Returns: boolean };
       is_group_admin: { Args: { gid: string }; Returns: boolean };
+      join_by_invite: {
+        Args: { p_code: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      invite_preview: {
+        Args: { p_code: string };
+        Returns: {
+          name: string;
+          season: number;
+          entry_open: boolean;
+          member_count: number;
+          elimination_type: "single" | "two_time";
+          tie_rule: "push" | "loss";
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

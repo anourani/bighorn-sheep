@@ -6,9 +6,9 @@ import { cn } from "@/lib/cn";
 import { GridIcon, UsersIcon, UserIcon } from "@/components/icons";
 
 const tabs = [
-  { href: "/", label: "My Picks", Icon: GridIcon },
-  { href: "/standings", label: "Standings", Icon: UsersIcon },
-  { href: "/account", label: "Account", Icon: UserIcon },
+  { href: "/app", label: "My Picks", Icon: GridIcon },
+  { href: "/app/standings", label: "Standings", Icon: UsersIcon },
+  { href: "/app/account", label: "Account", Icon: UserIcon },
 ] as const;
 
 export function TabBar() {
@@ -21,7 +21,7 @@ export function TabBar() {
     >
       <div className="mx-auto flex max-w-shell items-stretch">
         {tabs.map(({ href, label, Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
           return (
             <Link
               key={href}

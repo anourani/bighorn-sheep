@@ -24,7 +24,7 @@ export function AppHeader() {
       {/* Bar 1 — minimized global header: brand identity only. */}
       <div className="border-b border-line px-4 pb-3 pt-4">
         <Link
-          href="/"
+          href="/app"
           className="inline-flex items-center gap-3 rounded-control"
           aria-label={`${GROUP.name} — home`}
         >

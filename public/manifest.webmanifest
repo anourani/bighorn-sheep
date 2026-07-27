@@ -3,7 +3,7 @@
   "short_name": "Last Man",
   "description": "Run a private NFL survival league with your friends. One team a week, automated eliminations, live scores.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
