@@ -14,11 +14,10 @@
  *
  * Netlify v2 function: default export + `config.schedule`.
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../src/lib/supabase/types";
 import { getNflProvider } from "../../src/lib/providers";
-import { computeStatus, evaluateWeek } from "../../src/lib/game/elimination";
-import type { GroupRules, PickResult } from "../../src/lib/league/types";
+import { recomputeSeason } from "../../src/lib/game/score";
 import type { Game } from "../../src/lib/nfl/types";
 
 export const config = {
@@ -26,31 +25,11 @@ export const config = {
   schedule: "*/5 * * * *",
 };
 
-type DB = SupabaseClient<Database>;
-type GameRow = Database["public"]["Tables"]["games"]["Row"];
-type PickRow = Database["public"]["Tables"]["picks"]["Row"];
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-function rowToGame(r: GameRow): Game {
-  return {
-    id: r.id,
-    season: r.season,
-    seasonType: r.season_type,
-    week: r.week,
-    kickoff: r.kickoff,
-    status: r.status,
-    home: r.home,
-    away: r.away,
-    homeScore: r.home_score,
-    awayScore: r.away_score,
-    statusDetail: r.status_detail ?? undefined,
-  };
 }
 
 export default async function handler(): Promise<Response> {
@@ -92,86 +71,11 @@ export default async function handler(): Promise<Response> {
   );
   if (upsertErr) return json({ ok: false, stage: "games-upsert", error: upsertErr.message }, 500);
 
-  // 3) Recompute eliminations.
+  // 3) Recompute eliminations (shared engine — see src/lib/game/score.ts).
   try {
-    const result = await recomputeEliminations(supabase, season, week);
+    const result = await recomputeSeason(supabase, season, week);
     return json({ ok: true, week, gamesUpserted: games.length, ...result });
   } catch (err) {
     return json({ ok: false, stage: "recompute", error: String(err) }, 500);
   }
-}
-
-async function recomputeEliminations(supabase: DB, season: number, week: number) {
-  const { data: gameRows } = await supabase
-    .from("games")
-    .select("*")
-    .eq("season", season)
-    .lte("week", week);
-  const games = (gameRows ?? []).map(rowToGame);
-
-  const byId = new Map<string, Game>(games.map((g) => [g.id, g]));
-  const finalKickoffByWeek = new Map<number, string>();
-  for (const g of games) {
-    const cur = finalKickoffByWeek.get(g.week);
-    if (!cur || g.kickoff > cur) finalKickoffByWeek.set(g.week, g.kickoff);
-  }
-
-  const { data: groups } = await supabase.from("groups").select("*").eq("season", season);
-  const now = new Date();
-  let membersUpdated = 0;
-
-  for (const group of groups ?? []) {
-    const rules: GroupRules = {
-      eliminationType: group.elimination_type,
-      tieRule: group.tie_rule,
-    };
-    const { data: members } = await supabase.from("group_members").select("*").eq("group_id", group.id);
-    const { data: pickRows } = await supabase.from("picks").select("*").eq("group_id", group.id);
-
-    const picksByUser = new Map<string, PickRow[]>();
-    for (const p of pickRows ?? []) {
-      const arr = picksByUser.get(p.user_id) ?? [];
-      arr.push(p);
-      picksByUser.set(p.user_id, arr);
-    }
-
-    for (const member of members ?? []) {
-      const userPicks = (picksByUser.get(member.user_id) ?? []).sort((a, b) => a.week - b.week);
-      const weeks: number[] = [];
-      const results: PickResult[] = [];
-
-      for (let w = 1; w <= week; w++) {
-        const pick = userPicks.find((p) => p.week === w) ?? null;
-        const game = pick ? (byId.get(pick.game_id) ?? null) : null;
-        const wf = finalKickoffByWeek.get(w);
-        const result = evaluateWeek({
-          teamId: pick?.team_id ?? null,
-          game,
-          weekFinalKickoff: wf ? new Date(wf) : new Date(8640000000000000),
-          rules,
-          now,
-        });
-        weeks.push(w);
-        results.push(result);
-
-        if (pick && result !== "no_pick") {
-          const locked = game && new Date(game.kickoff) <= now ? game.kickoff : null;
-          await supabase.from("picks").update({ result, locked_at: locked }).eq("id", pick.id);
-        }
-      }
-
-      const status = computeStatus(rules, results, weeks);
-      const { error } = await supabase
-        .from("group_members")
-        .update({
-          strikes: status.strikes,
-          status: status.status,
-          eliminated_week: status.eliminatedWeek,
-        })
-        .eq("id", member.id);
-      if (!error) membersUpdated += 1;
-    }
-  }
-
-  return { membersUpdated };
 }

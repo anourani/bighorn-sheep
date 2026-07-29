@@ -32,6 +32,7 @@ export function StandingsGrid({
   rules,
   now,
   gameForTeam,
+  hiddenPickUserIds = [],
 }: {
   ranked: RankedMember[];
   viewerId: string;
@@ -40,9 +41,16 @@ export function StandingsGrid({
   rules: GroupRules;
   now: Date;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
+  /**
+   * user_ids with a locked-but-hidden pick this week. Under RLS a rival's hidden
+   * pick returns no row at all, so this (team-less) flag is what lets the grid
+   * still show a padlock rather than a bare "no pick" slot.
+   */
+  hiddenPickUserIds?: string[];
 }) {
   const allowance = strikeAllowance(rules.eliminationType);
   const weeks = Array.from({ length: finalWeek }, (_, i) => i + 1);
+  const hiddenSet = new Set(hiddenPickUserIds);
 
   return (
     <div className="space-y-2">
@@ -142,7 +150,7 @@ export function StandingsGrid({
                     {weeks.map((w) => (
                       <td key={w} className="px-1 py-1.5 text-center align-middle">
                         <WeekCell
-                          cell={cellFor(member, viewerId, w, currentWeek, gameForTeam, rules, now)}
+                          cell={cellFor(member, viewerId, w, currentWeek, gameForTeam, rules, now, hiddenSet)}
                         />
                       </td>
                     ))}
@@ -189,6 +197,7 @@ function cellFor(
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined,
   rules: GroupRules,
   now: Date,
+  hiddenSet: Set<string>,
 ): WeekCell {
   if (week < currentWeek) {
     const h = member.history.find((x) => x.week === week);
@@ -196,7 +205,9 @@ function cellFor(
   }
   if (week === currentWeek) {
     const pv = viewCurrentPick(member, viewerId, week, gameForTeam, rules, now);
-    if (!pv.hasPick) return { kind: "empty" };
+    // RLS hides a rival's un-kicked pick entirely (no row → no currentPick), so
+    // fall back to the team-less flag to still show the padlock.
+    if (!pv.hasPick) return hiddenSet.has(member.id) ? { kind: "hidden" } : { kind: "empty" };
     if (!pv.revealed) return { kind: "hidden" };
     const result =
       pv.result === "win" || pv.result === "loss" || pv.result === "push" ? pv.result : undefined;

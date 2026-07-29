@@ -1,29 +1,36 @@
 import Link from "next/link";
 import { BrandMark } from "./BrandMark";
-import { CURRENT_WEEK, DEMO_NOW, GROUP, MEMBERS, SEASON } from "@/lib/mock/data";
-import { seasonPhase } from "@/lib/game/season";
+import { loadLeague } from "@/lib/league/load";
 import { countdown } from "@/lib/time";
 
 /**
- * The app shell header — two stacked bars.
+ * The app shell header — two stacked bars, driven by the viewer's live league.
  *
- *  1. A minimized global bar: the brand mark + league name + season range. No
- *     week/live pills; the top bar is now identity-only.
+ *  1. A minimized global bar: the brand mark + league name + season range.
  *  2. A survivor-status bar: the current week, a "N survivors · N deaths" tally,
- *     and a proportional strip of cells — one per member — that reads the pool at
- *     a glance. Gray cells are the eliminated; orange cells are the survivors
- *     still in it. Eliminated cells lead so the orange "field" grows from the
- *     right as the season narrows.
+ *     and a proportional strip of cells — one per member (gray = eliminated,
+ *     orange = alive). Pre-season shows a countdown to kickoff + who's joined.
+ *
+ * Server Component: it shares the request-memoized `loadLeague()` with the page
+ * body, so this costs no extra round-trip. A player in no league yet gets a
+ * minimal identity-only header.
  */
-export function AppHeader() {
-  const survivors = MEMBERS.filter((m) => m.status === "alive").length;
-  const deaths = MEMBERS.filter((m) => m.status === "eliminated").length;
-  const total = survivors + deaths;
-  const seasonLabel = `${SEASON}-${SEASON + 1}`;
+export async function AppHeader() {
+  const load = await loadLeague();
 
-  const isPreseason = seasonPhase(new Date(GROUP.entryClosesAt), DEMO_NOW) === "preseason";
-  const startsIn = countdown(new Date(GROUP.entryClosesAt), DEMO_NOW);
-  const joined = MEMBERS.length;
+  if (load.kind !== "ok") return <MinimalHeader />;
+
+  const { group, members, currentWeek, phase } = load.data;
+  const now = new Date(load.data.nowIso);
+
+  const survivors = members.filter((m) => m.status === "alive").length;
+  const deaths = members.filter((m) => m.status === "eliminated").length;
+  const total = survivors + deaths;
+  const seasonLabel = `${group.season}-${group.season + 1}`;
+
+  const isPreseason = phase === "preseason";
+  const startsIn = countdown(new Date(group.entryClosesAt), now);
+  const joined = members.length;
 
   return (
     <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md">
@@ -32,12 +39,12 @@ export function AppHeader() {
         <Link
           href="/app"
           className="inline-flex items-center gap-3 rounded-control"
-          aria-label={`${GROUP.name} — home`}
+          aria-label={`${group.name} — home`}
         >
           <BrandMark size="md" />
           <span className="flex flex-col gap-1">
             <span className="text-lg font-semibold leading-[1.2] tracking-tight text-ink">
-              {GROUP.name}
+              {group.name}
             </span>
             <span className="text-xs font-medium leading-[1.1] text-ink-mute">{seasonLabel}</span>
           </span>
@@ -71,7 +78,7 @@ export function AppHeader() {
       ) : (
         <div className="flex items-center gap-6 border-b border-line px-4 py-2">
           <div className="flex shrink-0 flex-col gap-1">
-            <span className="text-sm font-medium leading-[1.2] text-ink">Week {CURRENT_WEEK}</span>
+            <span className="text-sm font-medium leading-[1.2] text-ink">Week {currentWeek}</span>
             <div className="flex gap-1.5 whitespace-nowrap text-sm font-medium leading-[1.2]">
               <span className="text-[#B35838]">
                 {survivors} {survivors === 1 ? "survivor" : "survivors"}.
@@ -96,6 +103,25 @@ export function AppHeader() {
           </div>
         </div>
       )}
+    </header>
+  );
+}
+
+/** Identity-only header for a signed-in player who isn't in a league yet. */
+function MinimalHeader() {
+  return (
+    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md">
+      <div className="border-b border-line px-4 pb-3 pt-4">
+        <Link href="/app" className="inline-flex items-center gap-3 rounded-control" aria-label="Last Man Standing — home">
+          <BrandMark size="md" />
+          <span className="flex flex-col gap-1">
+            <span className="text-lg font-semibold leading-[1.2] tracking-tight text-ink">
+              Last Man Standing
+            </span>
+            <span className="text-xs font-medium leading-[1.1] text-ink-mute">NFL Survival League</span>
+          </span>
+        </Link>
+      </div>
     </header>
   );
 }

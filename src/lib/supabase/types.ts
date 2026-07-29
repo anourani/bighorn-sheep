@@ -134,6 +134,20 @@ export interface Database {
         Args: { p_code: string };
         Returns: Database["public"]["Tables"]["groups"]["Row"];
       };
+      create_group: {
+        Args: {
+          p_name: string;
+          p_elimination_type?: "single" | "two_time";
+          p_tie_rule?: "push" | "loss";
+          p_season?: number;
+          p_entry_closes_at?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      hidden_pick_user_ids: {
+        Args: { p_group_id: string; p_week: number };
+        Returns: string[];
+      };
       invite_preview: {
         Args: { p_code: string };
         Returns: {
