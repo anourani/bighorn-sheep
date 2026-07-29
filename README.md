@@ -8,16 +8,17 @@ A private **NFL survival league** ("Last Man Standing") as an installable PWA. P
 
 ## Status
 
-This is the **v1 foundation**: a fully-built, installable, statically-rendered app with all four screens, the complete design system, the pure game engine (unit-tested), the NFL data provider abstraction, and the database schema + RLS. The screens currently render from a realistic **seed dataset** (`src/lib/mock/data.ts`) frozen at a mid-season Sunday so every state is visible at once — live games, a fresh elimination, hidden picks, strikes. Wiring the screens to Supabase queries and Supabase Auth is the next step; the seams for it are all in place.
+This is the **v1 foundation**: a fully-built, installable app with all four screens, the complete design system, the pure game engine (unit-tested), the NFL data provider abstraction, and the database schema + RLS. The four screens now read **live data from Supabase**, RLS-scoped to the signed-in player — their membership, roster, and picks — with the pick/create-group/join-by-code write paths wired behind the same `canPick` guard and RLS. A realistic **seed dataset** (`src/lib/mock/data.ts`) still backs the tests and the `mock` NFL provider, but the UI no longer depends on it.
 
 | Area | State |
 | --- | --- |
 | Four screens, design system, PWA shell | ✅ Built & building |
-| Game/elimination engine (`src/lib/game`) | ✅ Built & unit-tested (25 tests) |
+| Game/elimination engine (`src/lib/game`) | ✅ Built & unit-tested |
 | NFL provider abstraction + ESPN adapter | ✅ Built (real ESPN calls) |
 | Postgres schema + RLS pick-privacy | ✅ Written (`supabase/migrations`) |
 | Scheduled scorer (Netlify function) | ✅ Written, env-gated |
-| Supabase Auth + live queries in the UI | ⏳ Next: screens read seed data today |
+| Supabase Auth + live queries in the UI | ✅ Wired — screens read the signed-in player's data |
+| Pre-season dry-run harness | ✅ Seed a test weekend + fast-forward it ([docs/dry-run.md](docs/dry-run.md)) |
 
 ---
 
@@ -70,7 +71,7 @@ cp .env.example .env.local   # fill in when you connect Supabase (optional for t
 npm run dev                  # http://localhost:3000
 ```
 
-The app runs and renders fully **without any environment variables** (it uses the seed dataset).
+The landing and login pages render **without any environment variables**, but the `/app` screens now read live data, so they need a Supabase project configured (see below). The game engine and provider tests run env-free.
 
 ```bash
 npm run build      # production build (statically prerenders all routes)
@@ -78,11 +79,25 @@ npm test           # run the engine unit tests (vitest)
 npm run typecheck  # tsc --noEmit
 ```
 
-### Connecting Supabase (when ready)
+### Connecting Supabase
 
-1. Create a Supabase project. Put the URL + anon key in `.env.local` (see `.env.example`).
-2. Apply the schema: `supabase db push` (or paste `supabase/migrations/0001_init.sql` into the SQL editor).
-3. Swap the screens' `src/lib/mock/data` imports for Supabase queries via `src/lib/supabase/{client,server}.ts`. Magic-link auth is built into Supabase; the profile row is auto-created by the `handle_new_user` trigger.
+1. Create a Supabase project. Put the URL + anon key (and the service-role key, for the scorer/harness) in `.env.local` (see `.env.example`).
+2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, and `0003_group_create_and_pick_flags.sql` (`supabase db push`, or paste into the SQL editor).
+3. Add `http://localhost:3000/**` to **Authentication → URL Configuration** so magic links return to the app, then `npm run dev`. Magic-link auth is built into Supabase; the profile row is auto-created by the `handle_new_user` trigger.
+
+The screens read live data server-side through `src/lib/league/load.ts` (RLS-scoped to the signed-in user) and pass it into the client UI; writes go through the server actions in `src/app/app/actions.ts`. Without env vars the middleware leaves the app un-gated — but the `/app` screens need a session, so set Supabase up to use them.
+
+### Try the whole loop before the season — the dry-run harness
+
+You don't have to wait for a real NFL game to test picks and eliminations end-to-end. Seed a controllable **test weekend** and fast-forward it with a real group of friends. See **[docs/dry-run.md](docs/dry-run.md)**; in short:
+
+```bash
+npm run seed:test-week -- --week 1 --kickoff-in 15 --group YOUR-CODE   # a pickable slate
+npm run sim -- --week 1 --phase kickoff --group YOUR-CODE              # lock + reveal picks
+npm run sim -- --week 1 --phase final --winners kc,dal --group YOUR-CODE  # results + eliminations
+```
+
+`sim` recomputes standings through the same engine the production scorer uses (`src/lib/game/score.ts`).
 
 ### The NFL data provider is swappable
 
@@ -122,8 +137,8 @@ public/               # manifest, icons, service worker
 
 ## Roadmap
 
-- **Now:** wire screens to Supabase queries + magic-link auth; server actions for the pick write path (behind `canPick` + RLS).
-- **P1:** multi-group switcher, admin override tools with audit log, deadline countdown, pick-reminder emails (Resend).
+- **Now:** admin settings writes (edit rules/name while unlocked), multi-group switcher (the loader already accepts a target group id).
+- **P1:** admin override tools with audit log, deadline countdown, pick-reminder emails (Resend).
 - **P2:** group chat, multi-sport, public discovery.
 
 ---
