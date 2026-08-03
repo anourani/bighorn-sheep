@@ -466,9 +466,9 @@ grant execute on function public.hidden_pick_user_ids(uuid, int) to authenticate
 --
 --   1. Names. The free-text `display_name` is replaced by structured
 --      `first_name` / `last_name`. Everyone renders uniformly as "First L."
---      (e.g. "Alex N.") in the app; the columns are the source. We KEEP the
---      `display_name` column for now (populated as a fallback) rather than drop
---      it — a later migration can remove it once nothing reads it.
+--      (e.g. "Alex N.") in the app; the columns are the source. We backfill
+--      first/last from the old `display_name` and then DROP it — nothing reads
+--      it once the app is on the new columns.
 --
 --   2. Avatars. A nullable `avatar_url` on profiles, plus a public `avatars`
 --      storage bucket whose objects are keyed by the owner's user id so a member
@@ -499,16 +499,16 @@ set
 where coalesce(first_name, '') = '';
 
 -- Auto-create a profile on signup. Reads the new first_name/last_name metadata,
--- falling back to the legacy `display_name` metadata, then the email local-part —
--- so old and new clients both provision a sensible profile. `display_name` is
--- still populated as a safety-net fallback.
+-- falling back to the legacy `display_name` metadata (for any old magic link
+-- still in flight), then the email local-part — so every client provisions a
+-- sensible profile.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, first_name, last_name, display_name)
+  insert into public.profiles (id, first_name, last_name)
   values (
     new.id,
     coalesce(
@@ -516,13 +516,16 @@ begin
       split_part(coalesce(new.raw_user_meta_data ->> 'display_name', new.email), ' ', 1),
       split_part(new.email, '@', 1)
     ),
-    coalesce(nullif(trim(new.raw_user_meta_data ->> 'last_name'), ''), ''),
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'last_name'), ''), '')
   )
   on conflict (id) do nothing;
   return new;
 end;
 $$;
+
+-- The old free-text name is fully migrated into first_name/last_name above and
+-- nothing reads it anymore — drop it. (No index/policy/view depends on it.)
+alter table public.profiles drop column if exists display_name;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. account_exists — has this email already completed sign-in at least once?

@@ -10,7 +10,6 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
-          display_name: string;
           first_name: string;
           last_name: string;
           avatar_url: string | null;
@@ -18,7 +17,6 @@ export interface Database {
         };
         Insert: {
           id: string;
-          display_name?: string;
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
@@ -26,7 +24,6 @@ export interface Database {
         };
         Update: {
           id?: string;
-          display_name?: string;
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
