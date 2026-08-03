@@ -8,9 +8,30 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; display_name: string; created_at: string };
-        Insert: { id: string; display_name?: string; created_at?: string };
-        Update: { id?: string; display_name?: string; created_at?: string };
+        Row: {
+          id: string;
+          display_name: string;
+          first_name: string;
+          last_name: string;
+          avatar_url: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          display_name?: string;
+          first_name?: string;
+          last_name?: string;
+          avatar_url?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          display_name?: string;
+          first_name?: string;
+          last_name?: string;
+          avatar_url?: string | null;
+          created_at?: string;
+        };
         Relationships: [];
       };
       groups: {
@@ -128,6 +149,7 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      account_exists: { Args: { p_email: string }; Returns: boolean };
       is_group_member: { Args: { gid: string }; Returns: boolean };
       is_group_admin: { Args: { gid: string }; Returns: boolean };
       join_by_invite: {
