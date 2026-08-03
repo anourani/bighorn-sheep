@@ -7,6 +7,7 @@ import { rowToGame } from "@/lib/game/score";
 import { evaluateTeamPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "@/lib/game/season";
 import { buildGameIndex } from "./games";
+import { formatDisplayName } from "./name";
 import type { Group, GroupRules, HistoryPick, Member } from "./types";
 
 export const FINAL_WEEK = 18;
@@ -17,8 +18,19 @@ type PickRow = Database["public"]["Tables"]["picks"]["Row"];
 
 export interface Viewer {
   id: string;
+  /** Pre-formatted "First L." for display. */
   name: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
   email: string | null;
+}
+
+/** The identity fields carried on a profile row, shared by viewer + members. */
+interface ProfileName {
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
 }
 
 /**
@@ -68,7 +80,7 @@ function historyResult(
   return derived === "win" || derived === "loss" || derived === "push" ? derived : null;
 }
 
-function toMember(row: MemberRow, name: string, picks: PickRow[], currentWeek: number, rules: GroupRules, gameById: (id: string) => Game | undefined): Member {
+function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickRow[], currentWeek: number, rules: GroupRules, gameById: (id: string) => Game | undefined): Member {
   const history: HistoryPick[] = [];
   let currentPick: Member["currentPick"] = null;
   for (const p of picks) {
@@ -80,9 +92,14 @@ function toMember(row: MemberRow, name: string, picks: PickRow[], currentWeek: n
     }
   }
   history.sort((a, b) => a.week - b.week);
+  const firstName = profile?.firstName ?? "";
+  const lastName = profile?.lastName ?? "";
   return {
     id: row.user_id,
-    name,
+    name: formatDisplayName(firstName, lastName),
+    firstName,
+    lastName,
+    avatarUrl: profile?.avatarUrl ?? null,
     role: row.role,
     status: row.status,
     strikes: row.strikes,
@@ -107,13 +124,20 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("first_name, last_name, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
   const viewer: Viewer = {
     id: user.id,
-    name: profile?.display_name ?? user.email?.split("@")[0] ?? "Player",
+    name: formatDisplayName(
+      profile?.first_name,
+      profile?.last_name,
+      user.email?.split("@")[0] ?? "Player",
+    ),
+    firstName: profile?.first_name ?? "",
+    lastName: profile?.last_name ?? "",
+    avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
   };
 
@@ -151,15 +175,20 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   const phase = seasonPhase(new Date(group.entryClosesAt), now);
   const currentWeek = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
 
-  // Member display names (profiles are world-readable to authenticated users).
+  // Member identities (profiles are world-readable to authenticated users).
   const memberIds = (memberRows ?? []).map((m) => m.user_id);
-  const nameById = new Map<string, string>();
+  const profileById = new Map<string, ProfileName>();
   if (memberIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, display_name")
+      .select("id, first_name, last_name, avatar_url")
       .in("id", memberIds);
-    for (const pr of profiles ?? []) nameById.set(pr.id, pr.display_name);
+    for (const pr of profiles ?? [])
+      profileById.set(pr.id, {
+        firstName: pr.first_name,
+        lastName: pr.last_name,
+        avatarUrl: pr.avatar_url,
+      });
   }
 
   const picksByUser = new Map<string, PickRow[]>();
@@ -172,7 +201,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   const members: Member[] = (memberRows ?? []).map((row) =>
     toMember(
       row,
-      nameById.get(row.user_id) ?? "Player",
+      profileById.get(row.user_id),
       picksByUser.get(row.user_id) ?? [],
       currentWeek,
       group.rules,
@@ -231,13 +260,20 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, created_at")
+    .select("first_name, last_name, avatar_url, created_at")
     .eq("id", user.id)
     .maybeSingle();
 
   const viewer: Viewer = {
     id: user.id,
-    name: profile?.display_name ?? user.email?.split("@")[0] ?? "Player",
+    name: formatDisplayName(
+      profile?.first_name,
+      profile?.last_name,
+      user.email?.split("@")[0] ?? "Player",
+    ),
+    firstName: profile?.first_name ?? "",
+    lastName: profile?.last_name ?? "",
+    avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
   };
 

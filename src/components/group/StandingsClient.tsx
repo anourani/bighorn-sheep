@@ -16,12 +16,12 @@ function rankMembers(members: Member[]): RankedMember[] {
     if (a.status !== b.status) return a.status === "alive" ? -1 : 1;
     if (a.status === "alive") {
       if (a.strikes !== b.strikes) return a.strikes - b.strikes;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     }
     const aw = a.eliminatedWeek ?? 0;
     const bw = b.eliminatedWeek ?? 0;
     if (aw !== bw) return bw - aw;
-    return a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   });
   return ordered.map((member, i) => ({ member, rank: i + 1 }));
 }

@@ -6,6 +6,7 @@ import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Pill } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { LocalTime } from "@/components/ui/LocalTime";
+import { Avatar } from "@/components/ui/Avatar";
 import { CopyIcon, CheckIcon } from "@/components/icons";
 import { countdown } from "@/lib/time";
 import type { Group, Member } from "@/lib/league/types";
@@ -70,9 +71,7 @@ export function RosterPanel({
         <Panel tone="light" className="divide-y divide-line p-0">
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-3 px-card py-3.5">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-sheen font-mono text-xs font-bold text-white ring-2 ring-white/20">
-                {initials(m.name)}
-              </div>
+              <Avatar firstName={m.firstName} lastName={m.lastName} avatarUrl={m.avatarUrl} size={36} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-ink">{m.name}</div>
                 {m.role === "admin" ? <MonoLabel className="text-ink-mute">Commissioner</MonoLabel> : null}
@@ -103,13 +102,4 @@ export function RosterPanel({
       </div>
     </div>
   );
-}
-
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }

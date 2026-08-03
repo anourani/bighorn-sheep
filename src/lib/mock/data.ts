@@ -1,6 +1,7 @@
 import type { Game, GameStatus, TeamId } from "../nfl/types";
 import { TEAMS } from "../nfl/teams";
 import type { Group, Member, TeamRecord } from "../league/types";
+import { formatDisplayName } from "../league/name";
 
 /**
  * Demo seed data. This lets every screen render fully — with a lifelike
@@ -232,7 +233,10 @@ export const GROUP: Group = {
   settingsLockedAt: "2025-09-05T00:20:00.000Z",
 };
 
-export const MEMBERS: Member[] = [
+/** Full-name seed rows; first/last/avatar are derived below so this stays terse. */
+type SeedMember = Omit<Member, "firstName" | "lastName" | "avatarUrl">;
+
+const SEED_MEMBERS: SeedMember[] = [
   {
     id: YOU_ID,
     name: "Alex Nourani",
@@ -325,6 +329,13 @@ export const MEMBERS: Member[] = [
     currentPick: null,
   },
 ];
+
+/** Derive first/last from the seed's full name and render as "First L.". */
+export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
+  const [firstName = "", ...rest] = m.name.split(" ");
+  const lastName = rest.join(" ");
+  return { ...m, firstName, lastName, avatarUrl: null, name: formatDisplayName(firstName, lastName) };
+});
 
 export function you(): Member {
   return MEMBERS.find((m) => m.id === YOU_ID)!;
