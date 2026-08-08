@@ -87,7 +87,31 @@ npm run typecheck  # tsc --noEmit
 
 #### Deploying
 
-Migrations are **not** applied by the build — nothing in `netlify.toml` or CI touches Supabase — so run any new migration against the production project yourself as part of shipping.
+Migrations are **not** applied by the build — nothing in `netlify.toml` or CI touches Supabase — so run any new migration against the production project yourself as part of shipping. Forgetting this is quiet and confusing: the app deploys green and then fails at runtime with a 404 on whichever RPC is missing.
+
+This read-only query reports what production actually has. Run it before and after any migration:
+
+```sql
+select 'column: ' || c as object,
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='profiles' and column_name=c)
+       then 'PRESENT' else 'MISSING' end as status
+from unnest(array['first_name','last_name','avatar_url','display_name']) c
+union all
+select 'function: ' || f,
+       case when exists (select 1 from information_schema.routines
+         where routine_schema='public' and routine_name=f)
+       then 'PRESENT' else 'MISSING' end
+from unnest(array['account_exists','create_group','join_by_invite',
+                  'invite_preview','hidden_pick_user_ids','handle_new_user']) f
+union all
+select 'bucket: avatars',
+       case when exists (select 1 from storage.buckets where id='avatars')
+       then 'PRESENT' else 'MISSING' end
+order by 1;
+```
+
+Fully migrated means everything PRESENT **except** `display_name`, which 0004 drops.
 
 In **Authentication → URL Configuration** on the production project:
 

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { errorMessage } from "@/lib/errors";
 import { formatDisplayName } from "@/lib/league/name";
 import { BrandMark } from "@/components/shell/BrandMark";
 import { Panel } from "@/components/ui/Panel";
@@ -13,6 +14,13 @@ import { MailIcon, InfoIcon, CheckIcon, ArrowRightIcon, UsersIcon } from "@/comp
 
 /** One email field drives everything; the step reflects what we learned about it. */
 type Step = "email" | "name" | "needs_invite" | "sent";
+
+/**
+ * Outcome of a magic-link send. `signup_disabled` means the address has no
+ * account and this call wasn't permitted to create one — the caller routes to
+ * the invite explainer rather than surfacing an error.
+ */
+type SendResult = { ok: true } | { ok: false; reason: "signup_disabled" | "other" };
 
 const ENTRY_CLOSED_COPY =
   "Entry for this league has closed — it locks at the first Week 1 kickoff.";
@@ -109,8 +117,18 @@ function LoginInner() {
     }
   }
 
-  /** Send the magic link. Carries the invite (if any) and optional signup name. */
-  async function sendMagicLink(data?: { first_name: string; last_name: string }): Promise<boolean> {
+  /**
+   * Send the magic link. Carries the invite (if any) and optional signup name.
+   *
+   * `allowCreate` gates whether this send may bring a brand-new account into
+   * existence. Callers that haven't established the player is entitled to one
+   * pass false, so Supabase signs in an existing user but refuses to provision
+   * a stranger.
+   */
+  async function sendMagicLink(
+    data?: { first_name: string; last_name: string },
+    allowCreate = true,
+  ): Promise<SendResult> {
     try {
       const supabase = createClient();
       const redirect = new URL("/auth/callback", window.location.origin);
@@ -121,19 +139,27 @@ function LoginInner() {
         email: email.trim(),
         options: {
           emailRedirectTo: redirect.toString(),
-          shouldCreateUser: true,
+          shouldCreateUser: allowCreate,
           // first_name/last_name are read by the handle_new_user trigger.
           ...(data ? { data } : {}),
         },
       });
       if (error) {
-        setFormError(error.message || "Couldn't send the link. Try again.");
-        return false;
+        // "No such account, and I'm not allowed to make one" is a routing
+        // signal, not a failure to report — the caller sends them to the
+        // invite explainer instead of showing a scary message.
+        const signupDisabled =
+          (error as { code?: string }).code === "otp_disabled" ||
+          /signups? not allowed/i.test(error.message ?? "");
+        if (!signupDisabled) {
+          setFormError(errorMessage(error, "Couldn't send the link. Try again."));
+        }
+        return { ok: false, reason: signupDisabled ? "signup_disabled" : "other" };
       }
-      return true;
+      return { ok: true };
     } catch {
       setFormError("Sign-in isn't configured in this environment yet.");
-      return false;
+      return { ok: false, reason: "other" };
     }
   }
 
@@ -147,7 +173,7 @@ function LoginInner() {
     const exists = await checkAccountExists();
     if (exists === true) {
       // Returning player — send a plain login link.
-      if (await sendMagicLink()) {
+      if ((await sendMagicLink()).ok) {
         setReturning(true);
         setStep("sent");
       }
@@ -157,14 +183,22 @@ function LoginInner() {
       else if (entryClosed) setFormError(ENTRY_CLOSED_COPY);
       else setStep("name");
     } else {
-      // Couldn't detect (demo mode): with an invite, collect a name; otherwise
-      // fall through to a direct send.
+      // Couldn't detect — account_exists is unavailable. With an invite, collect
+      // a name as usual. Without one, still try to sign them in, but withhold
+      // permission to CREATE: otherwise an unknown address could self-provision
+      // into an invite-only league for as long as the check happens to be down.
       if (invite) {
         if (entryClosed) setFormError(ENTRY_CLOSED_COPY);
         else setStep("name");
-      } else if (await sendMagicLink()) {
-        setReturning(null);
-        setStep("sent");
+      } else {
+        const res = await sendMagicLink(undefined, false);
+        if (res.ok) {
+          setReturning(null);
+          setStep("sent");
+        } else if (res.reason === "signup_disabled") {
+          // No account to sign in to, and no invite to create one with.
+          setStep("needs_invite");
+        }
       }
     }
     setSubmitting(false);
@@ -176,7 +210,7 @@ function LoginInner() {
     if (!firstValid || submitting) return;
     setSubmitting(true);
     setFormError(null);
-    if (await sendMagicLink({ first_name: firstName.trim(), last_name: lastName.trim() })) {
+    if ((await sendMagicLink({ first_name: firstName.trim(), last_name: lastName.trim() })).ok) {
       setReturning(false);
       setStep("sent");
     }
