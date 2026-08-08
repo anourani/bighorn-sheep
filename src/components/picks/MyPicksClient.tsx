@@ -11,6 +11,7 @@ import { buildGameIndex } from "@/lib/league/games";
 import type { LeagueData } from "@/lib/league/load";
 import type { HistoryPick } from "@/lib/league/types";
 import { submitPick } from "@/app/app/actions";
+import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 
 /** Friendly copy for a rejected pick (mirrors the canPick reason codes). */
 const PICK_ERROR: Record<string, string> = {
@@ -20,6 +21,7 @@ const PICK_ERROR: Record<string, string> = {
   no_game_for_team: "That team isn't playing this week.",
   entry_closed: "Entry for this league has closed.",
   not_a_member: "You're not a member of this league.",
+  unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };
 
 export function MyPicksClient({ data }: { data: LeagueData }) {
@@ -69,10 +71,17 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
     setPickTeam(teamId); // optimistic
     setPickError(null);
     startTransition(async () => {
-      const res = await submitPick({ groupId: group.id, teamId });
-      if (!res.ok) {
+      try {
+        const res = await submitPick({ groupId: group.id, teamId });
+        if (!res.ok) {
+          setPickTeam(previous); // revert on rejection
+          setPickError(PICK_ERROR[res.error] ?? "Couldn't save that pick. Try again.");
+        }
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
         setPickTeam(previous); // revert on rejection
-        setPickError(PICK_ERROR[res.error] ?? "Couldn't save that pick. Try again.");
+        setPickError("Couldn't save that pick. Try again.");
       }
     });
   }
