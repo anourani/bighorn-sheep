@@ -54,7 +54,11 @@ export interface CurrentPick {
 
 export interface Member {
   id: string;
+  /** Pre-formatted "First L." for display and sorting. */
   name: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl: string | null;
   role: Role;
   status: MemberStatus;
   /** Losses accrued (0..allowance). */

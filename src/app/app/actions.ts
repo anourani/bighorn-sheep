@@ -103,6 +103,58 @@ export async function submitPick(input: {
   return { ok: true };
 }
 
+/**
+ * Update the viewer's name. The image bytes are uploaded client-side (the
+ * browser holds the File); this persists the resulting fields and revalidates
+ * the caches so the roster/account refresh. RLS "profiles update own" is the
+ * backstop — a caller can only ever write their own row.
+ */
+export async function updateProfile(input: {
+  firstName: string;
+  lastName: string;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "not_authenticated" };
+
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  if (firstName.length < 1) return { ok: false, error: "first_name_required" };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ first_name: firstName, last_name: lastName })
+    .eq("id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/account");
+  revalidatePath("/app/standings");
+  return { ok: true };
+}
+
+/** Persist the viewer's uploaded avatar URL (bytes already in storage). */
+export async function updateAvatar(url: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "not_authenticated" };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ avatar_url: url })
+    .eq("id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/account");
+  revalidatePath("/app/standings");
+  return { ok: true };
+}
+
 /** Create a league and enroll the caller as admin (atomic, via create_group). */
 export async function createGroup(input: {
   name: string;
