@@ -31,7 +31,13 @@ alter table public.profiles add column if not exists last_name  text not null de
 alter table public.profiles add column if not exists avatar_url text;
 
 -- Backfill first/last from the legacy single `display_name`, once. Only touches
--- rows not yet split, so it is safe to re-run.
+-- rows not yet split.
+--
+-- WARNING: this migration is one-shot. This statement reads `display_name`, and
+-- the DROP further down removes it — so a second run fails right here with
+-- "column display_name does not exist". Same reason `supabase/setup.sql` (which
+-- bundles all four migrations) must never be replayed onto a database that
+-- already has 0001-0003.
 update public.profiles
 set
   first_name = split_part(trim(display_name), ' ', 1),

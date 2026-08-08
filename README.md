@@ -55,7 +55,7 @@ The rule "you can't see another player's current pick until that team's game kic
 - **Tailwind CSS 3.4** — design tokens transcribed into `tailwind.config.ts`.
 - **Supabase** — Postgres + passwordless auth + RLS.
 - **Netlify** — hosting + scheduled function for the scorer.
-- **PWA** — web manifest + a dependency-free offline-shell service worker (`public/sw.js`).
+- **PWA** — web manifest + a dependency-free offline-shell service worker, served from `src/app/sw.js/route.ts` so it carries a per-build version and never serves a superseded release.
 
 ## Design direction — "Ecosystem Visualization"
 
@@ -82,12 +82,36 @@ npm run typecheck  # tsc --noEmit
 ### Connecting Supabase
 
 1. Create a Supabase project. Put the URL + anon key (and the service-role key, for the scorer/harness) in `.env.local` (see `.env.example`).
-2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, `0003_group_create_and_pick_flags.sql`, and `0004_profile_names_avatars.sql` (`supabase db push`, or paste into the SQL editor). Run each once — `0004` backfills from `display_name` before dropping it.
+2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, `0003_group_create_and_pick_flags.sql`, `0004_profile_names_avatars.sql`, and `0005_invite_code_without_pgcrypto.sql` (`supabase db push`, or paste into the SQL editor). Run each once — `0004` backfills from `display_name` before dropping it.
 3. Add `http://localhost:3000/**` to **Authentication → URL Configuration** so magic links return to the app, then `npm run dev`. Magic-link auth is built into Supabase; the profile row is auto-created by the `handle_new_user` trigger.
 
 #### Deploying
 
-Migrations are **not** applied by the build — nothing in `netlify.toml` or CI touches Supabase — so run any new migration against the production project yourself as part of shipping.
+Migrations are **not** applied by the build — nothing in `netlify.toml` or CI touches Supabase — so run any new migration against the production project yourself as part of shipping. Forgetting this is quiet and confusing: the app deploys green and then fails at runtime with a 404 on whichever RPC is missing.
+
+This read-only query reports what production actually has. Run it before and after any migration:
+
+```sql
+select 'column: ' || c as object,
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='profiles' and column_name=c)
+       then 'PRESENT' else 'MISSING' end as status
+from unnest(array['first_name','last_name','avatar_url','display_name']) c
+union all
+select 'function: ' || f,
+       case when exists (select 1 from information_schema.routines
+         where routine_schema='public' and routine_name=f)
+       then 'PRESENT' else 'MISSING' end
+from unnest(array['account_exists','create_group','join_by_invite',
+                  'invite_preview','hidden_pick_user_ids','handle_new_user']) f
+union all
+select 'bucket: avatars',
+       case when exists (select 1 from storage.buckets where id='avatars')
+       then 'PRESENT' else 'MISSING' end
+order by 1;
+```
+
+Fully migrated means everything PRESENT **except** `display_name`, which 0004 drops.
 
 In **Authentication → URL Configuration** on the production project:
 

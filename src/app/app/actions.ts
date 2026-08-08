@@ -115,7 +115,12 @@ export async function submitPick(input: {
     if (error) {
       // The (group_id,user_id,team_id) unique constraint = one use per season.
       const used = /team_id/.test(error.message) && /unique|duplicate/i.test(error.message);
-      return { ok: false, error: used ? "team_already_used" : error.message };
+      if (used) return { ok: false, error: "team_already_used" };
+      // Anything else is a raw Postgres message — a constraint name is not copy
+      // for a player to read, and the callers key off this as a code. Log it and
+      // hand back a stable one.
+      console.error("[submitPick] upsert failed", error);
+      return { ok: false, error: "unexpected_error" };
     }
 
     revalidatePath("/app");
@@ -149,7 +154,10 @@ export async function updateProfile(input: {
       .from("profiles")
       .update({ first_name: firstName, last_name: lastName })
       .eq("id", user.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[updateProfile] update failed", error);
+      return { ok: false, error: "unexpected_error" };
+    }
 
     revalidatePath("/app");
     revalidatePath("/app/account");
@@ -171,7 +179,10 @@ export async function updateAvatar(url: string): Promise<ActionResult> {
       .from("profiles")
       .update({ avatar_url: url })
       .eq("id", user.id);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[updateAvatar] update failed", error);
+      return { ok: false, error: "unexpected_error" };
+    }
 
     revalidatePath("/app");
     revalidatePath("/app/account");
@@ -200,7 +211,13 @@ export async function createGroup(input: {
       p_tie_rule: input.tieRule,
       ...(input.entryClosesAt ? { p_entry_closes_at: input.entryClosesAt } : {}),
     });
-    if (error || !data) return { ok: false, error: error?.message ?? "create_failed" };
+    if (error || !data) {
+      // The RPC raises name_required / bad_elimination_type / bad_tie_rule as
+      // bare codes; pass those through, but never a raw Postgres message.
+      const raised = error?.message?.match(/\b(name_required|bad_elimination_type|bad_tie_rule)\b/)?.[1];
+      if (!raised && error) console.error("[createGroup] rpc failed", error);
+      return { ok: false, error: raised ?? "create_failed" };
+    }
 
     revalidatePath("/app");
     revalidatePath("/app/account");
