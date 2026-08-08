@@ -55,6 +55,12 @@ begin
   end if;
 
   -- A short, human-friendly invite code. Retry on the (rare) collision.
+  --
+  -- BROKEN AS WRITTEN — superseded by 0005_invite_code_without_pgcrypto.sql.
+  -- gen_random_bytes is pgcrypto, which Supabase installs into the `extensions`
+  -- schema; `set search_path = public` above cannot reach it, so this raises
+  -- 42883 at runtime and no group can ever be created. Left unedited because it
+  -- has already been applied to real databases; 0005 replaces the function.
   loop
     attempts := attempts + 1;
     code := upper(substr(encode(gen_random_bytes(5), 'hex'), 1, 8));

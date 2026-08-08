@@ -55,7 +55,7 @@ The rule "you can't see another player's current pick until that team's game kic
 - **Tailwind CSS 3.4** — design tokens transcribed into `tailwind.config.ts`.
 - **Supabase** — Postgres + passwordless auth + RLS.
 - **Netlify** — hosting + scheduled function for the scorer.
-- **PWA** — web manifest + a dependency-free offline-shell service worker (`public/sw.js`).
+- **PWA** — web manifest + a dependency-free offline-shell service worker, served from `src/app/sw.js/route.ts` so it carries a per-build version and never serves a superseded release.
 
 ## Design direction — "Ecosystem Visualization"
 
@@ -82,7 +82,7 @@ npm run typecheck  # tsc --noEmit
 ### Connecting Supabase
 
 1. Create a Supabase project. Put the URL + anon key (and the service-role key, for the scorer/harness) in `.env.local` (see `.env.example`).
-2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, `0003_group_create_and_pick_flags.sql`, and `0004_profile_names_avatars.sql` (`supabase db push`, or paste into the SQL editor). Run each once — `0004` backfills from `display_name` before dropping it.
+2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, `0003_group_create_and_pick_flags.sql`, `0004_profile_names_avatars.sql`, and `0005_invite_code_without_pgcrypto.sql` (`supabase db push`, or paste into the SQL editor). Run each once — `0004` backfills from `display_name` before dropping it.
 3. Add `http://localhost:3000/**` to **Authentication → URL Configuration** so magic links return to the app, then `npm run dev`. Magic-link auth is built into Supabase; the profile row is auto-created by the `handle_new_user` trigger.
 
 #### Deploying

@@ -1,13 +1,15 @@
 -- ============================================================================
 -- Last Man Standing — one-shot database setup.
 --
--- Convenience bundle of the three migration files, concatenated in order, so the
+-- Convenience bundle of the migration files, concatenated in order, so the
 -- whole schema can be applied in ONE paste into the Supabase SQL Editor. It is
 -- generated from (and must stay in sync with) the numbered migrations:
 --   supabase/migrations/0001_init.sql
 --   supabase/migrations/0002_join_by_invite.sql
 --   supabase/migrations/0003_group_create_and_pick_flags.sql
 --   supabase/migrations/0004_profile_names_avatars.sql
+--   supabase/migrations/0005_invite_code_without_pgcrypto.sql (folded into
+--     create_group below, so this bundle needs no separate 0005 section)
 -- Edit those, not this file. Run once on a fresh project.
 -- ============================================================================
 
@@ -412,7 +414,11 @@ begin
   -- A short, human-friendly invite code. Retry on the (rare) collision.
   loop
     attempts := attempts + 1;
-    code := upper(substr(encode(gen_random_bytes(5), 'hex'), 1, 8));
+    -- gen_random_uuid() is pg_catalog (core since PG13) and cryptographically
+    -- random. Deliberately NOT pgcrypto's gen_random_bytes: pgcrypto lives in
+    -- the `extensions` schema on Supabase, which this function's
+    -- `search_path = public` cannot reach. See migration 0005.
+    code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
     exit when not exists (select 1 from public.groups where invite_code = code);
     if attempts > 10 then
       raise exception 'invite_code_generation_failed';
