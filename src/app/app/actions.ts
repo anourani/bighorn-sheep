@@ -5,9 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { canPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase } from "@/lib/game/season";
 import { rowToGame } from "@/lib/game/score";
+import { FINAL_WEEK } from "@/lib/nfl/calendar";
+import type { SeasonType } from "@/lib/nfl/types";
+import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import type { EliminationType, TieRule } from "@/lib/league/types";
-
-const FINAL_WEEK = 18;
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -36,12 +37,24 @@ async function attempt<T>(body: () => Promise<ActionResult<T>>): Promise<ActionR
  * Set (or change) the viewer's pick for the current week. Every survival rule is
  * re-checked here server-side — never trusted to the greyed-out UI — and RLS +
  * the picks unique constraints are the final backstop.
+ *
+ * `seasonType` selects which of the two independent games this pick belongs to:
+ * "regular" is the real league, "pre" is the practice round that resets at Week 1.
+ * The week is still DERIVED here rather than accepted from the client — that is
+ * what stops anyone submitting a pick for a future week — so `seasonType` is the
+ * only new degree of freedom the caller gets.
  */
 export async function submitPick(input: {
   groupId: string;
   teamId: string;
+  seasonType?: SeasonType;
 }): Promise<ActionResult> {
   return attempt(async () => {
+    const seasonType: SeasonType = input.seasonType ?? "regular";
+    if (seasonType !== "regular" && seasonType !== "pre") {
+      return { ok: false, error: "bad_season_type" };
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -63,33 +76,74 @@ export async function submitPick(input: {
       .maybeSingle();
     if (!membership) return { ok: false, error: "not_a_member" };
 
+    const now = new Date();
+    const phase = seasonPhase(new Date(group.entry_closes_at), now);
+
+    // Practice closes for good at the first Week 1 kickoff. After that the
+    // preseason rows are still in the database but are nobody's live game.
+    if (seasonType === "pre" && phase !== "preseason") {
+      return { ok: false, error: "practice_closed" };
+    }
+
+    // Scoped to one season_type: mixing them would let an August preseason
+    // kickoff decide the regular season's live week, and would match a team to
+    // the wrong game entirely.
     const { data: gameRows } = await supabase
       .from("games")
       .select("*")
-      .eq("season", group.season);
+      .eq("season", group.season)
+      .eq("season_type", seasonType);
     const games = (gameRows ?? []).map(rowToGame);
 
-    const now = new Date();
-    const phase = seasonPhase(new Date(group.entry_closes_at), now);
-    const week = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
+    const { data: myPicks } = await supabase
+      .from("picks")
+      .select("team_id, week, game_id")
+      .eq("group_id", input.groupId)
+      .eq("user_id", user.id)
+      .eq("season_type", seasonType);
+
+    // Which week is live, whether this member may pick at all, and which teams
+    // they have already spent — all three answered per phase. For practice the
+    // member's standing is DERIVED from preseason results, never read from
+    // group_members, so a regular-season elimination can't block practice and a
+    // practice elimination can't touch the real league.
+    let week: number;
+    let memberStatus = membership.status;
+    let usedHistory: { teamId: string }[];
+
+    if (seasonType === "pre") {
+      const practice = derivePractice({
+        games,
+        picks: (myPicks ?? []).map((p) => ({
+          userId: user.id,
+          week: p.week,
+          teamId: p.team_id,
+          gameId: p.game_id,
+        })),
+        memberIds: [user.id],
+        rules: { eliminationType: group.elimination_type, tieRule: group.tie_rule },
+        now,
+      });
+      if (!practice) return { ok: false, error: "no_practice_schedule" };
+      week = practice.currentWeek;
+      const me = practice.members[user.id];
+      memberStatus = me?.status ?? "alive";
+      usedHistory = practiceUsedTeams(me, { excludeWeek: week });
+    } else {
+      week = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
+      // Teams spent in OTHER weeks count as used; the current week's own pick may
+      // be freely replaced, so exclude it from the used set.
+      usedHistory = (myPicks ?? [])
+        .filter((p) => p.week !== week)
+        .map((p) => ({ teamId: p.team_id }));
+    }
 
     const game = games.find(
       (g) => g.week === week && (g.home === input.teamId || g.away === input.teamId),
     );
 
-    const { data: myPicks } = await supabase
-      .from("picks")
-      .select("team_id, week")
-      .eq("group_id", input.groupId)
-      .eq("user_id", user.id);
-    // Teams spent in OTHER weeks count as used; the current week's own pick may be
-    // freely replaced, so exclude it from the used set.
-    const usedHistory = (myPicks ?? [])
-      .filter((p) => p.week !== week)
-      .map((p) => ({ teamId: p.team_id }));
-
     const guard = canPick({
-      member: { status: membership.status, history: usedHistory },
+      member: { status: memberStatus, history: usedHistory },
       teamId: input.teamId,
       game: game ? { status: game.status, kickoff: game.kickoff } : null,
       // Entry-window enforcement is a JOIN concern (join_by_invite), not a weekly
@@ -104,18 +158,23 @@ export async function submitPick(input: {
       {
         group_id: input.groupId,
         user_id: user.id,
+        season_type: seasonType,
         week,
         team_id: input.teamId,
         game_id: game!.id,
         result: "pending",
         updated_at: now.toISOString(),
       },
-      { onConflict: "group_id,user_id,week" },
+      { onConflict: "group_id,user_id,season_type,week" },
     );
     if (error) {
-      // The (group_id,user_id,team_id) unique constraint = one use per season.
-      const used = /team_id/.test(error.message) && /unique|duplicate/i.test(error.message);
-      if (used) return { ok: false, error: "team_already_used" };
+      // 23505 = unique_violation. Key off the SQLSTATE code rather than the message
+      // text: 0006 renamed this constraint to `picks_team_once_per_phase`, and the
+      // previous /team_id/ match silently stopped matching — turning "you've already
+      // used that team" into "something went wrong on our end". The only unique
+      // constraint a pick can now trip is the per-phase team one, since the week one
+      // is this upsert's own conflict target.
+      if (error.code === "23505") return { ok: false, error: "team_already_used" };
       // Anything else is a raw Postgres message — a constraint name is not copy
       // for a player to read, and the callers key off this as a code. Log it and
       // hand back a stable one.

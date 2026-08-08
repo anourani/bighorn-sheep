@@ -13,6 +13,12 @@ import type { Game } from "../nfl/types";
  * Writes assume a service-role client (RLS bypassed): it updates every affected
  * pick's `result`/`locked_at` and every member's `strikes`/`status`/
  * `eliminated_week` for the given season, folding weeks 1..throughWeek.
+ *
+ * REGULAR SEASON ONLY. Both queries below filter `season_type = 'regular'`.
+ * Preseason is a practice round that resets at Week 1: its results are derived at
+ * read time and never written to `group_members`. Without these filters a
+ * preseason loss would strike a member in the real league, and preseason week N
+ * would be folded in as if it were regular week N.
  */
 type DB = SupabaseClient<Database>;
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
@@ -44,6 +50,7 @@ export async function recomputeSeason(
     .from("games")
     .select("*")
     .eq("season", season)
+    .eq("season_type", "regular")
     .lte("week", throughWeek);
   const games = (gameRows ?? []).map(rowToGame);
 
@@ -66,7 +73,11 @@ export async function recomputeSeason(
       .from("group_members")
       .select("*")
       .eq("group_id", group.id);
-    const { data: pickRows } = await supabase.from("picks").select("*").eq("group_id", group.id);
+    const { data: pickRows } = await supabase
+      .from("picks")
+      .select("*")
+      .eq("group_id", group.id)
+      .eq("season_type", "regular");
 
     const picksByUser = new Map<string, PickRow[]>();
     for (const p of pickRows ?? []) {

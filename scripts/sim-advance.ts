@@ -1,4 +1,4 @@
-import { serviceClient, arg, listArg, isUuid } from "./lib";
+import { serviceClient, arg, flag, listArg, isUuid } from "./lib";
 import { recomputeSeason } from "../src/lib/game/score";
 
 /**
@@ -20,13 +20,20 @@ import { recomputeSeason } from "../src/lib/game/score";
  *   npm run sim -- --season 2026 --week 1 --phase kickoff --group BIGHORN-7F3K
  *   npm run sim -- --season 2026 --week 1 --phase final --winners kc,dal,buf --group BIGHORN-7F3K
  *
+ * ONLY TOUCHES SEEDED GAMES (ids prefixed `test-`) unless you pass --force. It
+ * fabricates kickoffs and final scores, so pointed at a real slate it would invent
+ * results for actual NFL games and eliminate real members on them. Restricted to
+ * `season_type = 'regular'` for the same reason — preseason practice resolves from
+ * the real feed, not from here.
+ *
  * Flags:
  *   --phase     "kickoff" | "final"            (default: final)
  *   --season    season year                    (default: current UTC year)
  *   --week      week number                     (default: 1)
- *   --games     comma-list of game ids to target (default: all in the week)
+ *   --games     comma-list of game ids to target (default: all seeded in the week)
  *   --winners   comma-list of team ids that should win their game (final only)
  *   --group     group id/code to keep entry deadline in sync with kickoff
+ *   --force     also advance real (non-seeded) games — invents NFL results
  */
 async function main(): Promise<void> {
   const supabase = serviceClient();
@@ -36,18 +43,38 @@ async function main(): Promise<void> {
   const winners = listArg("winners");
   const only = listArg("games");
   const groupRef = arg("group");
+  const force = flag("force");
 
   const { data: allRows, error } = await supabase
     .from("games")
     .select("*")
     .eq("season", season)
+    .eq("season_type", "regular")
     .eq("week", week);
   if (error) throw error;
 
   const weekGames = allRows ?? [];
-  const targets = only.length ? weekGames.filter((g) => only.includes(g.id)) : weekGames;
+  const selected = only.length ? weekGames.filter((g) => only.includes(g.id)) : weekGames;
+
+  // Fabricating a score onto a real game would eliminate real members on a result
+  // the NFL never produced, and the next poll-scores run would then overwrite it —
+  // leaving standings computed from a game that never happened.
+  const realGames = selected.filter((g) => !g.id.startsWith("test-"));
+  const targets = force ? selected : selected.filter((g) => g.id.startsWith("test-"));
+
+  if (realGames.length > 0 && !force) {
+    console.warn(
+      `⚠  Skipping ${realGames.length} real game(s) in season ${season}, week ${week} — ` +
+        `this script invents scores.\n   Pass --force only if you truly mean to.`,
+    );
+  }
+
   if (targets.length === 0) {
-    console.log("No matching games — did you run seed:test-week first?");
+    console.log(
+      realGames.length > 0
+        ? "No seeded games to advance (only real ones, which were skipped)."
+        : "No matching games — did you run seed:test-week first?",
+    );
     return;
   }
 

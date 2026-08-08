@@ -39,17 +39,27 @@ the gear → invite** (or the roster panel) to copy your **invite code**.
 
 ## 2. Seed a test weekend, aligned to your league
 
-Pick a `season`/`week` that won't collide with real data (e.g. this year, week 1)
-and point the seeder at your league by code so its entry deadline lines up with
-the first kickoff:
+> **If the real schedule is already loaded, skip this section.** Once
+> `load-schedule` has run there is nothing left to rehearse against fake data —
+> use the **preseason practice round** instead (the Preseason entries in the week
+> dropdown), which is exactly this loop against real games.
+>
+> The seeder writes into the same `games` table as the real schedule, and the app
+> resolves a team's game for a week by taking the *first* match, so a fake game
+> sitting next to a real one is a coin flip over which a member sees. The script
+> now refuses to seed a week that already holds real games; `--force` overrides,
+> and `supabase/cleanup-test-games.sql` removes rows a previous run left behind.
+
+Pick a `week` the league hasn't published yet, and point the seeder at your league
+by code so its entry deadline lines up with the first kickoff:
 
 ```bash
-npm run seed:test-week -- --season 2026 --week 1 --kickoff-in 15 --group YOUR-CODE
+npm run seed:test-week -- --season 2026 --week 18 --kickoff-in 15 --group YOUR-CODE
 ```
 
 This inserts 8 games kicking off a few minutes apart. Because the first kickoff
 is ~15 min out, the app sits in its **pre-season / entry-open** state: the roster
-view shows who's joined, and Week 1 is pickable.
+view shows who's joined, and that week is pickable.
 
 ## 3. Friends sign up and join
 

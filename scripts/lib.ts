@@ -53,6 +53,19 @@ export function arg(name: string, fallback?: string): string | undefined {
   return process.env[name.toUpperCase().replace(/-/g, "_")] ?? fallback;
 }
 
+/**
+ * A bare boolean flag: `--force`.
+ *
+ * `arg()` only understands `--name=value`, so `arg("force")` never sees a bare
+ * `--force` and silently reports "not set" — which made a documented override
+ * unreachable. Accepts the FORCE-style env var too, for parity with `arg`.
+ */
+export function flag(name: string): boolean {
+  if (process.argv.includes(`--${name}`)) return true;
+  const env = process.env[name.toUpperCase().replace(/-/g, "_")];
+  return env === "1" || env === "true";
+}
+
 /** A comma-list flag → trimmed non-empty items. */
 export function listArg(name: string): string[] {
   return (arg(name) ?? "")

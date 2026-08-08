@@ -34,3 +34,26 @@ export function seasonTypeToEspn(t: SeasonType | undefined): 1 | 2 | 3 {
       return 2;
   }
 }
+
+/**
+ * Inverse of `seasonTypeToEspn`, for reading the season type an event reports
+ * about itself rather than assuming it matches what we asked for.
+ *
+ * This matters for the bulk schedule load: the scoreboard endpoint is
+ * undocumented and does not always honour `seasontype`. Trusting the query would
+ * then file regular-season games as preseason, which is precisely the mislabelling
+ * the season_type column exists to prevent. Returns null for anything unexpected
+ * so the caller can fall back to the query rather than invent a value.
+ */
+export function espnToSeasonType(n: number | undefined): SeasonType | null {
+  switch (n) {
+    case 1:
+      return "pre";
+    case 2:
+      return "regular";
+    case 3:
+      return "post";
+    default:
+      return null;
+  }
+}

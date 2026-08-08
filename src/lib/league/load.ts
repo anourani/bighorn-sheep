@@ -6,11 +6,13 @@ import type { Game } from "@/lib/nfl/types";
 import { rowToGame } from "@/lib/game/score";
 import { evaluateTeamPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "@/lib/game/season";
+import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
+import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
 import type { Group, GroupRules, HistoryPick, Member } from "./types";
 
-export const FINAL_WEEK = 18;
+export { FINAL_WEEK };
 
 type GroupRow = Database["public"]["Tables"]["groups"]["Row"];
 type MemberRow = Database["public"]["Tables"]["group_members"]["Row"];
@@ -42,13 +44,26 @@ interface ProfileName {
 export interface LeagueData {
   viewer: Viewer;
   group: Group;
+  /** Regular-season standing. Never touched by preseason practice. */
   members: Member[];
+  /** Regular-season games only (`season_type = 'regular'`). */
   games: Game[];
   nowIso: string;
   currentWeek: number;
   finalWeek: number;
   phase: SeasonPhase;
   /** user_ids with a locked-but-still-hidden pick this week (padlock, no team). */
+  hiddenPickUserIds: string[];
+  /**
+   * The preseason practice round, derived (never stored) and present only while
+   * entry is still open. It becomes null the moment Week 1 kicks off — which IS
+   * the reset: no job runs, nothing is deleted, practice simply stops being read.
+   */
+  practice: PracticeData | null;
+}
+
+export interface PracticeData extends PracticeState {
+  /** user_ids with a locked-but-still-hidden practice pick this week. */
   hiddenPickUserIds: string[];
 }
 
@@ -162,10 +177,22 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   if (!groupRow) return { kind: "no_group", viewer };
   const group = rowToGroup(groupRow);
 
-  const [{ data: memberRows }, { data: pickRows }, { data: gameRows }] = await Promise.all([
+  // Every query below is scoped by season_type. Without that, preseason week N
+  // and regular week N land in the same bucket in buildGameIndex (which keys on
+  // week alone), so gameForTeam returns whichever row Postgres happened to
+  // return first and an August preseason kickoff drags currentWeek forward.
+  const [
+    { data: memberRows },
+    { data: pickRows },
+    { data: gameRows },
+    { data: prePickRows },
+    { data: preGameRows },
+  ] = await Promise.all([
     supabase.from("group_members").select("*").eq("group_id", group.id),
-    supabase.from("picks").select("*").eq("group_id", group.id),
-    supabase.from("games").select("*").eq("season", group.season),
+    supabase.from("picks").select("*").eq("group_id", group.id).eq("season_type", "regular"),
+    supabase.from("games").select("*").eq("season", group.season).eq("season_type", "regular"),
+    supabase.from("picks").select("*").eq("group_id", group.id).eq("season_type", "pre"),
+    supabase.from("games").select("*").eq("season", group.season).eq("season_type", "pre"),
   ]);
 
   const games = (gameRows ?? []).map(rowToGame);
@@ -210,13 +237,46 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   );
 
   // Preserve the Standings padlock: which rivals have locked a hidden pick.
+  // Uses the season-typed RPC (0006) rather than 0003's week-only one, so a
+  // rival's PRACTICE pick for the same week number can never light the regular
+  // season's padlock.
   let hiddenPickUserIds: string[] = [];
   if (phase !== "preseason") {
-    const { data: hidden } = await supabase.rpc("hidden_pick_user_ids", {
+    const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
       p_group_id: group.id,
+      p_season_type: "regular",
       p_week: currentWeek,
     });
     if (Array.isArray(hidden)) hiddenPickUserIds = hidden as string[];
+  }
+
+  // The practice round, built only while entry is still open. Once Week 1 kicks
+  // off this stays null and preseason disappears from the UI on its own.
+  let practice: PracticeData | null = null;
+  if (phase === "preseason") {
+    const derived = derivePractice({
+      games: (preGameRows ?? []).map(rowToGame),
+      picks: (prePickRows ?? []).map((p) => ({
+        userId: p.user_id,
+        week: p.week,
+        teamId: p.team_id,
+        gameId: p.game_id,
+      })),
+      memberIds,
+      rules: group.rules,
+      now,
+    });
+    if (derived) {
+      const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
+        p_group_id: group.id,
+        p_season_type: "pre",
+        p_week: derived.currentWeek,
+      });
+      practice = {
+        ...derived,
+        hiddenPickUserIds: Array.isArray(hidden) ? (hidden as string[]) : [],
+      };
+    }
   }
 
   return {
@@ -231,6 +291,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       finalWeek: FINAL_WEEK,
       phase,
       hiddenPickUserIds,
+      practice,
     },
   };
 });
