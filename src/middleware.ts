@@ -22,6 +22,21 @@ export async function middleware(request: NextRequest) {
   // Not configured → no auth boundary. Let everything through untouched.
   if (!url || !key) return NextResponse.next();
 
+  const { pathname, searchParams } = request.nextUrl;
+
+  // A magic link that landed anywhere but the callback. This happens when the
+  // Supabase project's Site URL / redirect allowlist doesn't cover the origin we
+  // asked for: GoTrue silently falls back to the Site URL and carries the `code`
+  // along, so nothing ever exchanges it and the sign-in dies. Forward it to the
+  // one route that knows what to do. Checked before the session round-trip since
+  // it's a pure URL concern. The callback is excluded from this matcher, so
+  // there's no loop, and it already guards `next` against open redirects.
+  if (searchParams.has("code") && pathname !== "/auth/callback") {
+    const target = request.nextUrl.clone();
+    target.pathname = "/auth/callback";
+    return NextResponse.redirect(target);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(url, key, {
@@ -45,8 +60,6 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
 
   // Signed-out visitor reaching the product → send to the landing page.
   if (!user && pathname.startsWith("/app")) {

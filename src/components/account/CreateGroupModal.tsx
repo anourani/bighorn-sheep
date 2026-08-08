@@ -8,12 +8,14 @@ import { MonoLabel } from "@/components/ui/MonoLabel";
 import { Segmented } from "@/components/ui/Segmented";
 import { InfoIcon } from "@/components/icons";
 import { createGroup } from "@/app/app/actions";
+import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { EliminationType, TieRule } from "@/lib/league/types";
 
 const ERROR_COPY: Record<string, string> = {
   name_required: "Give your league a name.",
   not_authenticated: "Your session expired — sign in again.",
   create_failed: "Couldn't create the group. Try again.",
+  unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };
 
 /**
@@ -33,14 +35,20 @@ export function CreateGroupModal({ open, onClose }: { open: boolean; onClose: ()
     if (name.trim().length === 0 || pending) return;
     setError(null);
     startTransition(async () => {
-      const res = await createGroup({ name, eliminationType: elimination, tieRule });
-      if (!res.ok) {
-        setError(ERROR_COPY[res.error] ?? "Couldn't create the group. Try again.");
-        return;
+      try {
+        const res = await createGroup({ name, eliminationType: elimination, tieRule });
+        if (!res.ok) {
+          setError(ERROR_COPY[res.error] ?? "Couldn't create the group. Try again.");
+          return;
+        }
+        onClose();
+        router.refresh();
+        router.push("/app/standings");
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setError("Couldn't create the group. Try again.");
       }
-      onClose();
-      router.refresh();
-      router.push("/app/standings");
     });
   }
 

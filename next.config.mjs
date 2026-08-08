@@ -1,6 +1,12 @@
+// Identifies this build. Netlify sets COMMIT_REF; locally we fall back to a
+// timestamp. It is stamped into the service worker (src/app/sw.js/route.ts) so
+// every deploy is a genuine worker update and stale caches get purged.
+const BUILD_ID = process.env.COMMIT_REF?.slice(0, 12) || String(Date.now());
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // Lint is intentionally decoupled from the production build for now; type
   // safety (tsc) still gates the build. Add ESLint as a follow-up.
   eslint: { ignoreDuringBuilds: true },

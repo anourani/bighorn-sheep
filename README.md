@@ -82,8 +82,19 @@ npm run typecheck  # tsc --noEmit
 ### Connecting Supabase
 
 1. Create a Supabase project. Put the URL + anon key (and the service-role key, for the scorer/harness) in `.env.local` (see `.env.example`).
-2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, and `0003_group_create_and_pick_flags.sql` (`supabase db push`, or paste into the SQL editor).
+2. Apply the schema: run `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`, `0003_group_create_and_pick_flags.sql`, and `0004_profile_names_avatars.sql` (`supabase db push`, or paste into the SQL editor). Run each once — `0004` backfills from `display_name` before dropping it.
 3. Add `http://localhost:3000/**` to **Authentication → URL Configuration** so magic links return to the app, then `npm run dev`. Magic-link auth is built into Supabase; the profile row is auto-created by the `handle_new_user` trigger.
+
+#### Deploying
+
+Migrations are **not** applied by the build — nothing in `netlify.toml` or CI touches Supabase — so run any new migration against the production project yourself as part of shipping.
+
+In **Authentication → URL Configuration** on the production project:
+
+- **Site URL** must be the bare origin (`https://your-site.netlify.app`), with **no path**. Supabase falls back to the Site URL whenever `emailRedirectTo` isn't on the allowlist, carrying the `?code=` along — so a Site URL with a path silently strands magic links on a page that can't exchange them. (`src/middleware.ts` now forwards any stray `?code=` to `/auth/callback` as a safety net, but the setting should still be right.)
+- **Redirect URLs** must include `https://your-site.netlify.app/**` alongside `http://localhost:3000/**`.
+
+The From address on magic-link emails comes entirely from **Authentication → Emails → SMTP Settings** on the Supabase project. `signInWithOtp()` has no sender parameter, so if the sender looks wrong, that field is the only place to fix it.
 
 The screens read live data server-side through `src/lib/league/load.ts` (RLS-scoped to the signed-in user) and pass it into the client UI; writes go through the server actions in `src/app/app/actions.ts`. Without env vars the middleware leaves the app un-gated — but the `/app` screens need a session, so set Supabase up to use them.
 

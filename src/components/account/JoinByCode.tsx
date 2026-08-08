@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { InfoIcon } from "@/components/icons";
 import { joinGroup } from "@/app/app/actions";
+import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 
 const ERROR_COPY: Record<string, string> = {
   invalid_code: "That code doesn't match a league. Check it and try again.",
   entry_closed: "Entry for that league has closed — it locks at the first Week 1 kickoff.",
   join_failed: "Couldn't join that league. Give it another try.",
   not_authenticated: "Your session expired — sign in again.",
+  unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };
 
 /**
@@ -29,15 +31,21 @@ export function JoinByCode({ onJoined }: { onJoined?: () => void }) {
     if (!trimmed || pending) return;
     setError(null);
     startTransition(async () => {
-      const res = await joinGroup(trimmed);
-      if (!res.ok) {
-        setError(ERROR_COPY[res.error] ?? "Couldn't join that league. Give it another try.");
-        return;
+      try {
+        const res = await joinGroup(trimmed);
+        if (!res.ok) {
+          setError(ERROR_COPY[res.error] ?? "Couldn't join that league. Give it another try.");
+          return;
+        }
+        setCode("");
+        onJoined?.();
+        router.refresh();
+        router.push("/app/standings");
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setError("Couldn't join that league. Give it another try.");
       }
-      setCode("");
-      onJoined?.();
-      router.refresh();
-      router.push("/app/standings");
     });
   }
 

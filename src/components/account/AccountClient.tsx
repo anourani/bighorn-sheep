@@ -13,6 +13,7 @@ import { JoinByCode } from "@/components/account/JoinByCode";
 import { PlusIcon, LogOutIcon, DownloadIcon, ClockIcon, TrophyIcon, InfoIcon } from "@/components/icons";
 import { createClient } from "@/lib/supabase/client";
 import { updateProfile, updateAvatar } from "@/app/app/actions";
+import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import { strikeAllowance } from "@/lib/league/types";
 import { timeZoneLabel } from "@/lib/time";
 import type { AccountData, Viewer } from "@/lib/league/load";
@@ -93,7 +94,9 @@ function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }
       }
       setAvatarUrl(url);
       router.refresh();
-    } catch {
+    } catch (err) {
+      // A deploy landed while this tab was open — reload onto the new build.
+      if (isStaleDeploymentError(err) && reloadOnce()) return;
       setError("Photo uploads aren't available in this environment.");
     } finally {
       setUploading(false);
@@ -104,13 +107,19 @@ function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }
     if (firstName.trim().length < 1 || pending) return;
     setError(null);
     startSave(async () => {
-      const res = await updateProfile({ firstName, lastName });
-      if (!res.ok) {
-        setError(res.error === "first_name_required" ? "Enter your first name." : "Couldn't save your name.");
-        return;
+      try {
+        const res = await updateProfile({ firstName, lastName });
+        if (!res.ok) {
+          setError(res.error === "first_name_required" ? "Enter your first name." : "Couldn't save your name.");
+          return;
+        }
+        setEditing(false);
+        router.refresh();
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setError("Couldn't save your name.");
       }
-      setEditing(false);
-      router.refresh();
     });
   }
 

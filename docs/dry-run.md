@@ -19,7 +19,9 @@ real clock; there is no fake demo data and no frozen time.
    ```
 3. **Apply the schema** — in the Supabase SQL Editor, run each migration in order:
    `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`,
-   `0003_group_create_and_pick_flags.sql`. (Or `supabase db push` with the CLI.)
+   `0003_group_create_and_pick_flags.sql`, `0004_profile_names_avatars.sql`.
+   (Or `supabase db push` with the CLI.) Run each **once**: `0004` backfills from
+   `display_name` and then drops it, so a second run has nothing to read.
 4. **Auth redirect** — under **Authentication → URL Configuration**, add
    `http://localhost:3000/**` to the redirect allowlist so the magic-link email
    returns to your local app.
