@@ -12,6 +12,30 @@
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
 
+/**
+ * Emergency escape hatch. Set NEXT_PUBLIC_DISABLE_SW=1 in the Netlify env and
+ * redeploy: every browser that checks for a worker update then receives one
+ * that tears down its own caches and unregisters itself. Without this, a bad
+ * worker can only be cleared per-device by hand, which is impossible to ask of
+ * a league full of people.
+ */
+const DISABLED = process.env.NEXT_PUBLIC_DISABLE_SW === "1";
+
+const killSwitch = `// Service worker disabled via NEXT_PUBLIC_DISABLE_SW.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith("lms-")).map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: "window" });
+      for (const client of clients) client.navigate(client.url);
+    })(),
+  );
+});
+`;
+
 // Precache the offline fallback and the PWA chrome only. Deliberately NOT the
 // app's HTML routes: that HTML names build-specific JS chunks, so caching it
 // lets a whole superseded build come back to life on one offline navigation.
@@ -37,13 +61,18 @@ const SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL))
-      .then(() => self.skipWaiting())
-      .catch(() => {
-        /* a missing shell entry shouldn't block install */
-      }),
+    (async () => {
+      try {
+        const cache = await caches.open(SHELL_CACHE);
+        await cache.addAll(SHELL);
+      } catch {
+        // One unreachable shell entry must not strand this worker in "waiting"
+        // behind its predecessor — that is exactly the stale-build trap this
+        // worker exists to prevent. Precaching is an optimisation; activating
+        // is the job. So swallow the failure and carry on.
+      }
+      await self.skipWaiting();
+    })(),
   );
 });
 
@@ -86,18 +115,37 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Only ever cache content-addressed assets. Their filenames carry a build
+  // hash, so a cache hit can never be the wrong version — and anything else
+  // (a bare .css, an un-hashed script) is left entirely to the browser rather
+  // than risking a stale copy of a file whose name doesn't change.
+  const cacheable =
+    url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/");
+  if (!cacheable) return;
+
   if (["style", "script", "image", "font"].includes(req.destination)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(RUNTIME_CACHE);
         const cached = await cache.match(req);
-        const network = fetch(req)
-          .then((res) => {
-            if (res && res.status === 200) cache.put(req, res.clone());
-            return res;
-          })
-          .catch(() => cached);
-        return cached || network;
+
+        if (cached) {
+          // Serve the hit; refresh in the background without blocking the page.
+          event.waitUntil(
+            fetch(req)
+              .then((res) => (res && res.status === 200 ? cache.put(req, res.clone()) : undefined))
+              .catch(() => {}),
+          );
+          return cached;
+        }
+
+        // Nothing cached, so go to the network and let a genuine failure reject.
+        // The previous version resolved to undefined here, and responding with
+        // undefined fails the request outright — which is how a page ends up
+        // rendering with no stylesheet at all.
+        const res = await fetch(req);
+        if (res && res.status === 200) cache.put(req, res.clone());
+        return res;
       })(),
     );
   }
@@ -108,7 +156,7 @@ self.addEventListener("fetch", (event) => {
 export const dynamic = "force-static";
 
 export function GET() {
-  return new Response(source, {
+  return new Response(DISABLED ? killSwitch : source, {
     headers: {
       "Content-Type": "text/javascript; charset=utf-8",
       // Root scope so the worker can control /app/* from /sw.js.
