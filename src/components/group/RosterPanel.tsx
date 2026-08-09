@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { LocalTime } from "@/components/ui/LocalTime";
@@ -49,24 +49,24 @@ export function RosterPanel({
     <div className="space-y-4">
       {/* Countdown hero */}
       <Panel className="p-card">
-        <MonoLabel className="text-onsurface-mute">Season starts in</MonoLabel>
+        <Label className="text-onsurface-mute">Season starts in</Label>
         <div className="mt-1 flex items-baseline gap-2">
-          <span className="font-mono text-metric leading-none text-onsurface">{cd.label}</span>
+          <span className="text-metric leading-none tabular-nums text-onsurface">{cd.label}</span>
         </div>
         <p className="mt-2 text-sm text-onsurface-soft">
           Week 1 kicks off <LocalTime iso={group.entryClosesAt} mode="full" className="font-medium text-onsurface" />.
           Entry closes at kickoff — everyone in by then starts alive.
         </p>
-        <MonoLabel className="mt-3 block text-onsurface-mute">{rulesLabel}</MonoLabel>
+        <Label className="mt-3 block text-onsurface-mute">{rulesLabel}</Label>
       </Panel>
 
       {/* Roster */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Who&apos;s in</h2>
-          <MonoLabel className="text-ink-mute">
+          <Label className="text-ink-mute">
             {members.length} {members.length === 1 ? "player" : "players"}
-          </MonoLabel>
+          </Label>
         </div>
         <Panel tone="light" className="divide-y divide-line p-0">
           {members.map((m) => (
@@ -74,7 +74,7 @@ export function RosterPanel({
               <Avatar firstName={m.firstName} lastName={m.lastName} avatarUrl={m.avatarUrl} size={36} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-ink">{m.name}</div>
-                {m.role === "admin" ? <MonoLabel className="text-ink-mute">Commissioner</MonoLabel> : null}
+                {m.role === "admin" ? <Label className="text-ink-mute">Commissioner</Label> : null}
               </div>
               <Pill variant="alive">In</Pill>
             </div>

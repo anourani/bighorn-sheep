@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Pill, StrikePips } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -170,7 +170,7 @@ function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }
             ) : null}
             {since ? (
               <div className="mt-2 flex items-center gap-2">
-                <MonoLabel className="text-onsurface-mute">Since {since}</MonoLabel>
+                <Label className="text-onsurface-mute">Since {since}</Label>
               </div>
             ) : null}
           </div>
@@ -227,9 +227,9 @@ export function AccountClient({ account }: { account: AccountData }) {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Your leagues</h2>
-          <MonoLabel className="text-ink-mute">
+          <Label className="text-ink-mute">
             {leagues.length} {leagues.length === 1 ? "league" : "leagues"}
-          </MonoLabel>
+          </Label>
         </div>
         <Panel tone="light" className="divide-y divide-line p-0">
           {leagues.map(({ group, role, status, strikes }) => {
@@ -248,10 +248,10 @@ export function AccountClient({ account }: { account: AccountData }) {
                     <span className="truncate text-sm font-semibold text-ink">{group.name}</span>
                     {role === "admin" ? <Pill variant="brand">Admin</Pill> : null}
                   </div>
-                  <MonoLabel className="text-ink-mute">
+                  <Label className="text-ink-mute">
                     {group.rules.eliminationType === "single" ? "Single elim" : "Two-time"} ·{" "}
                     {group.rules.tieRule}
-                  </MonoLabel>
+                  </Label>
                 </div>
                 <div className="flex items-center gap-2">
                   {status === "alive" ? <Pill variant="alive">Alive</Pill> : <Pill variant="out">Out</Pill>}

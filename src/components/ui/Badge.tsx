@@ -52,7 +52,7 @@ export function Pill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-mono text-label-sm uppercase",
+        "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-label-sm uppercase",
         variantClasses[variant],
         className,
       )}

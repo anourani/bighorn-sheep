@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { Panel } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { InfoIcon } from "@/components/icons";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 
@@ -34,7 +34,7 @@ export default function AppError({
 
   return (
     <Panel className="p-card">
-      <MonoLabel className="text-onsurface-mute">Something broke</MonoLabel>
+      <Label className="text-onsurface-mute">Something broke</Label>
       <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">
         {stale ? "Updating to the latest version…" : "This screen didn't load"}
       </h1>

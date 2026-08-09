@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { XIcon } from "@/components/icons";
-import { MonoLabel } from "./MonoLabel";
+import { Label } from "./Label";
 
 /**
  * Lightweight accessible dialog. Presents as a bottom sheet on phones and a
@@ -70,7 +70,7 @@ export function Modal({
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line bg-white/95 px-card py-4 backdrop-blur">
           <div className="min-w-0">
-            {eyebrow ? <MonoLabel className="text-brand-strong">{eyebrow}</MonoLabel> : null}
+            {eyebrow ? <Label className="text-brand-strong">{eyebrow}</Label> : null}
             <h2 className="mt-0.5 text-lg font-semibold leading-tight text-ink">{title}</h2>
             {description ? <p className="mt-1 text-sm text-ink-soft">{description}</p> : null}
           </div>

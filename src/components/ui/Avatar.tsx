@@ -33,7 +33,7 @@ export function Avatar({
         role="img"
         aria-label={label}
         className={cn(
-          "inline-grid shrink-0 place-items-center rounded-full bg-brand-sheen font-mono font-bold leading-none text-white ring-2 ring-white/20",
+          "inline-grid shrink-0 place-items-center rounded-full bg-brand-sheen font-semibold leading-none text-white ring-2 ring-white/20",
           className,
         )}
         style={{ width: size, height: size, fontSize: Math.max(10, Math.round(size * 0.36)) }}

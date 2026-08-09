@@ -1,9 +1,10 @@
 import { cn } from "@/lib/cn";
-import { MonoLabel } from "./MonoLabel";
+import { Label } from "./Label";
 
 /**
- * A compact metric readout: mono eyebrow + oversized mono value. The core unit
- * of the dashboard aesthetic — used for alive counts, week number, scores.
+ * A compact metric readout: label eyebrow + oversized value. The core unit of
+ * the dashboard aesthetic — used for alive counts, week number, scores.
+ * `tabular-nums` keeps digit widths fixed as values change.
  */
 export function Metric({
   label,
@@ -20,17 +21,19 @@ export function Metric({
 }) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <MonoLabel className="text-onsurface-mute">{label}</MonoLabel>
+      <Label className="text-onsurface-mute">{label}</Label>
       <div className="flex items-baseline gap-1">
         <span
           className={cn(
-            "font-mono text-metric tabular-nums",
+            "text-metric tabular-nums",
             accent ? "text-brand-strong" : "text-onsurface",
           )}
         >
           {value}
         </span>
-        {sub ? <span className="font-mono text-sm text-onsurface-soft">{sub}</span> : null}
+        {sub ? (
+          <span className="text-sm font-semibold tabular-nums text-onsurface-soft">{sub}</span>
+        ) : null}
       </div>
     </div>
   );

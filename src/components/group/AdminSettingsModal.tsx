@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
 import type { Group, Member } from "@/lib/league/types";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <MonoLabel className="text-ink-mute">{children}</MonoLabel>;
+  return <Label className="text-ink-mute">{children}</Label>;
 }
 
 export function AdminSettingsModal({
@@ -55,13 +55,13 @@ export function AdminSettingsModal({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-              <MonoLabel className="text-ink-mute">Elimination</MonoLabel>
+              <Label className="text-ink-mute">Elimination</Label>
               <div className="mt-1 text-sm font-medium text-ink">
                 {group.rules.eliminationType === "single" ? "Single (1 loss)" : "Two-time (2 losses)"}
               </div>
             </div>
             <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-              <MonoLabel className="text-ink-mute">Tie rule</MonoLabel>
+              <Label className="text-ink-mute">Tie rule</Label>
               <div className="mt-1 text-sm font-medium text-ink">
                 {group.rules.tieRule === "push" ? "Push (survive)" : "Loss"}
               </div>
@@ -92,7 +92,7 @@ export function AdminSettingsModal({
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <MonoLabel className="text-ink-mute">Code</MonoLabel>
+            <Label className="text-ink-mute">Code</Label>
             <span className="font-mono text-sm font-semibold text-ink">{group.inviteCode}</span>
           </div>
           {entryClosed ? (
@@ -112,7 +112,7 @@ export function AdminSettingsModal({
                 <span className="flex items-center gap-2">
                   <span className="text-sm font-medium text-ink">{m.name}</span>
                   {m.role === "admin" ? (
-                    <MonoLabel className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</MonoLabel>
+                    <Label className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</Label>
                   ) : null}
                 </span>
                 {m.status === "eliminated" ? (

@@ -36,7 +36,7 @@ export function TabBar() {
                 <span className="absolute top-0 h-0.5 w-9 rounded-full bg-brand-strong" aria-hidden />
               ) : null}
               <Icon className="h-[22px] w-[22px]" />
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-wide">{label}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
             </Link>
           );
         })}

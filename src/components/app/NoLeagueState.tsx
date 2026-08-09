@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Button } from "@/components/ui/Button";
 import { PlusIcon, UsersIcon } from "@/components/icons";
 import { CreateGroupModal } from "@/components/account/CreateGroupModal";
@@ -22,7 +22,7 @@ export function NoLeagueState() {
         <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-brand-sheen text-white">
           <UsersIcon className="h-6 w-6" />
         </div>
-        <MonoLabel className="text-onsurface-mute">No league yet</MonoLabel>
+        <Label className="text-onsurface-mute">No league yet</Label>
         <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">
           Get in the game
         </h1>
@@ -39,7 +39,7 @@ export function NoLeagueState() {
 
         <div className="flex items-center gap-3">
           <span className="h-px flex-1 bg-line" />
-          <MonoLabel className="text-ink-mute">or join by code</MonoLabel>
+          <Label className="text-ink-mute">or join by code</Label>
           <span className="h-px flex-1 bg-line" />
         </div>
 
