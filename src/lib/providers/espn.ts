@@ -1,6 +1,6 @@
 import type { Game, GameStatus, SeasonType } from "../nfl/types";
 import { teamFromAbbr } from "../nfl/teams";
-import { seasonTypeToEspn, type NflProvider, type WeekQuery } from "./types";
+import { espnToSeasonType, seasonTypeToEspn, type NflProvider, type WeekQuery } from "./types";
 
 const ESPN_SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
@@ -77,7 +77,11 @@ function normalizeEvent(event: EspnEvent, query: WeekQuery): Game | null {
   return {
     id: event.id,
     season: event.season?.year ?? query.season,
-    seasonType: query.seasonType ?? "regular",
+    // Believe the event over the request. `seasontype` is not always honoured by
+    // this undocumented endpoint, and taking it from the query would file
+    // regular-season games as preseason during a bulk load — exactly the
+    // mislabelling season_type exists to prevent. Query is the fallback only.
+    seasonType: espnToSeasonType(event.season?.type) ?? query.seasonType ?? "regular",
     week: event.week?.number ?? query.week,
     kickoff: new Date(kickoff).toISOString(),
     status,

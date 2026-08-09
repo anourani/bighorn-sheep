@@ -6,17 +6,33 @@ import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LockIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import { isKickedOff, type Game } from "@/lib/nfl/types";
+import { weekKey, type WeekRef } from "@/lib/nfl/calendar";
 import { isHome } from "@/lib/league/view";
-import type { HistoryPick } from "@/lib/league/types";
+
+/**
+ * A team already spent, and the week it went. Only the week is needed — a pick
+ * whose game hasn't finished still spends its team, so requiring a resolved
+ * `result` here would silently omit unresolved picks from the used list.
+ */
+export interface UsedPick {
+  week: number;
+}
 
 /**
  * The week's matchups as a radio group — one pick per week across every game.
  * Selecting a team's radio sets the pick immediately (editable until that game
  * kicks off). Teams already used this season, teams whose game has kicked off,
  * and every team while browsing a non-current week are shown but not selectable.
+ *
+ * `weekRef` identifies the week including its phase, so preseason week 2 and
+ * regular week 2 get distinct radio-group names and distinct copy. `weekName` is
+ * the already-formatted label ("Week 2", "Preseason 2", "Hall of Fame") — passed
+ * in rather than derived here, because only the caller knows how many preseason
+ * weeks the loaded schedule has.
  */
 export function WeekSchedule({
-  week,
+  weekRef,
+  weekName,
   games,
   usedByTeam,
   selectedTeam,
@@ -24,9 +40,10 @@ export function WeekSchedule({
   now,
   onSelect,
 }: {
-  week: number;
+  weekRef: WeekRef;
+  weekName: string;
   games: Game[];
-  usedByTeam: Map<TeamId, HistoryPick>;
+  usedByTeam: Map<TeamId, UsedPick>;
   selectedTeam: TeamId | null;
   interactive: boolean;
   now: Date;
@@ -35,15 +52,15 @@ export function WeekSchedule({
   if (games.length === 0) {
     return (
       <div className="rounded-control border border-dashed border-line bg-[#FAFAFB] px-3 py-8 text-center text-sm text-ink-mute">
-        Schedule not yet released for Week {week}.
+        Schedule not yet released for {weekName}.
       </div>
     );
   }
 
-  const groupName = `week-${week}-pick`;
+  const groupName = `${weekKey(weekRef)}-pick`;
   return (
     <fieldset className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-      <legend className="sr-only">Pick your Week {week} team</legend>
+      <legend className="sr-only">Pick your {weekName} team</legend>
       {games.map((game) => (
         <GameCard
           key={game.id}
@@ -71,7 +88,7 @@ function GameCard({
 }: {
   game: Game;
   groupName: string;
-  usedByTeam: Map<TeamId, HistoryPick>;
+  usedByTeam: Map<TeamId, UsedPick>;
   selectedTeam: TeamId | null;
   interactive: boolean;
   now: Date;
@@ -124,13 +141,27 @@ function TeamOption({
   teamId: TeamId;
   game: Game;
   groupName: string;
-  used: HistoryPick | undefined;
+  used: UsedPick | undefined;
   selected: boolean;
   interactive: boolean;
   kicked: boolean;
   onSelect: (teamId: TeamId) => void;
 }) {
-  const team = getTeam(teamId)!;
+  // Not `getTeam(teamId)!`. games.home/away are bare text with no foreign key, so
+  // a feed change or a bad manual row can carry a code that isn't one of the 32 —
+  // and the non-null assertion turned that single row into a blank picks page for
+  // everyone. The importer validates codes on the way in; this is the backstop for
+  // anything already stored. Render the row as unpickable rather than crashing.
+  const team = getTeam(teamId);
+  if (!team) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2.5 text-sm text-ink-mute">
+        <span className="font-mono text-[10px] uppercase tracking-wide">{teamId || "unknown"}</span>
+        <span className="text-xs">Unrecognized team — not pickable.</span>
+      </div>
+    );
+  }
+
   const home = isHome(game, teamId);
   const selectable = interactive && !used && !kicked;
 

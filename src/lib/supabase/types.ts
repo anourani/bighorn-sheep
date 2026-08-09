@@ -120,6 +120,7 @@ export interface Database {
           id: string;
           group_id: string;
           user_id: string;
+          season_type: "pre" | "regular" | "post";
           week: number;
           team_id: string;
           game_id: string;
@@ -132,6 +133,8 @@ export interface Database {
           id?: string;
           group_id: string;
           user_id: string;
+          /** Defaults to 'regular' in the database (0006). */
+          season_type?: "pre" | "regular" | "post";
           week: number;
           team_id: string;
           game_id: string;
@@ -165,6 +168,15 @@ export interface Database {
       };
       hidden_pick_user_ids: {
         Args: { p_group_id: string; p_week: number };
+        Returns: string[];
+      };
+      /**
+       * Season-type-aware sibling of hidden_pick_user_ids, added in 0006. The
+       * original is left in place because it has already run against real
+       * databases; a distinct name also keeps supabase.rpc() unambiguous.
+       */
+      hidden_picks_for_week: {
+        Args: { p_group_id: string; p_season_type: "pre" | "regular" | "post"; p_week: number };
         Returns: string[];
       };
       invite_preview: {

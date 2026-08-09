@@ -17,6 +17,12 @@ export interface RankedMember {
   rank: number;
 }
 
+/** One column of the grid: which week, and what to print in the header. */
+export interface WeekColumn {
+  week: number;
+  label: string;
+}
+
 /**
  * The season at a glance: one row per player, one column per week, each cell the
  * team they picked. Past weeks always show; the current week honors the per-game
@@ -29,6 +35,8 @@ export function StandingsGrid({
   viewerId,
   currentWeek,
   finalWeek,
+  columns,
+  outLabel,
   rules,
   now,
   gameForTeam,
@@ -38,6 +46,15 @@ export function StandingsGrid({
   viewerId: string;
   currentWeek: number;
   finalWeek: number;
+  /**
+   * The week columns to render. Defaults to the regular season's 1..finalWeek.
+   * The preseason practice grid passes its own (shorter, differently labelled)
+   * set — which is also how preseason leaves the standings at Week 1: the caller
+   * simply stops rendering that grid.
+   */
+  columns?: WeekColumn[];
+  /** How to name a week in the "Out · …" badge. Defaults to `W{n}`. */
+  outLabel?: (week: number) => string;
   rules: GroupRules;
   now: Date;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
@@ -49,7 +66,9 @@ export function StandingsGrid({
   hiddenPickUserIds?: string[];
 }) {
   const allowance = strikeAllowance(rules.eliminationType);
-  const weeks = Array.from({ length: finalWeek }, (_, i) => i + 1);
+  const weeks: WeekColumn[] =
+    columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
+  const formatOut = outLabel ?? ((w: number) => `W${w}`);
   const hiddenSet = new Set(hiddenPickUserIds);
 
   return (
@@ -63,16 +82,16 @@ export function StandingsGrid({
                 <HeadCell className="left-9 min-w-[8.75rem] border-r border-line text-left">
                   Name
                 </HeadCell>
-                {weeks.map((w) => (
+                {weeks.map((col) => (
                   <th
-                    key={w}
+                    key={col.week}
                     scope="col"
                     className={cn(
                       "px-1 py-2.5 text-center font-mono text-[11px] font-semibold tabular-nums",
-                      w === currentWeek ? "text-brand-strong" : "text-ink-mute",
+                      col.week === currentWeek ? "text-brand-strong" : "text-ink-mute",
                     )}
                   >
-                    {w}
+                    {col.label}
                   </th>
                 ))}
               </tr>
@@ -133,7 +152,7 @@ export function StandingsGrid({
                       <div className="mt-1 flex items-center gap-1.5">
                         {eliminated ? (
                           <span className="font-mono text-[10px] uppercase tracking-wide text-out">
-                            Out · W{member.eliminatedWeek}
+                            Out · {member.eliminatedWeek ? formatOut(member.eliminatedWeek) : "—"}
                           </span>
                         ) : (
                           <>
@@ -147,10 +166,10 @@ export function StandingsGrid({
                     </td>
 
                     {/* Weekly picks */}
-                    {weeks.map((w) => (
-                      <td key={w} className="px-1 py-1.5 text-center align-middle">
+                    {weeks.map((col) => (
+                      <td key={col.week} className="px-1 py-1.5 text-center align-middle">
                         <WeekCell
-                          cell={cellFor(member, viewerId, w, currentWeek, gameForTeam, rules, now, hiddenSet)}
+                          cell={cellFor(member, viewerId, col.week, currentWeek, gameForTeam, rules, now, hiddenSet)}
                         />
                       </td>
                     ))}

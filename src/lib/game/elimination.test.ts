@@ -230,3 +230,49 @@ describe("seasonState", () => {
     expect(s).toEqual({ kind: "in_progress" });
   });
 });
+
+describe("the preseason practice reset", () => {
+  /*
+   * Preseason is played for real, but nothing survives into Week 1: strikes clear,
+   * eliminated players come back, and every team is available again.
+   *
+   * The engine needs no special case for this, because it is a pure fold over
+   * whatever results it is handed. The reset lives in WHICH results reach it:
+   * recomputeSeason filters picks and games to season_type = 'regular', so no
+   * preseason result is ever folded into a member's real standing. These pin that
+   * the same engine gives both answers.
+   */
+
+  it("folds a preseason wipeout and a clean regular season independently", () => {
+    const preseasonResults = computeStatus(single, ["loss", "loss"], [1, 2]);
+    expect(preseasonResults).toEqual({ status: "eliminated", strikes: 1, eliminatedWeek: 1 });
+
+    // The regular-season fold sees only regular-season results — an empty slate at
+    // Week 1, whatever happened in August.
+    const regular = computeStatus(single, [], []);
+    expect(regular).toEqual({ status: "alive", strikes: 0, eliminatedWeek: null });
+  });
+
+  it("lets a team lost in preseason be picked again in the regular season", () => {
+    // The regular-season guard is handed regular-season history only, so a team
+    // spent in preseason simply isn't in the used list.
+    const guard = canPick({
+      member: { status: "alive", history: [] },
+      teamId: "kc",
+      game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
+      entryOpen: true,
+      now: new Date("2026-09-10T00:00:00.000Z"),
+    });
+    expect(guard).toEqual({ ok: true });
+
+    // Whereas within one phase, a used team stays used.
+    const samePhase = canPick({
+      member: { status: "alive", history: [{ teamId: "kc" }] },
+      teamId: "kc",
+      game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
+      entryOpen: true,
+      now: new Date("2026-09-10T00:00:00.000Z"),
+    });
+    expect(samePhase).toEqual({ ok: false, reason: "team_already_used" });
+  });
+});

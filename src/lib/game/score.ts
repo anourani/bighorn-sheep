@@ -12,7 +12,14 @@ import type { Game } from "../nfl/types";
  *
  * Writes assume a service-role client (RLS bypassed): it updates every affected
  * pick's `result`/`locked_at` and every member's `strikes`/`status`/
- * `eliminated_week` for the given season, folding weeks 1..throughWeek.
+ * `eliminated_week` for the given season, folding weeks 1..throughWeek. By default
+ * that covers EVERY group in the season — pass `opts.groupId` to scope it to one.
+ *
+ * REGULAR SEASON ONLY. Both queries below filter `season_type = 'regular'`.
+ * Preseason is a practice round that resets at Week 1: its results are derived at
+ * read time and never written to `group_members`. Without these filters a
+ * preseason loss would strike a member in the real league, and preseason week N
+ * would be folded in as if it were regular week N.
  */
 type DB = SupabaseClient<Database>;
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
@@ -34,16 +41,28 @@ export function rowToGame(r: GameRow): Game {
   };
 }
 
+export interface RecomputeOptions {
+  /**
+   * Restrict the recompute to one group. Production wants every group in the
+   * season, so `poll-scores` omits this; the local rehearsal harness passes it so
+   * a simulated weekend can't rewrite strikes and eliminations for every other
+   * league sharing the Supabase project.
+   */
+  groupId?: string;
+}
+
 export async function recomputeSeason(
   supabase: DB,
   season: number,
   throughWeek: number,
   now: Date = new Date(),
+  opts: RecomputeOptions = {},
 ): Promise<{ membersUpdated: number }> {
   const { data: gameRows } = await supabase
     .from("games")
     .select("*")
     .eq("season", season)
+    .eq("season_type", "regular")
     .lte("week", throughWeek);
   const games = (gameRows ?? []).map(rowToGame);
 
@@ -54,7 +73,9 @@ export async function recomputeSeason(
     if (!cur || g.kickoff > cur) finalKickoffByWeek.set(g.week, g.kickoff);
   }
 
-  const { data: groups } = await supabase.from("groups").select("*").eq("season", season);
+  let groupQuery = supabase.from("groups").select("*").eq("season", season);
+  if (opts.groupId) groupQuery = groupQuery.eq("id", opts.groupId);
+  const { data: groups } = await groupQuery;
   let membersUpdated = 0;
 
   for (const group of groups ?? []) {
@@ -66,7 +87,11 @@ export async function recomputeSeason(
       .from("group_members")
       .select("*")
       .eq("group_id", group.id);
-    const { data: pickRows } = await supabase.from("picks").select("*").eq("group_id", group.id);
+    const { data: pickRows } = await supabase
+      .from("picks")
+      .select("*")
+      .eq("group_id", group.id)
+      .eq("season_type", "regular");
 
     const picksByUser = new Map<string, PickRow[]>();
     for (const p of pickRows ?? []) {

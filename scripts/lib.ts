@@ -45,12 +45,41 @@ export function serviceClient(): Service {
   return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
 
-/** Read `--name=value` from argv, falling back to the NAME env var, then default. */
+/**
+ * Read a flag value from argv, falling back to the NAME env var, then default.
+ *
+ * Accepts BOTH `--name=value` and `--name value`. It used to accept only the
+ * `=` form, while every documented invocation in docs/dry-run.md and README.md
+ * used spaces — so every flag was silently dropped and the scripts quietly ran
+ * on their defaults. That was not a cosmetic problem: `--phase kickoff` fell
+ * back to `"final"`, so a command asking only to lock and reveal picks instead
+ * fabricated scores and ran eliminations, and `--winners kc,dal` was ignored,
+ * making winners a coin flip.
+ */
 export function arg(name: string, fallback?: string): string | undefined {
   const prefix = `--${name}=`;
   const hit = process.argv.find((a) => a.startsWith(prefix));
   if (hit) return hit.slice(prefix.length);
+
+  // Space-separated form. Guard against swallowing the next flag as a value,
+  // so `--phase --force` reports phase as unset rather than "--force".
+  const i = process.argv.indexOf(`--${name}`);
+  if (i !== -1) {
+    const next = process.argv[i + 1];
+    if (next !== undefined && !next.startsWith("--")) return next;
+  }
+
   return process.env[name.toUpperCase().replace(/-/g, "_")] ?? fallback;
+}
+
+/**
+ * A bare boolean flag: `--force`. Separate from `arg` because it takes no value
+ * and must not consume the following token.
+ */
+export function flag(name: string): boolean {
+  if (process.argv.includes(`--${name}`)) return true;
+  const env = process.env[name.toUpperCase().replace(/-/g, "_")];
+  return env === "1" || env === "true";
 }
 
 /** A comma-list flag → trimmed non-empty items. */

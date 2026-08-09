@@ -21,21 +21,42 @@ import { isHome, opponentOf } from "@/lib/league/view";
 export function PickHero({
   teamId,
   game,
-  week,
+  weekName,
+  practice = false,
   now,
   weekFinalKickoff,
 }: {
   teamId: TeamId | null;
   game: Game | undefined;
-  week: number;
+  /** Formatted week label — "Week 5", "Preseason 2", "Hall of Fame". */
+  weekName: string;
+  /** True when this is a practice (preseason) pick, which resets at Week 1. */
+  practice?: boolean;
   now: Date;
   weekFinalKickoff: Date | null;
 }) {
   if (!teamId || !game) {
-    return <NoPickHero week={week} now={now} weekFinalKickoff={weekFinalKickoff} />;
+    return (
+      <NoPickHero
+        weekName={weekName}
+        practice={practice}
+        now={now}
+        weekFinalKickoff={weekFinalKickoff}
+      />
+    );
   }
 
-  const team = getTeam(teamId)!;
+  const team = getTeam(teamId);
+  if (!team) {
+    return (
+      <NoPickHero
+        weekName={weekName}
+        practice={practice}
+        now={now}
+        weekFinalKickoff={weekFinalKickoff}
+      />
+    );
+  }
   const opp = getTeam(opponentOf(game, teamId));
   const home = isHome(game, teamId);
   const kicked = isKickedOff(game, now);
@@ -48,6 +69,9 @@ export function PickHero({
         <span key="l">Locks in {cd.label}</span>,
         <span key="p">Only you can see this pick until the game kicks off.</span>,
       ];
+  if (practice) {
+    lockLine.push(<span key="pr">Practice only — everyone resets for Week 1.</span>);
+  }
 
   return (
     <section className="border-b border-line pb-4">
@@ -66,7 +90,7 @@ export function PickHero({
           className="relative z-10 font-sans text-[15px] font-bold uppercase leading-[1.4] tracking-[0.04em] sm:text-base"
           style={{ color: theme.label }}
         >
-          Your Pick · Week {week}
+          {practice ? "Practice Pick" : "Your Pick"} · {weekName}
         </span>
 
         <h1
@@ -105,11 +129,13 @@ export function PickHero({
 }
 
 function NoPickHero({
-  week,
+  weekName,
+  practice,
   now,
   weekFinalKickoff,
 }: {
-  week: number;
+  weekName: string;
+  practice: boolean;
   now: Date;
   weekFinalKickoff: Date | null;
 }) {
@@ -124,7 +150,7 @@ function NoPickHero({
         }}
       >
         <span className="font-sans text-[15px] font-bold uppercase tracking-[0.04em] text-[#4B5563] sm:text-base">
-          Your Pick · Week {week}
+          {practice ? "Practice Pick" : "Your Pick"} · {weekName}
         </span>
         <h1 className="mt-2 font-sans font-bold leading-[0.9] tracking-tight text-[#1E1E1E] text-[clamp(2rem,9vw,3.5rem)]">
           No pick yet
@@ -136,6 +162,7 @@ function NoPickHero({
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
         {cd ? <span>Week locks in {cd.label}</span> : null}
         <span>Miss the final kickoff and it counts as a loss.</span>
+        {practice ? <span>Practice only — everyone resets for Week 1.</span> : null}
       </div>
     </section>
   );

@@ -1,10 +1,28 @@
-# Pre-season dry run — test the whole loop before Week 1
+# Testing eliminations on demand
 
-This walks a real group of friends through the entire survival loop —
-sign up → join → pick → lock → reveal → result → elimination — using a
-**seeded test weekend** you control, so you can shake the app out before any
-real NFL game exists. Everything runs against your own Supabase project on the
-real clock; there is no fake demo data and no frozen time.
+> **Just want to rehearse with friends? Use the preseason practice round instead.**
+> Once the real schedule is loaded (`docs/go-live.md`), the week dropdown carries a
+> **Preseason** group that runs the whole loop — pick → lock → reveal → result →
+> elimination — against real NFL games, with everything resetting at Week 1. That is
+> the better rehearsal, and it needs no scripts.
+>
+> This harness is for the one thing real football cannot give you: **a specific
+> outcome, right now.** It is how you force an elimination, force a whole-group
+> wipeout, or watch a result land the moment you ask for it — instead of waiting for
+> an actual game to go against someone.
+
+It is also the only thing outside production that calls `recomputeSeason`
+(`src/lib/game/score.ts`), the code that writes `picks.result` and every member's
+`strikes` / `status` / `eliminated_week`. Those columns have no test coverage and,
+until `SUPABASE_SERVICE_ROLE_KEY` is set in Netlify, nothing else exercises them at
+all — so this is currently the only way to prove eliminations work end to end.
+
+Everything runs against your own Supabase project on the real clock; there is no fake
+demo data and no frozen time.
+
+**Flags accept either `--name value` or `--name=value`.** (They used to accept only
+the `=` form while every example here used spaces, so every flag was silently
+ignored — `--phase kickoff` ran `final` and `--winners` was a coin flip. Fixed.)
 
 ## 0. One-time setup
 
@@ -39,17 +57,27 @@ the gear → invite** (or the roster panel) to copy your **invite code**.
 
 ## 2. Seed a test weekend, aligned to your league
 
-Pick a `season`/`week` that won't collide with real data (e.g. this year, week 1)
-and point the seeder at your league by code so its entry deadline lines up with
-the first kickoff:
+> **If the real schedule is already loaded, skip this section.** Once
+> `load-schedule` has run there is nothing left to rehearse against fake data —
+> use the **preseason practice round** instead (the Preseason entries in the week
+> dropdown), which is exactly this loop against real games.
+>
+> The seeder writes into the same `games` table as the real schedule, and the app
+> resolves a team's game for a week by taking the *first* match, so a fake game
+> sitting next to a real one is a coin flip over which a member sees. The script
+> now refuses to seed a week that already holds real games; `--force` overrides,
+> and `supabase/cleanup-test-games.sql` removes rows a previous run left behind.
+
+Pick a `week` the league hasn't published yet, and point the seeder at your league
+by code so its entry deadline lines up with the first kickoff:
 
 ```bash
-npm run seed:test-week -- --season 2026 --week 1 --kickoff-in 15 --group YOUR-CODE
+npm run seed:test-week -- --season 2026 --week 18 --kickoff-in 15 --group YOUR-CODE
 ```
 
 This inserts 8 games kicking off a few minutes apart. Because the first kickoff
 is ~15 min out, the app sits in its **pre-season / entry-open** state: the roster
-view shows who's joined, and Week 1 is pickable.
+view shows who's joined, and that week is pickable.
 
 ## 3. Friends sign up and join
 
@@ -57,9 +85,10 @@ Share either the invite **code** or the link `…/login?invite=YOUR-CODE`. Each
 friend enters their email, taps the magic link, and lands in the league as a real
 member. Watch them appear on **Standings** (roster) and in the header tally.
 
-## 4. Everyone makes a Week 1 pick
+## 4. Everyone makes a pick
 
-On **My Picks**, each player selects a team from the schedule. The pick saves
+On **My Picks**, switch the week dropdown to the week you seeded, then each player
+selects a team from the schedule. The pick saves
 immediately and is editable until that team's game kicks off. On **Standings**,
 each rival's current pick shows as a **padlock** — locked in, team hidden — until
 kickoff.
@@ -70,15 +99,18 @@ Fast-forward through the states with `sim`. Target the whole week or specific
 games (great for a staggered reveal). Pass `--group` so the entry deadline stays
 in sync as kickoffs move into the past.
 
+Use the same `--season`/`--week` you seeded in step 2 (the examples below use
+week 18, matching that step).
+
 ```bash
 # Kick off one game first — its picks lock and reveal; others stay padlocked.
-npm run sim -- --season 2026 --week 1 --phase kickoff --games test-2026-1-1 --group YOUR-CODE
+npm run sim -- --season 2026 --week 18 --phase kickoff --games test-2026-18-1 --group YOUR-CODE
 
 # Kick off the rest.
-npm run sim -- --season 2026 --week 1 --phase kickoff --group YOUR-CODE
+npm run sim -- --season 2026 --week 18 --phase kickoff --group YOUR-CODE
 
 # End the week: name the winners; everyone else (and any missed pick) takes the loss.
-npm run sim -- --season 2026 --week 1 --phase final --winners kc,dal,buf --group YOUR-CODE
+npm run sim -- --season 2026 --week 18 --phase final --winners kc,dal,buf --group YOUR-CODE
 ```
 
 After `--phase final`, `sim` runs the real elimination engine
@@ -86,14 +118,40 @@ After `--phase final`, `sim` runs the real elimination engine
 strikes, eliminations, and the survivor/deaths tally all update. Refresh the app
 and confirm results, washes, and any eliminations look right.
 
-## 6. Run another week (optional)
+**Always pass `--group`.** It scopes both the entry-deadline sync and the recompute.
+Without it, `recomputeSeason` covers every league in the season and one rehearsal
+rewrites strikes and eliminations for all of them.
 
-Seed `--week 2`, have everyone pick again (note: teams used in week 1 are locked
+## 6. Force a specific ending
+
+This is the part real football can't be asked to do on cue. Each of these is the
+`--phase final` command above with different `--winners`:
+
+- **One elimination.** Name the winners so exactly one member's team loses. In a
+  `single` league that eliminates them immediately; in `two_time` it's one strike.
+- **A missed-pick loss.** Have someone deliberately not pick, then finalize the week.
+  Once the week's *last* kickoff has passed, no pick counts as a loss — same as
+  picking a loser.
+- **A whole-group wipeout.** Name winners such that every surviving member's team
+  loses in the same week. Standings will show everyone out.
+- **A single survivor.** Repeat across a couple of seeded weeks until one member is
+  left alive.
+
+Two caveats worth knowing. Teams are one-use-per-season, so a multi-week rehearsal
+needs each member picking a different team each week. And the app has **no season-end
+screen** — `seasonState` in `src/lib/game/elimination.ts` computes winner / wipeout /
+multi-survivor, but nothing in the UI reads it, so what you'll actually see is
+standings with one or zero members alive rather than a declared result.
+
+## 7. Run another week (optional)
+
+Seed the next week, have everyone pick again (note: teams used already are locked
 out), and advance it. Repeat until you're confident the loop holds.
 
 ## Resetting
 
-The games live in the `games` table with ids like `test-2026-1-3`; delete those
-rows in the SQL editor to clear a test slate. To wipe picks/members for a fresh
+The games live in the `games` table with ids like `test-2026-18-3` — always prefixed
+`test-`. `supabase/cleanup-test-games.sql` removes them safely (picks first, then
+games; the foreign key forbids the other order). To wipe picks/members for a fresh
 run, delete from `picks` / `group_members` for your group (service role or SQL
 editor). Re-running `seed:test-week` just upserts the same ids.

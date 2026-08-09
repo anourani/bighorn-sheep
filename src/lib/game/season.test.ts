@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEntryOpen, resolveCurrentWeek, seasonPhase } from "./season";
+import { isEntryOpen, resolveCurrentWeek, resolveWeekFromKickoffs, seasonPhase } from "./season";
 
 const ENTRY = new Date("2025-09-05T00:20:00.000Z"); // first Week 1 kickoff
 
@@ -62,5 +62,52 @@ describe("resolveCurrentWeek", () => {
         finalWeek: 18,
       }),
     ).toBe(18);
+  });
+});
+
+describe("resolveWeekFromKickoffs", () => {
+  it("returns the greatest week whose first kickoff has passed", () => {
+    const games = [
+      { week: 1, kickoff: "2026-09-10T00:20:00.000Z" },
+      { week: 2, kickoff: "2026-09-17T00:20:00.000Z" },
+      { week: 3, kickoff: "2026-09-24T00:20:00.000Z" },
+    ];
+    expect(resolveWeekFromKickoffs(games, new Date("2026-09-19T00:00:00.000Z"))).toBe(2);
+  });
+
+  it("floors at 1 with no games at all", () => {
+    expect(resolveWeekFromKickoffs([], new Date("2026-09-19T00:00:00.000Z"))).toBe(1);
+  });
+
+  // Reused by the preseason practice round against its own slice, where the last
+  // week is 3 or 4 rather than 18.
+  it("caps at the finalWeek it is given, so preseason can pass its own", () => {
+    const pre = [
+      { week: 1, kickoff: "2026-08-07T00:00:00.000Z" },
+      { week: 4, kickoff: "2026-08-28T00:00:00.000Z" },
+    ];
+    expect(resolveWeekFromKickoffs(pre, new Date("2026-08-29T00:00:00.000Z"), 4)).toBe(4);
+    expect(resolveWeekFromKickoffs(pre, new Date("2026-08-29T00:00:00.000Z"), 3)).toBe(3);
+  });
+
+  /*
+   * The bug this whole season_type split exists to prevent. Before the loader
+   * filtered by season_type, `games` held preseason AND regular rows and this
+   * function saw only week numbers — so an August preseason week-3 kickoff made
+   * the REGULAR season report itself as being in week 3, weeks before it started.
+   *
+   * The guarantee now is upstream: callers pass a single-season_type list. This
+   * pins what happens either way.
+   */
+  it("would be fooled by a mixed list — which is why callers must filter", () => {
+    const august = new Date("2026-08-22T00:00:00.000Z");
+    const regularOnly = [{ week: 1, kickoff: "2026-09-10T00:20:00.000Z" }];
+    const mixed = [
+      ...regularOnly,
+      { week: 3, kickoff: "2026-08-21T00:00:00.000Z" }, // preseason week 3
+    ];
+
+    expect(resolveWeekFromKickoffs(regularOnly, august)).toBe(1);
+    expect(resolveWeekFromKickoffs(mixed, august)).toBe(3);
   });
 });

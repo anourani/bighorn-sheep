@@ -1,4 +1,4 @@
-import { serviceClient, arg, listArg, isUuid } from "./lib";
+import { serviceClient, arg, flag, listArg, isUuid } from "./lib";
 import { recomputeSeason } from "../src/lib/game/score";
 
 /**
@@ -20,13 +20,22 @@ import { recomputeSeason } from "../src/lib/game/score";
  *   npm run sim -- --season 2026 --week 1 --phase kickoff --group BIGHORN-7F3K
  *   npm run sim -- --season 2026 --week 1 --phase final --winners kc,dal,buf --group BIGHORN-7F3K
  *
+ * ONLY TOUCHES SEEDED GAMES (ids prefixed `test-`) unless you pass --force. It
+ * fabricates kickoffs and final scores, so pointed at a real slate it would invent
+ * results for actual NFL games and eliminate real members on them. Restricted to
+ * `season_type = 'regular'` for the same reason — preseason practice resolves from
+ * the real feed, not from here.
+ *
  * Flags:
  *   --phase     "kickoff" | "final"            (default: final)
  *   --season    season year                    (default: current UTC year)
  *   --week      week number                     (default: 1)
- *   --games     comma-list of game ids to target (default: all in the week)
+ *   --games     comma-list of game ids to target (default: all seeded in the week)
  *   --winners   comma-list of team ids that should win their game (final only)
- *   --group     group id/code to keep entry deadline in sync with kickoff
+ *   --group     group id/code — scopes BOTH the entry deadline and the recompute
+ *   --force     also advance real (non-seeded) games — invents NFL results
+ *
+ * Flags accept either `--name value` or `--name=value`.
  */
 async function main(): Promise<void> {
   const supabase = serviceClient();
@@ -36,18 +45,38 @@ async function main(): Promise<void> {
   const winners = listArg("winners");
   const only = listArg("games");
   const groupRef = arg("group");
+  const force = flag("force");
 
   const { data: allRows, error } = await supabase
     .from("games")
     .select("*")
     .eq("season", season)
+    .eq("season_type", "regular")
     .eq("week", week);
   if (error) throw error;
 
   const weekGames = allRows ?? [];
-  const targets = only.length ? weekGames.filter((g) => only.includes(g.id)) : weekGames;
+  const selected = only.length ? weekGames.filter((g) => only.includes(g.id)) : weekGames;
+
+  // Fabricating a score onto a real game would eliminate real members on a result
+  // the NFL never produced, and the next poll-scores run would then overwrite it —
+  // leaving standings computed from a game that never happened.
+  const realGames = selected.filter((g) => !g.id.startsWith("test-"));
+  const targets = force ? selected : selected.filter((g) => g.id.startsWith("test-"));
+
+  if (realGames.length > 0 && !force) {
+    console.warn(
+      `⚠  Skipping ${realGames.length} real game(s) in season ${season}, week ${week} — ` +
+        `this script invents scores.\n   Pass --force only if you truly mean to.`,
+    );
+  }
+
   if (targets.length === 0) {
-    console.log("No matching games — did you run seed:test-week first?");
+    console.log(
+      realGames.length > 0
+        ? "No seeded games to advance (only real ones, which were skipped)."
+        : "No matching games — did you run seed:test-week first?",
+    );
     return;
   }
 
@@ -95,26 +124,55 @@ async function main(): Promise<void> {
     throw new Error(`Unknown --phase "${phase}" (expected "kickoff" or "final").`);
   }
 
-  // Keep the group's entry deadline consistent with the earliest kickoff now in
-  // the past, so the app flips out of pre-season once any game has started.
+  // Resolve --group to an id up front: it scopes BOTH the deadline write and the
+  // recompute below, and silently recomputing every league in the project because
+  // a code was mistyped is not an acceptable failure mode.
+  let groupId: string | undefined;
   if (groupRef) {
+    const column = isUuid(groupRef) ? "id" : "invite_code";
+    const { data: grp, error: gErr } = await supabase
+      .from("groups")
+      .select("id, name")
+      .eq(column, groupRef)
+      .maybeSingle();
+    if (gErr) throw gErr;
+    if (!grp) {
+      console.error(`✗ No group matched "${groupRef}". Nothing was recomputed.`);
+      process.exit(1);
+    }
+    groupId = grp.id;
+
+    // Keep the group's entry deadline consistent with the earliest kickoff now in
+    // the past, so the app flips out of pre-season once any game has started.
+    //
+    // Scoped to regular-season SEEDED rows, matching the main query above. Without
+    // the season_type filter this reads the preseason slate too — and since
+    // (season 2026, week 1) holds both the August Hall of Fame game and the
+    // September opener, `.sort().at(0)` picked August and set entry_closes_at to
+    // it, instantly closing entry and destroying the preseason practice round.
     const { data: fresh } = await supabase
       .from("games")
-      .select("kickoff")
+      .select("id, kickoff")
       .eq("season", season)
+      .eq("season_type", "regular")
       .eq("week", week);
     const earliest = (fresh ?? [])
+      .filter((g) => force || g.id.startsWith("test-"))
       .map((g) => g.kickoff)
       .sort()
       .at(0);
     if (earliest) {
-      const column = isUuid(groupRef) ? "id" : "invite_code";
-      await supabase.from("groups").update({ entry_closes_at: earliest }).eq(column, groupRef);
-      console.log(`✓ Synced entry deadline to earliest kickoff (${earliest}).`);
+      await supabase.from("groups").update({ entry_closes_at: earliest }).eq("id", groupId);
+      console.log(`✓ Synced "${grp.name}" entry deadline to earliest kickoff (${earliest}).`);
     }
+  } else {
+    console.warn(
+      "⚠  No --group given, so the recompute covers EVERY league in this season.\n" +
+        "   Pass --group <id|code> to scope it to one.",
+    );
   }
 
-  const res = await recomputeSeason(supabase, season, week);
+  const res = await recomputeSeason(supabase, season, week, new Date(), { groupId });
   console.log(`✓ Recomputed standings — ${res.membersUpdated} member(s) updated.`);
 }
 
