@@ -115,7 +115,7 @@ The form has more options than you need. Set them like this:
 | --- | --- | --- |
 | **Key** | exactly as in the table below | One character off and the site won't find it — and the error you'll see in Step 3 says the value is *unset*, which is hard to debug backwards from. |
 | **Contains secret values** | ✅ checked | Masks the value in Netlify's UI, logs, and CLI. You won't be able to read it back afterwards; re-copy from Supabase if you need it again. |
-| **Scopes** | **All scopes** | Both Builds and Functions need it. *Specific scopes* is a paid feature anyway. |
+| **Scopes** | leave as-is — just check that **Functions** is ticked | On the free plan this is locked to *Specific scopes* with Builds, Functions and Runtime ticked and Post processing excluded. That's fine. **Functions** is the only scope that matters: `load-schedule`, `poll-scores`, and all of the app's server-side code run as Netlify Functions. Post processing is HTML snippet injection, which this app doesn't use — so *All scopes* being upgrade-gated costs you nothing. |
 | **Values** | **Same value for all deploy contexts** | The default is *"Different value for each deploy context"*, which shows five separate boxes. You don't want that — it's the same database in every context. Switching gives you one box. |
 
 Then **Create variable**, and repeat for the second.
