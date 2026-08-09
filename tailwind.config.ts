@@ -50,6 +50,9 @@ const config: Config = {
           soft: "#C7CEDB",
           mute: "#9AA5B9",
         },
+        // Inline text links. The only blue in the palette — deliberately not a
+        // status hue, so it never competes with the orange accent.
+        link: "#151E9D",
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },

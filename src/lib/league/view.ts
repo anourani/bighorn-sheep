@@ -15,6 +15,27 @@ export type TeamAvailability =
   | { state: "bye" }
   | { state: "available" };
 
+export interface SurvivorCounts {
+  alive: number;
+  eliminated: number;
+  /** Deliberately alive + eliminated, not members.length — see below. */
+  total: number;
+}
+
+/**
+ * The "N out of M still alive" tally, shared by the app header and the standings
+ * league summary rather than re-filtered at each call site.
+ *
+ * `total` counts the two known statuses instead of the array length, so a member
+ * row with a status this build doesn't recognise is left out of the denominator
+ * rather than silently inflating it.
+ */
+export function survivorCounts(members: readonly Member[]): SurvivorCounts {
+  const alive = members.filter((m) => m.status === "alive").length;
+  const eliminated = members.filter((m) => m.status === "eliminated").length;
+  return { alive, eliminated, total: alive + eliminated };
+}
+
 /** Per-team availability for one member's own grid (available / used / bye). */
 export function buildTeamStates(
   member: Member,

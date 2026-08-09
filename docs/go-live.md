@@ -125,6 +125,49 @@ Then **Create variable**, and repeat for the second.
 | `SUPABASE_SERVICE_ROLE_KEY` | the `service_role` key from 2a |
 | `CRON_SECRET` | the random string from 2b |
 
+There's a third one worth adding while you're on this screen, and it takes the
+settings above **differently**:
+
+| Key | Value |
+| --- | --- |
+| `NEXT_PUBLIC_APP_URL` | your production origin, e.g. `https://bighorn-sheep.netlify.app` — no trailing slash, no path |
+
+- **Contains secret values:** leave it *unchecked*. Anything named `NEXT_PUBLIC_*`
+  is compiled into the browser bundle by definition, so marking it secret only
+  hides it from you.
+- **Values:** here you *do* want **Different value for each deploy context** —
+  give each context its own origin. It builds the invite links, and being a
+  `NEXT_PUBLIC_*` value it is frozen into the bundle at build time, so a single
+  shared value means a deploy preview hands out production invite links.
+
+Nothing in the repo sets this variable, and the code falls back to
+`https://bighorn.example` — a domain that doesn't exist. If invite links are
+currently showing that host, this is why. Note that adding it does nothing until
+the site rebuilds (2d).
+
+### 2c-bis · Point Supabase at the site
+
+Still in Supabase: **Authentication → URL Configuration**.
+
+- **Site URL** — your production origin, bare, with **no path**. Supabase falls
+  back to this whenever a sign-in asks to return somewhere that isn't allowlisted,
+  so a path here strands magic links on a page that can't complete them.
+- **Redirect URLs** — add all three:
+
+  ```
+  http://localhost:3000/**
+  https://bighorn-sheep.netlify.app/**
+  https://**--bighorn-sheep.netlify.app/**
+  ```
+
+  The third covers deploy previews and branch deploys. It is a separate entry
+  because the allowlist globs `.` and `/` as separators — the second line's
+  wildcard spans paths, not subdomains, so it will not match
+  `deploy-preview-12--bighorn-sheep.netlify.app`. Skip it and signing in from a
+  preview silently signs you into production instead.
+
+These are Supabase settings, so they apply immediately — no redeploy needed.
+
 > If the deploy in 2d fails with a **secrets scanning** error, tell me. Netlify checks
 > whether a secret value leaked into the published output. Neither of these is ever
 > sent to the browser, so it shouldn't trigger — but the check exists.
