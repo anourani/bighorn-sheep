@@ -8,7 +8,7 @@ import { errorMessage } from "@/lib/errors";
 import { formatDisplayName } from "@/lib/league/name";
 import { BrandMark } from "@/components/shell/BrandMark";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Button } from "@/components/ui/Button";
 import { MailIcon, InfoIcon, CheckIcon, ArrowRightIcon, UsersIcon } from "@/components/icons";
 
@@ -224,7 +224,7 @@ function LoginInner() {
         <div className="mb-5 flex justify-center">
           <BrandMark size="lg" />
         </div>
-        <MonoLabel className="text-brand-strong">NFL Survival League</MonoLabel>
+        <Label className="text-brand-strong">NFL Survival League</Label>
         <h1 className="mt-2 text-display-md font-medium leading-[1.02] tracking-tight text-ink">
           Last Man
           <br />
@@ -268,7 +268,7 @@ function LoginInner() {
           />
         ) : step === "name" ? (
           <form onSubmit={handleCreateAccount}>
-            <MonoLabel className="mb-1 block text-ink-mute">Almost in</MonoLabel>
+            <Label className="mb-1 block text-ink-mute">Almost in</Label>
             <p className="mb-4 text-sm text-ink-soft">
               New here — tell us your name so teammates know who&apos;s on the board. You&apos;ll show as
               &quot;{formatDisplayName(firstName, lastName, "First L.")}&quot;
@@ -277,7 +277,7 @@ function LoginInner() {
             <div className="flex gap-2">
               <div className="flex-1">
                 <label htmlFor="first" className="mb-1.5 block">
-                  <MonoLabel className="text-ink-mute">First name</MonoLabel>
+                  <Label className="text-ink-mute">First name</Label>
                 </label>
                 <input
                   id="first"
@@ -291,7 +291,7 @@ function LoginInner() {
               </div>
               <div className="flex-1">
                 <label htmlFor="last" className="mb-1.5 block">
-                  <MonoLabel className="text-ink-mute">Last name</MonoLabel>
+                  <Label className="text-ink-mute">Last name</Label>
                 </label>
                 <input
                   id="last"
@@ -331,7 +331,7 @@ function LoginInner() {
         ) : (
           <form onSubmit={handleEmailContinue}>
             <label htmlFor="email" className="mb-1.5 block">
-              <MonoLabel className="text-ink-mute">Email</MonoLabel>
+              <Label className="text-ink-mute">Email</Label>
             </label>
             <input
               id="email"
@@ -402,14 +402,14 @@ function InviteBanner({ invite, preview }: { invite: string; preview: Preview })
       <div className="min-w-0">
         {invalid ? (
           <>
-            <MonoLabel className="text-[#8A2C2C]">Invite not found</MonoLabel>
+            <Label className="text-[#8A2C2C]">Invite not found</Label>
             <p className="text-sm text-ink">
               Code <span className="font-mono font-semibold">{invite}</span> doesn&apos;t match a league.
             </p>
           </>
         ) : preview.status === "found" ? (
           <>
-            <MonoLabel className="text-[#8A4A24]">You&apos;re invited</MonoLabel>
+            <Label className="text-[#8A4A24]">You&apos;re invited</Label>
             <p className="text-sm text-ink">
               Joining <span className="font-semibold">{preview.name}</span> ·{" "}
               {preview.memberCount} {preview.memberCount === 1 ? "player" : "players"} ·{" "}
@@ -418,7 +418,7 @@ function InviteBanner({ invite, preview }: { invite: string; preview: Preview })
           </>
         ) : (
           <>
-            <MonoLabel className="text-[#8A4A24]">You&apos;re invited</MonoLabel>
+            <Label className="text-[#8A4A24]">You&apos;re invited</Label>
             <p className="text-sm text-ink">
               Joining league <span className="font-mono font-semibold">{invite}</span> after you sign in.
             </p>

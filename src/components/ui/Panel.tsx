@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import { MonoLabel } from "./MonoLabel";
+import { Label } from "./Label";
 
 type Tone = "slate" | "light" | "ghost";
 
@@ -40,7 +40,7 @@ export function Panel({
   );
 }
 
-/** Optional header row for a Panel: a mono eyebrow + title, with a right slot. */
+/** Optional header row for a Panel: a label eyebrow + title, with a right slot. */
 export function PanelHeader({
   eyebrow,
   title,
@@ -55,7 +55,7 @@ export function PanelHeader({
   return (
     <div className={cn("flex items-start justify-between gap-3", className)}>
       <div className="min-w-0">
-        {eyebrow ? <MonoLabel className="text-brand-soft/90">{eyebrow}</MonoLabel> : null}
+        {eyebrow ? <Label className="text-brand-soft/90">{eyebrow}</Label> : null}
         {title ? <div className="mt-1 text-base font-medium leading-tight">{title}</div> : null}
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}

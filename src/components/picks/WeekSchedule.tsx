@@ -101,9 +101,9 @@ function GameCard({
   return (
     <div className="overflow-hidden rounded-control border border-line bg-white">
       <div className="flex items-center justify-between px-3 pt-2.5">
-        <LocalTime iso={game.kickoff} className="font-mono text-[11px] text-ink-mute" />
+        <LocalTime iso={game.kickoff} className="text-[11px] font-semibold tabular-nums text-ink-mute" />
         {kicked ? (
-          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide text-ink-mute">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-mute">
             <LockIcon className="h-3 w-3" />
             {game.status === "final" ? "Final" : game.status === "in_progress" ? "Live" : "Locked"}
           </span>
@@ -156,7 +156,7 @@ function TeamOption({
   if (!team) {
     return (
       <div className="flex items-center gap-3 px-3 py-2.5 text-sm text-ink-mute">
-        <span className="font-mono text-[10px] uppercase tracking-wide">{teamId || "unknown"}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide">{teamId || "unknown"}</span>
         <span className="text-xs">Unrecognized team — not pickable.</span>
       </div>
     );
@@ -214,7 +214,7 @@ function TeamOption({
           >
             {team.name}
           </span>
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-ink-mute">
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-ink-mute">
             {team.abbr}
           </span>
         </span>

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { Segmented } from "@/components/ui/Segmented";
 import { InfoIcon } from "@/components/icons";
 import { createGroup } from "@/app/app/actions";
@@ -68,7 +68,7 @@ export function CreateGroupModal({ open, onClose }: { open: boolean; onClose: ()
       <div className="space-y-5">
         <div>
           <label htmlFor="group-name" className="mb-1.5 block">
-            <MonoLabel className="text-ink-mute">Group name</MonoLabel>
+            <Label className="text-ink-mute">Group name</Label>
           </label>
           <input
             id="group-name"
@@ -80,7 +80,7 @@ export function CreateGroupModal({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         <div>
-          <MonoLabel className="mb-1.5 block text-ink-mute">Elimination</MonoLabel>
+          <Label className="mb-1.5 block text-ink-mute">Elimination</Label>
           <Segmented
             value={elimination}
             onChange={setElimination}
@@ -93,7 +93,7 @@ export function CreateGroupModal({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         <div>
-          <MonoLabel className="mb-1.5 block text-ink-mute">Tie rule</MonoLabel>
+          <Label className="mb-1.5 block text-ink-mute">Tie rule</Label>
           <Segmented
             value={tieRule}
             onChange={setTieRule}

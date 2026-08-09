@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { GearIcon, LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
 import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
@@ -80,13 +80,13 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         <Panel className="p-card">
           <div className="flex items-start justify-between">
             <div>
-              <MonoLabel className="text-onsurface-mute">Standings</MonoLabel>
+              <Label className="text-onsurface-mute">Standings</Label>
               <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">{group.name}</h1>
-              <MonoLabel className="mt-1 block text-onsurface-mute">
+              <Label className="mt-1 block text-onsurface-mute">
                 {isPreseason
                   ? `Season ${group.season} · Pre-season`
                   : `Season ${group.season} · Week ${currentWeek}`}
-              </MonoLabel>
+              </Label>
             </div>
             {isAdmin ? (
               <button
@@ -109,7 +109,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           {practice && practiceRanked && practiceColumns && practiceIdx ? (
             <div className="space-y-2">
               <div className="px-1">
-                <MonoLabel className="text-ink-mute">Preseason practice</MonoLabel>
+                <Label className="text-ink-mute">Preseason practice</Label>
                 <p className="mt-1 text-xs leading-relaxed text-ink-mute">
                   A real run-through — a wrong pick strikes you here too. None of it carries over:
                   this table disappears and everyone starts Week 1 alive, with all 32 teams

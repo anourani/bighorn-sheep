@@ -28,7 +28,7 @@ function readableOn(hex: string): string {
 /**
  * A team's real logo, loaded from the ESPN CDN. If the image can't load
  * (offline, blocked, or missing) it degrades to a color-mark: a rounded square
- * in the team color with the mono abbreviation — the same identity language as
+ * in the team color with the team abbreviation — the same identity language as
  * {@link TeamMark}. Explicit width/height keep the fallback swap shift-free.
  */
 export function TeamLogo({
@@ -52,7 +52,7 @@ export function TeamLogo({
         role="img"
         aria-label={team ? `${team.location} ${team.name}` : teamId.toUpperCase()}
         className={cn(
-          "inline-grid shrink-0 place-items-center rounded-[6px] font-mono font-bold leading-none ring-1 ring-black/10",
+          "inline-grid shrink-0 place-items-center rounded-[6px] font-semibold leading-none ring-1 ring-black/10",
           className,
         )}
         style={{

@@ -6,7 +6,7 @@ import type { Config } from "tailwindcss";
  *   primary  #E48B59   secondary/accent #ED7B46
  *   bg       #FFFFFF   surface (slate panels) #53617A
  *   text     #111827 / #4B5563   border #D8DADF
- *   type     Inter (display + body), JetBrains Mono (labels/metrics)
+ *   type     Inter throughout — display, body, and semibold labels/metrics
  *   radii    card 16 · control 8 · pill 9999
  *
  * The signature look is dark slate "data panels" floating on a white page,
@@ -59,14 +59,17 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["var(--font-jetbrains)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        // No `mono` override: the app ships one webfont (Inter). `font-mono` is
+        // left to Tailwind's default system stack and is reserved for literal
+        // machine strings — invite codes, invite links, error digests, timezone
+        // IDs — where character alignment and 0/O disambiguation matter.
       },
       fontSize: {
         // display-lg token, plus a responsive step down for phones.
         "display-lg": ["clamp(2.5rem, 6vw, 4rem)", { lineHeight: "1.04", letterSpacing: "-0.02em", fontWeight: "500" }],
         "display-md": ["clamp(2rem, 5vw, 2.75rem)", { lineHeight: "1.06", letterSpacing: "-0.02em", fontWeight: "500" }],
         "display-sm": ["1.625rem", { lineHeight: "1.1", letterSpacing: "-0.015em", fontWeight: "500" }],
-        // label-md token (mono, technical metadata).
+        // label-md token (semibold, technical metadata).
         "label-md": ["0.75rem", { lineHeight: "1.2", letterSpacing: "0.06em", fontWeight: "600" }],
         "label-sm": ["0.6875rem", { lineHeight: "1.2", letterSpacing: "0.08em", fontWeight: "600" }],
         // Oversized metric readout for stat tiles.

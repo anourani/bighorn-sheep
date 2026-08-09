@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { PickHero } from "@/components/picks/PickHero";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { ChevronDownIcon, InfoIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
@@ -202,7 +202,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
     <div className="stagger space-y-4">
       {isPreseason ? (
         <div className="rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
-          <MonoLabel className="text-[#8A4A24]">Pre-season</MonoLabel>
+          <Label className="text-[#8A4A24]">Pre-season</Label>
           <p className="mt-1 text-sm leading-relaxed text-ink">
             The season kicks off{" "}
             <LocalTime iso={group.entryClosesAt} mode="full" className="font-semibold" />. Make your Week 1
@@ -239,12 +239,12 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       <div>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <MonoLabel className="text-ink-mute">{viewName}</MonoLabel>
+            <Label className="text-ink-mute">{viewName}</Label>
             <h2 className="mt-0.5 text-sm font-semibold text-ink">Schedule</h2>
           </div>
 
           <label className="block">
-            <MonoLabel className="mb-1.5 block text-ink-mute">Change week</MonoLabel>
+            <Label className="mb-1.5 block text-ink-mute">Change week</Label>
             <div className="relative">
               <select
                 value={selectedKey}
@@ -298,7 +298,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         {byes.length > 0 ? (
           <p className="mb-2.5 text-xs text-ink-mute">
             {viewingPractice ? "Not playing this week" : "On bye this week"}:{" "}
-            <span className="font-mono font-semibold text-ink-soft">
+            <span className="font-semibold text-ink-soft">
               {byes.map((b) => getTeam(b)?.abbr).filter(Boolean).join(", ")}
             </span>{" "}
             — not pickable.

@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import { Panel } from "@/components/ui/Panel";
-import { MonoLabel } from "@/components/ui/MonoLabel";
+import { Label } from "@/components/ui/Label";
 import { StrikePips } from "@/components/ui/Badge";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LockIcon } from "@/components/icons";
@@ -87,7 +87,7 @@ export function StandingsGrid({
                     key={col.week}
                     scope="col"
                     className={cn(
-                      "px-1 py-2.5 text-center font-mono text-[11px] font-semibold tabular-nums",
+                      "px-1 py-2.5 text-center text-[11px] font-semibold tabular-nums",
                       col.week === currentWeek ? "text-brand-strong" : "text-ink-mute",
                     )}
                   >
@@ -119,7 +119,7 @@ export function StandingsGrid({
                     >
                       <span
                         className={cn(
-                          "font-mono text-xs font-semibold tabular-nums",
+                          "text-xs font-semibold tabular-nums",
                           eliminated ? "text-ink-mute" : "text-ink-soft",
                         )}
                       >
@@ -144,20 +144,20 @@ export function StandingsGrid({
                           {member.name}
                         </span>
                         {!isYou && member.role === "admin" ? (
-                          <MonoLabel className="shrink-0 rounded bg-ink/10 px-1 text-[10px] text-ink-mute">
+                          <Label className="shrink-0 rounded bg-ink/10 px-1 text-[10px] text-ink-mute">
                             Admin
-                          </MonoLabel>
+                          </Label>
                         ) : null}
                       </div>
                       <div className="mt-1 flex items-center gap-1.5">
                         {eliminated ? (
-                          <span className="font-mono text-[10px] uppercase tracking-wide text-out">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-out">
                             Out · {member.eliminatedWeek ? formatOut(member.eliminatedWeek) : "—"}
                           </span>
                         ) : (
                           <>
                             <StrikePips strikes={member.strikes} allowance={allowance} tone="light" />
-                            <span className="font-mono text-[10px] text-ink-mute">
+                            <span className="text-[10px] font-semibold tabular-nums text-ink-mute">
                               {member.strikes}/{allowance}
                             </span>
                           </>
@@ -191,7 +191,7 @@ function HeadCell({ children, className }: { children: React.ReactNode; classNam
     <th
       scope="col"
       className={cn(
-        "sticky z-20 bg-white px-2.5 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-mute",
+        "sticky z-20 bg-white px-2.5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-mute",
         className,
       )}
     >

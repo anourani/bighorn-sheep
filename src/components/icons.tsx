@@ -2,7 +2,7 @@ import type { SVGProps } from "react";
 
 /**
  * Line-icon set drawn on a 24×24 grid, 1.75 stroke, currentColor. Sized by
- * font-size via `w-*`/`h-*` classes so icons inherit the mono label rhythm.
+ * font-size via `w-*`/`h-*` classes so icons inherit the label rhythm.
  */
 type IconProps = SVGProps<SVGSVGElement>;
 
