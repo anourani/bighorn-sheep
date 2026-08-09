@@ -73,6 +73,22 @@ silently strands magic links on a page that can't exchange them, and sign-in
 breaks with no error anywhere. `src/middleware.ts` now forwards a stray `?code=`
 to `/auth/callback` as a safety net, but the setting still has to be right.
 
+**Deploy previews hit that same fallback, and it looks nothing like a bug.**
+`src/app/login/page.tsx` builds `emailRedirectTo` from `window.location.origin`,
+so a preview correctly asks to come back to
+`https://deploy-preview-12--bighorn-sheep.netlify.app/auth/callback`. But
+`https://bighorn-sheep.netlify.app/**` does not cover that host: the allowlist is
+globbed with `.` **and** `/` as separators, so the wildcard spans paths, not
+subdomains. GoTrue discards the origin, substitutes the Site URL, and the
+middleware safety net then dutifully completes the exchange — **on production**.
+The symptom is therefore not a dead link but a successful sign-in on the wrong
+site, which reads as a redirect bug rather than a config one. One entry fixes it
+for every future preview and branch deploy:
+
+```
+https://**--bighorn-sheep.netlify.app/**
+```
+
 **The magic-link sender lives only in Auth → Emails → SMTP Settings.**
 `signInWithOtp()` has no sender parameter, so no code change can affect it. The
 sender must be a domain verified with the SMTP provider — a `@gmail.com` sender
@@ -81,6 +97,16 @@ is rejected by every transactional provider and surfaces as **HTTP 500** on
 
 **`NEXT_PUBLIC_*` values are inlined at build time.** Changing one in the Netlify
 dashboard does nothing until the site is rebuilt.
+
+The one that bites is `NEXT_PUBLIC_APP_URL`, which builds invite links in
+`WhosIn.tsx` and `AdminSettingsModal.tsx`. Being a build-time constant, it holds
+the *same* host in every context unless it's scoped per deploy context — so a
+deploy preview hands out **production** invite links, and "Copy link" looks wrong
+while nothing is actually broken. Worse, nothing in this repo sets it: it's
+absent from `netlify.toml` and from the go-live env checklist, so unless someone
+added it by hand in Netlify, the fallback in `StandingsClient.tsx` is what ships
+— `?? "https://bighorn.example"`, a domain that does not exist. Check it before
+trusting any invite link.
 
 ---
 
