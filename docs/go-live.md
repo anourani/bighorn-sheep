@@ -107,14 +107,27 @@ Save it in your password manager; you'll need it every time you reload the sched
 ### 2c · Put both into Netlify
 
 [app.netlify.com](https://app.netlify.com) → your site → **Site configuration** →
-**Environment variables** → **Add a variable** → **Add a single variable**. Enter the
-key exactly as written, paste the value, leave the scope as all, save. Repeat for the
-second.
+**Environment variables** → **Add a variable** → **Add a single variable**.
+
+The form has more options than you need. Set them like this:
+
+| Field | Choose | Why |
+| --- | --- | --- |
+| **Key** | exactly as in the table below | One character off and the site won't find it — and the error you'll see in Step 3 says the value is *unset*, which is hard to debug backwards from. |
+| **Contains secret values** | ✅ checked | Masks the value in Netlify's UI, logs, and CLI. You won't be able to read it back afterwards; re-copy from Supabase if you need it again. |
+| **Scopes** | **All scopes** | Both Builds and Functions need it. *Specific scopes* is a paid feature anyway. |
+| **Values** | **Same value for all deploy contexts** | The default is *"Different value for each deploy context"*, which shows five separate boxes. You don't want that — it's the same database in every context. Switching gives you one box. |
+
+Then **Create variable**, and repeat for the second.
 
 | Key | Value |
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | the `service_role` key from 2a |
 | `CRON_SECRET` | the random string from 2b |
+
+> If the deploy in 2d fails with a **secrets scanning** error, tell me. Netlify checks
+> whether a secret value leaked into the published output. Neither of these is ever
+> sent to the browser, so it shouldn't trigger — but the check exists.
 
 ### 2d · Redeploy — easy to forget
 
