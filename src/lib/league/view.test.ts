@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
-import type { TeamRecord } from "./types";
-import { orderPickerTeams, type TeamAvailability } from "./view";
+import type { Member, TeamRecord } from "./types";
+import { orderPickerTeams, survivorCounts, type TeamAvailability } from "./view";
 
 function game(kickoff: string, home: TeamId, away: TeamId): Game {
   return {
@@ -79,5 +79,43 @@ describe("orderPickerTeams", () => {
     const out = orderPickerTeams(BASE, states, { sort: "kickoff", availableOnly: false }, accessors);
     // buf/det tie EARLY → alphabetical; kc LATE; dal NIGHT; then used sf (EARLY), bye cin (no game).
     expect(out).toEqual(["buf", "det", "kc", "dal", "sf", "cin"]);
+  });
+});
+
+describe("survivorCounts", () => {
+  function member(id: string, status: Member["status"]): Member {
+    return {
+      id,
+      name: id,
+      firstName: id,
+      lastName: "",
+      avatarUrl: null,
+      role: "player",
+      status,
+      strikes: 0,
+      history: [],
+      currentPick: null,
+    };
+  }
+
+  it("splits members into alive and eliminated", () => {
+    const out = survivorCounts([
+      member("a", "alive"),
+      member("b", "eliminated"),
+      member("c", "alive"),
+    ]);
+    expect(out).toEqual({ alive: 2, eliminated: 1, total: 3 });
+  });
+
+  it("is all zeroes for an empty league", () => {
+    expect(survivorCounts([])).toEqual({ alive: 0, eliminated: 0, total: 0 });
+  });
+
+  it("counts the denominator from the known statuses, not the array length", () => {
+    // A row carrying a status this build doesn't know is left out of `total`
+    // rather than inflating it into a "3 out of 4" that never resolves.
+    const rogue = { ...member("d", "alive"), status: "zombie" as Member["status"] };
+    const out = survivorCounts([member("a", "alive"), member("b", "eliminated"), rogue]);
+    expect(out).toEqual({ alive: 1, eliminated: 1, total: 2 });
   });
 });

@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Panel } from "@/components/ui/Panel";
-import { Label } from "@/components/ui/Label";
-import { GearIcon, LockIcon } from "@/components/icons";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
 import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
-import { RosterPanel } from "@/components/group/RosterPanel";
+import { LeagueDetails } from "@/components/group/LeagueDetails";
+import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
+import { InviteCta, WhosIn } from "@/components/group/WhosIn";
 import { buildGameIndex } from "@/lib/league/games";
 import { PRE_WEEK, weekLabel, weekShortLabel } from "@/lib/nfl/calendar";
 import type { LeagueData } from "@/lib/league/load";
@@ -34,6 +35,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   const me = data.members.find((m) => m.id === data.viewer.id);
   const isAdmin = me?.role === "admin";
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   const ranked = useMemo(() => rankMembers(data.members), [data.members]);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://bighorn.example";
@@ -75,65 +77,45 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   }, [practice]);
 
   return (
-    <div className="stagger space-y-4">
-      <div>
-        <Panel className="p-card">
-          <div className="flex items-start justify-between">
-            <div>
-              <Label className="text-onsurface-mute">Standings</Label>
-              <h1 className="mt-1 text-display-sm font-medium tracking-tight text-onsurface">{group.name}</h1>
-              <Label className="mt-1 block text-onsurface-mute">
-                {isPreseason
-                  ? `Season ${group.season} · Pre-season`
-                  : `Season ${group.season} · Week ${currentWeek}`}
-              </Label>
-            </div>
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                aria-label="Group settings"
-                className="grid h-10 w-10 place-items-center rounded-control bg-white/10 text-onsurface transition-colors hover:bg-white/[0.16]"
-              >
-                <GearIcon className="h-5 w-5" />
-              </button>
-            ) : null}
-          </div>
-        </Panel>
-      </div>
+    <div className="stagger space-y-6">
+      <LeagueDetails
+        group={group}
+        members={data.members}
+        viewerId={data.viewer.id}
+        currentWeek={currentWeek}
+        phase={phase}
+        practice={practice}
+        isAdmin={isAdmin}
+        onOpenRules={() => setRulesOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       {isPreseason ? (
-        <>
-          <RosterPanel group={group} members={data.members} now={now} appUrl={appUrl} />
-
-          {practice && practiceRanked && practiceColumns && practiceIdx ? (
-            <div className="space-y-2">
-              <div className="px-1">
-                <Label className="text-ink-mute">Preseason practice</Label>
-                <p className="mt-1 text-xs leading-relaxed text-ink-mute">
-                  A real run-through — a wrong pick strikes you here too. None of it carries over:
-                  this table disappears and everyone starts Week 1 alive, with all 32 teams
-                  available.
-                </p>
-              </div>
-              <StandingsGrid
-                ranked={practiceRanked}
-                viewerId={data.viewer.id}
-                currentWeek={practice.currentWeek}
-                finalWeek={practice.maxPreWeek}
-                columns={practiceColumns}
-                outLabel={(w) => weekLabel(PRE_WEEK(w), { maxPreWeek: practice.maxPreWeek })}
-                rules={group.rules}
-                now={now}
-                gameForTeam={practiceIdx.gameForTeam}
-                hiddenPickUserIds={practice.hiddenPickUserIds}
-              />
-            </div>
-          ) : null}
-        </>
+        practice && practiceRanked && practiceColumns && practiceIdx ? (
+          <section>
+            <SectionHeader title="Practice standings" />
+            <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
+              A real run-through — a wrong pick strikes you here too. None of it carries over: this
+              table disappears and everyone starts Week 1 alive, with all 32 teams available.
+            </p>
+            <StandingsGrid
+              ranked={practiceRanked}
+              viewerId={data.viewer.id}
+              currentWeek={practice.currentWeek}
+              finalWeek={practice.maxPreWeek}
+              columns={practiceColumns}
+              outLabel={(w) => weekLabel(PRE_WEEK(w), { maxPreWeek: practice.maxPreWeek })}
+              rules={group.rules}
+              now={now}
+              gameForTeam={practiceIdx.gameForTeam}
+              hiddenPickUserIds={practice.hiddenPickUserIds}
+            />
+          </section>
+        ) : null
       ) : (
-        <>
-          <div>
+        <section>
+          <SectionHeader title="Standings" />
+          <div className="mt-4">
             <StandingsGrid
               ranked={ranked}
               viewerId={data.viewer.id}
@@ -146,12 +128,23 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             />
           </div>
 
-          <p className="flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
+          <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
             <LockIcon className="h-3.5 w-3.5" />
             Current-week picks stay hidden until each team&apos;s game kicks off.
           </p>
-        </>
+        </section>
       )}
+
+      <WhosIn members={data.members} preseason={isPreseason} />
+
+      <InviteCta group={group} appUrl={appUrl} now={now} />
+
+      <LeagueRulesModal
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+        group={group}
+        members={data.members}
+      />
 
       {isAdmin ? (
         <AdminSettingsModal

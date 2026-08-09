@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BrandMark } from "./BrandMark";
 import { loadLeague } from "@/lib/league/load";
+import { survivorCounts } from "@/lib/league/view";
 import { countdown } from "@/lib/time";
 
 /**
@@ -23,9 +24,7 @@ export async function AppHeader() {
   const { group, members, currentWeek, phase } = load.data;
   const now = new Date(load.data.nowIso);
 
-  const survivors = members.filter((m) => m.status === "alive").length;
-  const deaths = members.filter((m) => m.status === "eliminated").length;
-  const total = survivors + deaths;
+  const { alive: survivors, eliminated: deaths, total } = survivorCounts(members);
   const seasonLabel = `${group.season}-${group.season + 1}`;
 
   const isPreseason = phase === "preseason";
