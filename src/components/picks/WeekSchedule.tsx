@@ -173,11 +173,16 @@ function TeamOption({
         ? "Home"
         : "Away";
 
-  const label = used
-    ? `${team.name}, already used in Week ${used.week}`
-    : !selectable
-      ? `${team.name}, not selectable`
-      : `Pick the ${team.name}`;
+  // `selected` first: on a week you are only previewing, your own pick is not
+  // selectable, and announcing it as "not selectable" buries the one fact that
+  // matters — that this is the team you went with.
+  const label = selected
+    ? `${team.name}, your pick`
+    : used
+      ? `${team.name}, already used in Week ${used.week}`
+      : !selectable
+        ? `${team.name}, not selectable`
+        : `Pick the ${team.name}`;
 
   return (
     <label

@@ -12,11 +12,13 @@ import {
   REGULAR_WEEK,
   groupedWeekOptions,
   parseWeekKey,
+  sameWeek,
   weekKey,
   weekLabel,
   type WeekRef,
 } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "@/lib/league/games";
+import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "@/lib/league/picks";
 import type { LeagueData } from "@/lib/league/load";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
@@ -65,16 +67,38 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // the league-critical action; practice is one dropdown away and called out in
   // the banner.
   const [viewKey, setViewKey] = useState(() => weekKey(REGULAR_WEEK(currentWeek)));
-  const viewRef: WeekRef = parseWeekKey(viewKey) ?? REGULAR_WEEK(currentWeek);
+
+  // A week that has left the dropdown must not stay selected. Entry closing with
+  // the tab open drops `practice` to null while `viewKey` still reads "pre:N",
+  // and every lookup below then reads the REGULAR season's week N while the
+  // heading still says "Preseason N".
+  const optionKeys = useMemo(
+    () => new Set(weekGroups.flatMap((g) => g.options.map((o) => o.key))),
+    [weekGroups],
+  );
+  const selectedKey = optionKeys.has(viewKey) ? viewKey : weekKey(REGULAR_WEEK(currentWeek));
+  const viewRef: WeekRef = parseWeekKey(selectedKey) ?? REGULAR_WEEK(currentWeek);
   const viewingPractice = viewRef.seasonType === "pre" && practice !== null;
 
-  // One pick per phase, tracked separately — they are independent games.
-  // (This used to force null in preseason, which threw away a saved Week 1 pick on
-  // every reload even though the loader had populated it.)
-  const [regularPick, setRegularPick] = useState<TeamId | null>(me?.currentPick?.teamId ?? null);
-  const [practicePick, setPracticePick] = useState<TeamId | null>(
-    practiceMe?.currentPick?.teamId ?? null,
+  // Picks indexed by week across both phases, so this screen can answer "what
+  // did I pick for THIS week" and not merely "what is my pick right now".
+  //
+  // Derived from props rather than seeded into state: submitPick's
+  // revalidatePath refreshes this component's props WITHOUT remounting it, so a
+  // useState initializer never re-runs — which is how the pick stayed pinned to
+  // whichever week was live when the tab was first opened.
+  const serverPicks = useMemo(
+    () =>
+      viewerPicksByWeek({
+        history: me?.history,
+        currentPick: me?.currentPick ?? null,
+        practicePicks: practiceMe?.picks,
+      }),
+    [me, practiceMe],
   );
+  // The optimistic overlay, keyed by week so an in-flight pick can never be
+  // painted under a different week's label.
+  const [pendingPicks, setPendingPicks] = useState<PendingPicks>(() => new Map());
   const [pickError, setPickError] = useState<string | null>(null);
   const [saving, startTransition] = useTransition();
 
@@ -85,8 +109,13 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const activeIdx = viewingPractice && practiceIdx ? practiceIdx : idx;
   const liveWeek = viewingPractice && practice ? practice.currentWeek : currentWeek;
   const liveRef = viewingPractice ? PRE_WEEK(liveWeek) : REGULAR_WEEK(liveWeek);
-  const pickTeam = viewingPractice ? practicePick : regularPick;
-  const isCurrent = viewRef.week === liveWeek;
+  const liveName = weekLabel(liveRef, labelOpts);
+  // sameWeek, not a bare week-number compare: preseason week N is not regular
+  // week N, and conflating them let a preview render as though it were live.
+  const isCurrent = sameWeek(viewRef, liveRef);
+  // The pick for the week the dropdown names — not the phase's live week, which
+  // left the banner contradicting the schedule underneath it.
+  const pickTeam = pickForWeek(viewRef, serverPicks, pendingPicks);
 
   const games = useMemo(() => {
     const source = viewingPractice && practice ? practice.games : data.games;
@@ -106,19 +135,46 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // game has produced a result, and an unresolved pick still spends its team. With
   // no scorer running nothing resolves at all, so a history-based list would
   // re-offer spent teams and the database would reject the pick.
+  //
+  // The week on screen is excluded from its own used list: your pick there is a
+  // selection you may still replace, not a team you have spent. Same exclusion
+  // submitPick applies via practiceUsedTeams(me, { excludeWeek }) — without it
+  // the team the banner highlights also renders struck through as "Used · Wn".
   const usedByTeam = useMemo(() => {
     const entries: [TeamId, UsedPick][] = viewingPractice
-      ? (practiceMe?.picks ?? []).map((p) => [p.teamId, { week: p.week }])
-      : (me?.history ?? []).map((h) => [h.teamId, { week: h.week }]);
+      ? (practiceMe?.picks ?? [])
+          .filter((p) => p.week !== viewRef.week)
+          .map((p) => [p.teamId, { week: p.week }])
+      : (me?.history ?? [])
+          // A no-op today — history is weeks < currentWeek and the regular
+          // dropdown is forward-only — but kept symmetric with practice.
+          .filter((h) => h.week !== viewRef.week)
+          .map((h) => [h.teamId, { week: h.week }]);
     return new Map<TeamId, UsedPick>(entries);
-  }, [me, practiceMe, viewingPractice]);
+  }, [me, practiceMe, viewingPractice, viewRef.week]);
 
-  const pickGame = pickTeam ? activeIdx.gameForTeam(liveWeek, pickTeam) : undefined;
+  // The VIEWED week's fixture. Resolving it against liveWeek instead found that
+  // team's game in a completely different week and rendered its opponent,
+  // kickoff and countdown as fact — a matchup the member never picked.
+  const pickGame = pickTeam ? activeIdx.gameForTeam(viewRef.week, pickTeam) : undefined;
+
+  // Nothing left to count down to once a week's last kickoff has passed;
+  // countdown() answers "now" for a past target, so drop the line instead.
+  const weekDeadline = activeIdx.weekFinalKickoff(viewRef.week);
+  const viewDeadline = weekDeadline && weekDeadline > now ? weekDeadline : null;
 
   function handleSelect(teamId: TeamId) {
+    // A previewed week is read-only. WeekSchedule already refuses to fire, but
+    // the server derives the week itself: a slipped call would quietly write the
+    // live week while the screen names another one.
+    if (!isCurrent) return;
+
     const forPractice = viewingPractice;
-    const previous = forPractice ? practicePick : regularPick;
-    const set = forPractice ? setPracticePick : setRegularPick;
+    // Keyed to the live week — the only week submitPick will ever write.
+    const key = weekKey(liveRef);
+    const previous = pickForWeek(liveRef, serverPicks, pendingPicks);
+    const set = (team: TeamId | null) =>
+      setPendingPicks((m) => new Map(m).set(key, team));
 
     set(teamId); // optimistic
     setPickError(null);
@@ -165,12 +221,12 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       ) : null}
 
       <PickHero
-        weekName={weekLabel(liveRef, labelOpts)}
+        weekName={viewName}
         practice={viewingPractice}
         teamId={pickTeam}
         game={pickGame}
         now={now}
-        weekFinalKickoff={activeIdx.weekFinalKickoff(liveWeek)}
+        weekFinalKickoff={viewDeadline}
       />
 
       {pickError ? (
@@ -191,8 +247,12 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             <MonoLabel className="mb-1.5 block text-ink-mute">Change week</MonoLabel>
             <div className="relative">
               <select
-                value={viewKey}
-                onChange={(e) => setViewKey(e.target.value)}
+                value={selectedKey}
+                onChange={(e) => {
+                  setViewKey(e.target.value);
+                  // Don't leave one week's rejection hanging over the next.
+                  setPickError(null);
+                }}
                 className="w-full min-w-[9.5rem] appearance-none rounded-control border border-line bg-white px-3 py-2 pr-9 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
               >
                 {weekGroups.map((groupOpt, i) =>
@@ -223,7 +283,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         {!isCurrent ? (
           <p className="mb-2.5 text-xs text-ink-mute">
             Picks are open for{" "}
-            <span className="font-semibold text-ink-soft">{weekLabel(liveRef, labelOpts)}</span> only —
+            <span className="font-semibold text-ink-soft">{liveName}</span> only —
             you&apos;re previewing {viewName}. Used teams stay flagged so you can plan ahead.
           </p>
         ) : null}
@@ -250,7 +310,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           weekName={viewName}
           games={games}
           usedByTeam={usedByTeam}
-          selectedTeam={isCurrent ? pickTeam : null}
+          selectedTeam={pickTeam}
           interactive={isCurrent && !saving}
           now={now}
           onSelect={handleSelect}
