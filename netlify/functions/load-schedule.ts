@@ -38,7 +38,13 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../src/lib/supabase/types";
 import { getNflProvider } from "../../src/lib/providers";
 import { checkCronSecret } from "../../src/lib/cron-auth";
-import { fetchSchedule, summarize, upsertGames } from "../../src/lib/nfl/schedule";
+import {
+  alignEntryDeadlines,
+  fetchSchedule,
+  summarize,
+  upsertGames,
+  type AlignDeadlinesResult,
+} from "../../src/lib/nfl/schedule";
 import type { SeasonType } from "../../src/lib/nfl/types";
 
 function text(body: string, status = 200): Response {
@@ -95,8 +101,9 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   const startedAt = Date.now();
-  const supabase =
-    dryRun ? null : createClient<Database>(url, serviceKey, { auth: { persistSession: false } });
+  // Always create the client: a dry run still READS (to preview which leagues' entry
+  // deadlines would move). Writes are gated on `dryRun` at each call site instead.
+  const supabase = createClient<Database>(url, serviceKey, { auth: { persistSession: false } });
 
   // Write each week as it lands. A timeout then costs only the weeks not yet
   // reached, instead of discarding the entire walk.
@@ -108,7 +115,7 @@ export default async function handler(request: Request): Promise<Response> {
     seasonTypes,
     weeks,
     onWeek: async (outcome) => {
-      if (supabase && outcome.games.length > 0 && !writeError) {
+      if (!dryRun && outcome.games.length > 0 && !writeError) {
         const write = await upsertGames(supabase, outcome.games);
         upserted += write.upserted;
         if (write.error) {
@@ -165,7 +172,25 @@ export default async function handler(request: Request): Promise<Response> {
     lines.push("");
   }
 
+  // The first Week 1 kickoff, taken from what we just fetched. Deliberately NOT
+  // `summary.firstKickoff`, which is the earliest game of the whole load — the Hall
+  // of Fame game in August — and would close entry immediately if used as a deadline.
+  const week1Kickoff =
+    result.games
+      .filter((g) => g.seasonType === "regular" && g.week === 1)
+      .map((g) => g.kickoff)
+      .sort()
+      .at(0) ?? null;
+
   if (dryRun) {
+    // Preview the deadline change too, using the kickoff from the fetch — the games
+    // aren't in the database yet, so a query would find nothing on a first run.
+    const preview = await alignEntryDeadlines(supabase, season, new Date(), {
+      dryRun: true,
+      firstKickoff: week1Kickoff,
+    });
+    lines.push(...deadlineLines(preview, true));
+    lines.push("");
     lines.push(`Dry run complete in ${Date.now() - startedAt}ms. Nothing was written.`);
     lines.push("Remove &dry=1 to load these games.");
     return text(`${lines.join("\n")}\n`);
@@ -181,6 +206,13 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   lines.push(`Loaded ${upserted} games in ${Date.now() - startedAt}ms.`);
+  lines.push("");
+
+  // Point every league's entry deadline at the real first Week 1 kickoff. create_group
+  // defaults it to "seven days from now", and once that lapses join_by_invite refuses
+  // every new member with no way to reopen it from the app.
+  const aligned = await alignEntryDeadlines(supabase, season, new Date());
+  lines.push(...deadlineLines(aligned, false));
 
   // Never let a bounded run look like a complete one.
   if (result.stoppedEarly && result.skipped.length > 0) {
@@ -197,6 +229,59 @@ export default async function handler(request: Request): Promise<Response> {
   lines.push("The picks screen should now show every week. Scores and any schedule");
   lines.push("changes are picked up automatically from here on by poll-scores.");
   return text(`${lines.join("\n")}\n`);
+}
+
+/**
+ * Report the entry-deadline outcome. Every branch says something — a silent
+ * alignment is worse than none, because the deadline decides whether anyone can
+ * still join the league.
+ */
+function deadlineLines(result: AlignDeadlinesResult, preview: boolean): string[] {
+  const out: string[] = [];
+  const verb = preview ? "would be aligned" : "aligned";
+
+  if (result.error) {
+    out.push(`Entry deadlines: FAILED — ${result.error}`);
+    out.push("The schedule itself loaded fine. Re-open this link to retry the alignment.");
+    return out;
+  }
+
+  if (result.skipped === "no-week-1") {
+    out.push("Entry deadlines: skipped — no regular-season Week 1 games loaded yet.");
+    if (preview) out.push("Load the regular season and this will report properly.");
+    return out;
+  }
+
+  if (result.skipped === "season-started") {
+    out.push(
+      `Entry deadlines: left alone — Week 1 has already kicked off (${result.firstKickoff}).`,
+    );
+    out.push("Moving a deadline forward now would reopen entry on a season in progress.");
+    return out;
+  }
+
+  if (result.changed.length === 0) {
+    out.push(
+      `Entry deadlines: already correct (${result.alreadyAligned} league${
+        result.alreadyAligned === 1 ? "" : "s"
+      } checked).`,
+    );
+    return out;
+  }
+
+  out.push(`Entry deadlines ${verb} to the first Week 1 kickoff:`);
+  for (const c of result.changed) {
+    out.push(`  "${c.name}"  ${c.from}  →  ${c.to}`);
+  }
+  out.push(
+    `${result.changed.length} league${result.changed.length === 1 ? "" : "s"} ${
+      preview ? "would be updated" : "updated"
+    }${result.alreadyAligned > 0 ? `, ${result.alreadyAligned} already correct` : ""}.`,
+  );
+  if (!preview) {
+    out.push("New members can now join right up until the season actually starts.");
+  }
+  return out;
 }
 
 /** `1-6` or `1,2,3` → week numbers. Returns null on anything unparseable. */

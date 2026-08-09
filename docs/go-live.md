@@ -179,11 +179,27 @@ First kickoff: 2026-08-07T00:00:00.000Z
 Last kickoff:  2027-01-04T01:15:00.000Z
 
 Loaded 321 games in 6480ms.
+
+Entry deadlines aligned to the first Week 1 kickoff:
+  "Group Name"  2026-08-15T17:33:00.000Z  →  2026-09-10T00:20:00.000Z
+1 league updated.
+New members can now join right up until the season actually starts.
 ```
 
 **The numbers to sanity-check:** 272 regular-season games (that's the real total, every
 year); preseason around 49 across 4 weeks, with week 1 holding just the single Hall of
 Fame game; first kickoff in early August, last in early January.
+
+**About that last block.** `create_group` sets a league's entry deadline to "seven days
+from now", because when a league is created there's no schedule to read a real date from.
+That's a problem: once the deadline passes, `join_by_invite` refuses every new member
+permanently, and there's no way to reopen it from the app. So the loader now repairs it —
+it points every league's deadline at the real first Week 1 kickoff.
+
+It only ever does this while Week 1 is still in the future. Once the season has genuinely
+started, deadlines are left alone; moving one forward then would reopen entry on a league
+in progress. If it reports *"left alone — Week 1 has already kicked off"* or *"no
+regular-season Week 1 games loaded yet"*, that's it declining on purpose, not failing.
 
 **If it says `STOPPED EARLY`** — not a failure. It ran out of time and stopped cleanly.
 Everything it listed **is saved**; open the same link again and it resumes. Repeating is
@@ -195,6 +211,10 @@ always safe. You can also split the job with `&phase=pre` and `&phase=regular`.
 
 Open the app, sign in, go to **My Picks**:
 
+- [ ] The header countdown points at **September**, not next week. If it says something
+      like "Starts in 6d", the entry deadline is still the stale seven-day default — see
+      the note at the end of Step 3. This is the check worth doing first: a wrong deadline
+      locks new members out of the league entirely.
 - [ ] The **Change week** dropdown has two labelled groups — *Preseason* (Hall of Fame,
       Preseason 1–3) and *Regular Season* (Week 1–18).
 - [ ] Any week shows real matchups with sensible kickoff times in your timezone.
@@ -219,6 +239,8 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | "Schedule not yet released" on every week | Step 3 hasn't succeeded yet; the `games` table is empty. |
 | `No games returned` | ESPN returned nothing. Usually temporary. If it persists, their feed may have changed shape. |
 | Scores never update after a game ends | The five-minute job isn't running. Check `SUPABASE_SERVICE_ROLE_KEY` is set and the site has redeployed since. |
+| Header counts down to next week, not September | The entry deadline is the stale `create_group` default. Re-open the loader link — it repairs this. |
+| An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. |
 
 When reporting a problem, include the exact text you're seeing (copy-paste beats a
 description), which step you were on, and what you expected. **Never include the

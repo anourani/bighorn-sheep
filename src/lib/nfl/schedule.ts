@@ -244,6 +244,133 @@ export async function upsertGames(
   return { upserted };
 }
 
+export interface DeadlineChange {
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+}
+
+export interface AlignDeadlinesResult {
+  /** First regular-season Week 1 kickoff, or null when none is loaded. */
+  firstKickoff: string | null;
+  changed: DeadlineChange[];
+  /** How many groups in the season were already correct. */
+  alreadyAligned: number;
+  /** Set when nothing was attempted, with the reason. */
+  skipped: "no-week-1" | "season-started" | null;
+  error?: string;
+}
+
+/**
+ * Point every league's entry deadline at the real first Week 1 kickoff.
+ *
+ * `groups.entry_closes_at` is documented as "first kickoff of Week 1"
+ * (0001_init.sql:54) and relied on as that throughout — but `create_group` defaults
+ * it to `now() + interval '7 days'` and nothing ever corrected it. A league created
+ * in August therefore closed its own entry a week later, and `join_by_invite`
+ * (0002:74) refuses outright once that moment passes: nobody can join, ever, with no
+ * override in the app. It also ends the preseason practice round early and swaps the
+ * roster screen for an empty standings grid.
+ *
+ * Called by the schedule loader, which is the moment the correct value becomes
+ * knowable. Re-running it re-aligns, so an NFL change to the opener is self-healing.
+ *
+ * TWO THINGS THIS MUST GET RIGHT:
+ *
+ * 1. `season_type = 'regular' and week = 1` — not simply the earliest game of the
+ *    load. A full load's first kickoff is the Hall of Fame game in early August, and
+ *    using it would set the deadline to a date already in the past and close entry
+ *    instantly. `sim-advance.ts` carries a comment about falling into exactly this.
+ *
+ * 2. Only act while `now < firstKickoff`. Once the real Week 1 has kicked off, the
+ *    season has genuinely begun and pushing the deadline forward would reopen entry
+ *    and resurrect practice for a live league. Note the test is against the REAL
+ *    kickoff, not the stored value — so a deadline that has already lapsed wrongly
+ *    still gets repaired, which is the case that matters for anyone who runs the
+ *    loader late.
+ *
+ * Runs with the service role, so RLS and `settings_locked_at` don't apply. That is
+ * intended: this is a data-correctness repair, not an admin settings change.
+ */
+export interface AlignDeadlinesOptions {
+  /** Report what would change without writing. */
+  dryRun?: boolean;
+  /**
+   * Use this kickoff instead of querying for it. The loader passes the value from
+   * the games it just fetched, so a dry run can preview the change before those
+   * games exist in the database. Omit it and the database is authoritative — which
+   * is what a real run wants, since a resumed load may not have re-fetched Week 1.
+   */
+  firstKickoff?: string | null;
+}
+
+export async function alignEntryDeadlines(
+  supabase: DB,
+  season: number,
+  now: Date = new Date(),
+  opts: AlignDeadlinesOptions = {},
+): Promise<AlignDeadlinesResult> {
+  const empty = { firstKickoff: null, changed: [], alreadyAligned: 0 };
+
+  let firstKickoff = opts.firstKickoff ?? null;
+  if (!firstKickoff) {
+    const { data: week1, error: gamesErr } = await supabase
+      .from("games")
+      .select("kickoff")
+      .eq("season", season)
+      .eq("season_type", "regular")
+      .eq("week", 1)
+      .order("kickoff", { ascending: true })
+      .limit(1);
+    if (gamesErr) return { ...empty, skipped: null, error: gamesErr.message };
+    firstKickoff = week1?.[0]?.kickoff ?? null;
+  }
+
+  if (!firstKickoff) return { ...empty, skipped: "no-week-1" };
+
+  if (new Date(firstKickoff).getTime() <= now.getTime()) {
+    return { firstKickoff, changed: [], alreadyAligned: 0, skipped: "season-started" };
+  }
+
+  const { data: groups, error: groupsErr } = await supabase
+    .from("groups")
+    .select("id, name, entry_closes_at")
+    .eq("season", season);
+  if (groupsErr) {
+    return { firstKickoff, changed: [], alreadyAligned: 0, skipped: null, error: groupsErr.message };
+  }
+
+  const changed: DeadlineChange[] = [];
+  let alreadyAligned = 0;
+
+  for (const group of groups ?? []) {
+    // Compare as instants: Postgres may hand back a different string form of the
+    // same moment (offset vs Z, differing fractional-second precision).
+    if (new Date(group.entry_closes_at).getTime() === new Date(firstKickoff).getTime()) {
+      alreadyAligned += 1;
+      continue;
+    }
+    if (!opts.dryRun) {
+      const { error } = await supabase
+        .from("groups")
+        .update({ entry_closes_at: firstKickoff })
+        .eq("id", group.id);
+      if (error) {
+        return { firstKickoff, changed, alreadyAligned, skipped: null, error: error.message };
+      }
+    }
+    changed.push({
+      id: group.id,
+      name: group.name,
+      from: group.entry_closes_at,
+      to: firstKickoff,
+    });
+  }
+
+  return { firstKickoff, changed, alreadyAligned, skipped: null };
+}
+
 export interface ScheduleSummaryLine {
   seasonType: SeasonType;
   week: number;
