@@ -44,11 +44,22 @@ where conrelid = 'public.picks'::regclass and contype = 'u';
 If those are the two, carry on. **If the names differ, or there are more than two,
 stop** — the migration drops these by name and would need adjusting first.
 
-4. Open `supabase/migrations/0006_preseason_picks.sql`. If you don't have the repo
-   locally, go to the PR's **Files changed** tab, find that file, and use its
-   **Copy raw file** button.
-5. Back in Supabase: **+ New query**, paste the **whole file** (~130 lines, mostly
-   comments), **Run**.
+4. Get the contents of `supabase/migrations/0006_preseason_picks.sql`.
+
+   **Not** from the PR's *Files changed* tab — that shows a diff, with a `+` at the
+   start of every line, which Postgres will reject. Open the **file itself** instead:
+
+   ```
+   github.com/<owner>/<repo>/blob/<branch>/supabase/migrations/0006_preseason_picks.sql
+   ```
+
+   On that page, the grey toolbar directly above the code has three small icons on
+   its right-hand side. The middle one — two overlapping squares, tooltip
+   **"Copy raw file"** — copies all 129 lines cleanly. (The `Raw` link also works:
+   it opens the plain text, then select all and copy.)
+
+5. Back in Supabase: **+ New query**, paste the **whole file** (129 lines, most of
+   them explanatory comments — the actual changes are about 20), **Run**.
 
 **You should see** `Success. No rows returned.` That *is* success for this kind of
 change — there's nothing to display. Running it twice is harmless; it's written to be
