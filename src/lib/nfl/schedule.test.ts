@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { fetchSchedule, gameToRow, pollTargets, summarize, weeksFor } from "./schedule";
+import {
+  alignEntryDeadlines,
+  fetchSchedule,
+  gameToRow,
+  pollTargets,
+  summarize,
+  weeksFor,
+} from "./schedule";
 import type { NflProvider, WeekQuery } from "../providers/types";
 import type { Game, SeasonType } from "./types";
 
@@ -346,5 +353,204 @@ describe("pollTargets", () => {
     expect(targets.filter((t) => t.seasonType === "regular")).toEqual([
       { seasonType: "regular", week: 1 },
     ]);
+  });
+});
+
+// ── alignEntryDeadlines ──────────────────────────────────────────────────────
+
+/**
+ * A stub standing in for the two queries alignEntryDeadlines makes: a filtered,
+ * ordered read of `games`, and a read plus per-row update of `groups`. The repo has
+ * no database-test harness, and building one for two statements would cost more
+ * than it explains.
+ */
+interface StubGroup {
+  id: string;
+  name: string;
+  entry_closes_at: string;
+  season: number;
+}
+
+function stubDb(opts: { week1Kickoffs?: string[]; groups?: StubGroup[] }) {
+  const updates: { id: string; entry_closes_at: string }[] = [];
+  const groups = opts.groups ?? [];
+
+  const chain = (rows: unknown[]) => {
+    const self: Record<string, unknown> = {};
+    // Every filter/order call returns the same object; only the awaited value matters.
+    for (const m of ["select", "eq", "order", "limit"]) {
+      self[m] = () => self;
+    }
+    self.then = (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
+      resolve({ data: rows, error: null });
+    return self;
+  };
+
+  const db = {
+    from(table: string) {
+      if (table === "games") {
+        return chain((opts.week1Kickoffs ?? []).map((kickoff) => ({ kickoff })));
+      }
+      if (table === "groups") {
+        return {
+          select: () => ({
+            eq: (_col: string, season: number) =>
+              chain(groups.filter((g) => g.season === season)),
+          }),
+          update: (patch: { entry_closes_at: string }) => ({
+            eq: (_col: string, id: string) => {
+              updates.push({ id, entry_closes_at: patch.entry_closes_at });
+              return Promise.resolve({ error: null });
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+
+  // The real signature is SupabaseClient<Database>; the stub only implements the
+  // fragment this function touches.
+  return { db: db as unknown as Parameters<typeof alignEntryDeadlines>[0], updates };
+}
+
+const WEEK1 = "2026-09-10T00:20:00.000Z";
+const BEFORE_SEASON = new Date("2026-08-09T00:00:00.000Z");
+
+describe("alignEntryDeadlines", () => {
+  /*
+   * The bug: create_group defaults entry_closes_at to `now() + 7 days`, so a league
+   * created in August closed its own entry a week later — and join_by_invite then
+   * refuses every new member permanently, with no override in the app.
+   */
+  it("moves a stale creation+7d deadline onto the real Week 1 kickoff", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1, "2026-09-13T17:00:00.000Z"],
+      groups: [
+        { id: "g1", name: "Group Name", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 },
+      ],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.skipped).toBeNull();
+    expect(res.firstKickoff).toBe(WEEK1);
+    expect(res.changed).toEqual([
+      { id: "g1", name: "Group Name", from: "2026-08-15T17:33:00.000Z", to: WEEK1 },
+    ]);
+    expect(updates).toEqual([{ id: "g1", entry_closes_at: WEEK1 }]);
+  });
+
+  it("leaves an already-correct league untouched", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [{ id: "g1", name: "Correct", entry_closes_at: WEEK1, season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.changed).toEqual([]);
+    expect(res.alreadyAligned).toBe(1);
+    expect(updates).toEqual([]);
+  });
+
+  // Postgres may return a different string form of the same instant.
+  it("compares instants, not strings", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [
+        { id: "g1", name: "Same moment", entry_closes_at: "2026-09-10T02:20:00+02:00", season: 2026 },
+      ],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+    expect(res.alreadyAligned).toBe(1);
+    expect(updates).toEqual([]);
+  });
+
+  // Safe to call after a `&phase=pre` load, or one that stopped before Week 1.
+  it("does nothing when no regular Week 1 games are loaded", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [],
+      groups: [{ id: "g1", name: "Group", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.skipped).toBe("no-week-1");
+    expect(res.firstKickoff).toBeNull();
+    expect(updates).toEqual([]);
+  });
+
+  /*
+   * The guard that matters most. Once Week 1 has genuinely kicked off, pushing a
+   * deadline forward would reopen entry and resurrect the practice round on a live
+   * league. Note it keys off the REAL kickoff, not the stored value.
+   */
+  it("refuses to touch anything once Week 1 has kicked off", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [{ id: "g1", name: "Live league", entry_closes_at: WEEK1, season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, new Date("2026-10-01T00:00:00.000Z"));
+
+    expect(res.skipped).toBe("season-started");
+    expect(updates).toEqual([]);
+  });
+
+  it("still repairs a deadline that lapsed early, as long as Week 1 is still ahead", async () => {
+    // Someone runs the loader on Aug 20 — the stale Aug 15 deadline has already
+    // passed and entry is wrongly shut, but the season hasn't started.
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [{ id: "g1", name: "Frozen", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, new Date("2026-08-20T00:00:00.000Z"));
+
+    expect(res.skipped).toBeNull();
+    expect(updates).toEqual([{ id: "g1", entry_closes_at: WEEK1 }]);
+  });
+
+  it("only touches leagues in the requested season", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [
+        { id: "now", name: "This year", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 },
+        { id: "old", name: "Last year", entry_closes_at: "2025-09-05T00:20:00.000Z", season: 2025 },
+      ],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.changed.map((c) => c.id)).toEqual(["now"]);
+    expect(updates.map((u) => u.id)).toEqual(["now"]);
+  });
+
+  it("reports what it would change without writing, on a dry run", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1],
+      groups: [{ id: "g1", name: "Group", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON, { dryRun: true });
+
+    expect(res.changed).toHaveLength(1);
+    expect(updates).toEqual([]);
+  });
+
+  // The loader passes this so a dry run can preview before the games are written.
+  it("accepts a kickoff hint instead of querying", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [], // nothing in the database yet
+      groups: [{ id: "g1", name: "Group", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 }],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON, { firstKickoff: WEEK1 });
+
+    expect(res.skipped).toBeNull();
+    expect(res.firstKickoff).toBe(WEEK1);
+    expect(updates).toEqual([{ id: "g1", entry_closes_at: WEEK1 }]);
   });
 });
