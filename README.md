@@ -18,7 +18,8 @@ This is the **v1 foundation**: a fully-built, installable app with all four scre
 | Postgres schema + RLS pick-privacy | ✅ Written (`supabase/migrations`) |
 | Scheduled scorer (Netlify function) | ✅ Written, env-gated |
 | Supabase Auth + live queries in the UI | ✅ Wired — screens read the signed-in player's data |
-| Pre-season dry-run harness | ✅ Seed a test weekend + fast-forward it ([docs/dry-run.md](docs/dry-run.md)) |
+| Turning the season on | ✅ Step-by-step operator guide ([docs/go-live.md](docs/go-live.md)) |
+| Elimination testing harness | ✅ Force a specific result on demand ([docs/dry-run.md](docs/dry-run.md)) |
 
 ---
 
@@ -122,17 +123,19 @@ The From address on magic-link emails comes entirely from **Authentication → E
 
 The screens read live data server-side through `src/lib/league/load.ts` (RLS-scoped to the signed-in user) and pass it into the client UI; writes go through the server actions in `src/app/app/actions.ts`. Without env vars the middleware leaves the app un-gated — but the `/app` screens need a session, so set Supabase up to use them.
 
-### Try the whole loop before the season — the dry-run harness
+### Rehearsing the loop
 
-You don't have to wait for a real NFL game to test picks and eliminations end-to-end. Seed a controllable **test weekend** and fast-forward it with a real group of friends. See **[docs/dry-run.md](docs/dry-run.md)**; in short:
+For an ordinary rehearsal, use the **preseason practice round** — the Preseason entries in the week dropdown run pick → lock → reveal → result → elimination against real NFL games, and everything resets at Week 1. No scripts needed.
+
+The harness in **[docs/dry-run.md](docs/dry-run.md)** is for what real football can't do on cue: **forcing a specific result, right now.** It's how you drive an elimination or a whole-group wipeout deliberately, and it's the only caller of `recomputeSeason` outside production — so it's currently the only way to prove the elimination write path works.
 
 ```bash
-npm run seed:test-week -- --week 1 --kickoff-in 15 --group YOUR-CODE   # a pickable slate
-npm run sim -- --week 1 --phase kickoff --group YOUR-CODE              # lock + reveal picks
-npm run sim -- --week 1 --phase final --winners kc,dal --group YOUR-CODE  # results + eliminations
+npm run seed:test-week -- --week 18 --kickoff-in 15 --group YOUR-CODE   # a pickable slate
+npm run sim -- --week 18 --phase kickoff --group YOUR-CODE              # lock + reveal picks
+npm run sim -- --week 18 --phase final --winners kc,dal --group YOUR-CODE  # results + eliminations
 ```
 
-`sim` recomputes standings through the same engine the production scorer uses (`src/lib/game/score.ts`).
+Seed a week the league hasn't published — the seeder refuses to fabricate games on top of a real slate, and `sim` only advances rows it seeded. Always pass `--group`, which scopes the recompute to one league.
 
 ### The NFL data provider is swappable
 
