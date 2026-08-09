@@ -2,10 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { PickHero } from "@/components/picks/PickHero";
+import { WeekPicker } from "@/components/picks/WeekPicker";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
-import { ChevronDownIcon, InfoIcon } from "@/components/icons";
+import { InfoIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import {
   PRE_WEEK,
@@ -200,6 +201,19 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
 
   return (
     <div className="stagger space-y-4">
+      {/* `selectedKey`, not raw `viewKey` — a week that has dropped out of the
+          options must not stay selected. See the sanitising above. */}
+      <WeekPicker
+        title={viewName}
+        groups={weekGroups}
+        value={selectedKey}
+        onChange={(key) => {
+          setViewKey(key);
+          // Don't leave one week's rejection hanging over the next.
+          setPickError(null);
+        }}
+      />
+
       {isPreseason ? (
         <div className="rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
           <Label className="text-[#8A4A24]">Pre-season</Label>
@@ -210,9 +224,9 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           </p>
           {practice ? (
             <p className="mt-2 text-sm leading-relaxed text-ink">
-              Want a dry run first? Switch the week dropdown to{" "}
-              <span className="font-semibold">Preseason</span> and play the practice round. It works
-              exactly like the real thing — a wrong pick strikes you — but{" "}
+              Want a dry run first? Use <span className="font-semibold">Change week</span> above to
+              switch to a <span className="font-semibold">Preseason</span> week and play the
+              practice round. It works exactly like the real thing — a wrong pick strikes you — but{" "}
               <span className="font-semibold">everything resets for Week 1</span>: strikes clear,
               eliminated players come back, and every team is available again.
             </p>
@@ -237,48 +251,9 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       ) : null}
 
       <div>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <Label className="text-ink-mute">{viewName}</Label>
-            <h2 className="mt-0.5 text-sm font-semibold text-ink">Schedule</h2>
-          </div>
-
-          <label className="block">
-            <Label className="mb-1.5 block text-ink-mute">Change week</Label>
-            <div className="relative">
-              <select
-                value={selectedKey}
-                onChange={(e) => {
-                  setViewKey(e.target.value);
-                  // Don't leave one week's rejection hanging over the next.
-                  setPickError(null);
-                }}
-                className="w-full min-w-[9.5rem] appearance-none rounded-control border border-line bg-white px-3 py-2 pr-9 text-sm font-medium text-ink transition-colors focus-visible:border-brand-strong focus-visible:outline-none"
-              >
-                {weekGroups.map((groupOpt, i) =>
-                  groupOpt.label === null ? (
-                    groupOpt.options.map((o) => (
-                      <option key={o.key} value={o.key}>
-                        {o.label}
-                        {o.isCurrent ? " · current" : ""}
-                      </option>
-                    ))
-                  ) : (
-                    <optgroup key={groupOpt.label ?? i} label={groupOpt.label}>
-                      {groupOpt.options.map((o) => (
-                        <option key={o.key} value={o.key}>
-                          {o.label}
-                          {o.isCurrent ? " · current" : ""}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ),
-                )}
-              </select>
-              <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
-            </div>
-          </label>
-        </div>
+        {/* Replaces the visible "Schedule" heading the week picker absorbed, so
+            heading-jump navigation still reaches the grid. */}
+        <h2 className="sr-only">Schedule</h2>
 
         {!isCurrent ? (
           <p className="mb-2.5 text-xs text-ink-mute">
