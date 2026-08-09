@@ -24,9 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../src/lib/supabase/types";
 import { getNflProvider } from "../../src/lib/providers";
 import { recomputeSeason } from "../../src/lib/game/score";
-import { resolveWeekFromKickoffs } from "../../src/lib/game/season";
-import { upsertGames } from "../../src/lib/nfl/schedule";
-import { FINAL_WEEK } from "../../src/lib/nfl/calendar";
+import { pollTargets, upsertGames } from "../../src/lib/nfl/schedule";
 import type { Game, SeasonType } from "../../src/lib/nfl/types";
 
 export const config = {
@@ -41,61 +39,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-interface WeekTarget {
-  seasonType: SeasonType;
-  week: number;
-}
-
-/**
- * Which weeks to poll right now.
- *
- * Regular season: the live week plus the one before it. The previous week matters
- * because a Monday-night game finishes after the next week's Thursday opener has
- * already moved `currentWeek` forward — poll only the live week and that final
- * score never lands, leaving a member's result permanently "pending".
- *
- * Preseason: polled only while the regular season hasn't started, and all of its
- * weeks at once. There are at most four and they are the whole practice round.
- */
-export function pollTargets(
-  rows: { season_type: SeasonType; week: number; kickoff: string }[],
-  now: Date,
-): WeekTarget[] {
-  const regular = rows.filter((r) => r.season_type === "regular");
-  const pre = rows.filter((r) => r.season_type === "pre");
-
-  const firstRegularKickoff = regular.reduce<string | null>(
-    (min, r) => (min === null || r.kickoff < min ? r.kickoff : min),
-    null,
-  );
-  const regularStarted =
-    firstRegularKickoff !== null && new Date(firstRegularKickoff).getTime() <= now.getTime();
-
-  const targets: WeekTarget[] = [];
-
-  if (!regularStarted && pre.length > 0) {
-    const weeks = [...new Set(pre.map((r) => r.week))].sort((a, b) => a - b);
-    for (const week of weeks) targets.push({ seasonType: "pre", week });
-  }
-
-  const currentWeek = resolveWeekFromKickoffs(regular, now, FINAL_WEEK);
-  if (currentWeek > 1) targets.push({ seasonType: "regular", week: currentWeek - 1 });
-  targets.push({ seasonType: "regular", week: currentWeek });
-
-  return targets;
-}
-
-/*
- * Not secret-gated, and that is a considered choice rather than an oversight.
- * Netlify's scheduled invocations cannot send a custom header, so a secret check
- * here would either break the cron or have to be waived on a client-supplied
- * `user-agent` — which anyone can forge, making it theatre. See src/lib/cron-auth.ts.
- *
- * What makes that acceptable is idempotency: this reads ESPN and recomputes
- * standings from real results, so an unwanted trigger costs function minutes and
- * nothing else. `load-schedule`, which is expensive and on-demand, does require the
- * secret.
- */
 export default async function handler(): Promise<Response> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

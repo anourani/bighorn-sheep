@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../supabase/types";
 import type { NflProvider } from "../providers/types";
+import { resolveWeekFromKickoffs } from "../game/season";
+import { FINAL_WEEK } from "./calendar";
 import { getTeam } from "./teams";
 import type { Game, SeasonType } from "./types";
 
@@ -74,6 +76,50 @@ export interface FetchScheduleResult {
 export interface WeekTarget {
   seasonType: SeasonType;
   week: number;
+}
+
+/**
+ * Which weeks the scheduled scorer should poll right now.
+ *
+ * Regular season: the live week plus the one before it. The previous week matters
+ * because a Monday-night game finishes after the next week's Thursday opener has
+ * already moved `currentWeek` forward — poll only the live week and that final
+ * score never lands, leaving a member's result permanently "pending".
+ *
+ * Preseason: polled only while the regular season hasn't started, and all of its
+ * weeks at once. There are at most four and they are the whole practice round.
+ *
+ * Lives here rather than beside the Netlify function because every file in
+ * `netlify/functions/` is deployed AS a function, so a `*.test.ts` next to one
+ * fails the whole build ("Incorrect function names" — the period is illegal).
+ * Pure logic belongs in src/lib, where it can be tested without that constraint.
+ */
+export function pollTargets(
+  rows: { season_type: SeasonType; week: number; kickoff: string }[],
+  now: Date,
+): WeekTarget[] {
+  const regular = rows.filter((r) => r.season_type === "regular");
+  const pre = rows.filter((r) => r.season_type === "pre");
+
+  const firstRegularKickoff = regular.reduce<string | null>(
+    (min, r) => (min === null || r.kickoff < min ? r.kickoff : min),
+    null,
+  );
+  const regularStarted =
+    firstRegularKickoff !== null && new Date(firstRegularKickoff).getTime() <= now.getTime();
+
+  const targets: WeekTarget[] = [];
+
+  if (!regularStarted && pre.length > 0) {
+    const weeks = [...new Set(pre.map((r) => r.week))].sort((a, b) => a - b);
+    for (const week of weeks) targets.push({ seasonType: "pre", week });
+  }
+
+  const currentWeek = resolveWeekFromKickoffs(regular, now, FINAL_WEEK);
+  if (currentWeek > 1) targets.push({ seasonType: "regular", week: currentWeek - 1 });
+  targets.push({ seasonType: "regular", week: currentWeek });
+
+  return targets;
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
