@@ -53,6 +53,14 @@ const config: Config = {
         // Inline text links. The only blue in the palette — deliberately not a
         // status hue, so it never competes with the orange accent.
         link: "#151E9D",
+        // Neutral fills for flat cards and rows on the white page — the light
+        // counterpart to the `surface` slate family. `soft` reads as a raised
+        // tile against white (league cards, secondary buttons); `raised` is the
+        // barely-there wash used for grouped setting rows.
+        fill: {
+          soft: "#F3F3F3",
+          raised: "#FAFAFA",
+        },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },

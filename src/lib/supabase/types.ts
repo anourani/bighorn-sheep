@@ -13,6 +13,8 @@ export interface Database {
           first_name: string;
           last_name: string;
           avatar_url: string | null;
+          /** One of src/lib/profile/animals.ts — validated in the action, not by a constraint. */
+          favorite_animal: string | null;
           created_at: string;
         };
         Insert: {
@@ -20,6 +22,7 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
+          favorite_animal?: string | null;
           created_at?: string;
         };
         Update: {
@@ -27,7 +30,31 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
+          favorite_animal?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      /**
+       * Private per-user fields, split out of world-readable `profiles` in 0008.
+       * RLS: readable by the owner and by admins of leagues the owner belongs to
+       * (via is_admin_for_member); writable only by the owner. Queries against it
+       * come back filtered, not erroring — select .in(...) a list of ids and you
+       * receive only the rows you're entitled to.
+       */
+      profile_private: {
+        Row: {
+          id: string;
+          /** Optional; free text, never parsed or dialled. */
+          phone: string | null;
+        };
+        Insert: {
+          id: string;
+          phone?: string | null;
+        };
+        Update: {
+          id?: string;
+          phone?: string | null;
         };
         Relationships: [];
       };
@@ -68,6 +95,13 @@ export interface Database {
           status: "alive" | "eliminated";
           strikes: number;
           eliminated_week: number | null;
+          /**
+           * Whether the admin has marked this member's league buy-in as paid.
+           * Writable only through the set_member_buy_in RPC — group_members has
+           * no UPDATE policy, so a direct .update() is silently a no-op.
+           */
+          buy_in_paid: boolean;
+          buy_in_paid_at: string | null;
           joined_at: string;
         };
         Insert: {
@@ -78,6 +112,8 @@ export interface Database {
           status?: "alive" | "eliminated";
           strikes?: number;
           eliminated_week?: number | null;
+          buy_in_paid?: boolean;
+          buy_in_paid_at?: string | null;
           joined_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["group_members"]["Insert"]>;
@@ -152,6 +188,8 @@ export interface Database {
       account_exists: { Args: { p_email: string }; Returns: boolean };
       is_group_member: { Args: { gid: string }; Returns: boolean };
       is_group_admin: { Args: { gid: string }; Returns: boolean };
+      /** 0008: is the caller an admin of any league p_user_id belongs to? */
+      is_admin_for_member: { Args: { p_user_id: string }; Returns: boolean };
       join_by_invite: {
         Args: { p_code: string };
         Returns: Database["public"]["Tables"]["groups"]["Row"];
@@ -178,6 +216,15 @@ export interface Database {
       hidden_picks_for_week: {
         Args: { p_group_id: string; p_season_type: "pre" | "regular" | "post"; p_week: number };
         Returns: string[];
+      };
+      /**
+       * Admin-only buy-in write, added in 0007. SECURITY DEFINER because
+       * group_members has no UPDATE policy at all; the function re-checks
+       * is_group_admin() itself and raises `not_admin` otherwise.
+       */
+      set_member_buy_in: {
+        Args: { p_group_id: string; p_user_id: string; p_paid: boolean };
+        Returns: Database["public"]["Tables"]["group_members"]["Row"];
       };
       invite_preview: {
         Args: { p_code: string };

@@ -59,10 +59,23 @@ export interface Member {
   firstName: string;
   lastName: string;
   avatarUrl: string | null;
+  /**
+   * Phone number, or null. Null means EITHER unset OR withheld: RLS on
+   * profile_private returns rows only to the owner and to admins of the
+   * member's leagues, so for everyone else this is null by construction —
+   * no client-side gating needed, and none possible.
+   */
+  phone: string | null;
   role: Role;
   status: MemberStatus;
   /** Losses accrued (0..allowance). */
   strikes: number;
+  /**
+   * Whether the league admin has marked this member's buy-in as paid. Purely
+   * informative to the member — only an admin can change it, via the
+   * set_member_buy_in RPC.
+   */
+  buyInPaid: boolean;
   eliminatedWeek?: number | null;
   history: HistoryPick[];
   currentPick?: CurrentPick | null;

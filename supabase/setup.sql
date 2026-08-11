@@ -10,6 +10,9 @@
 --   supabase/migrations/0004_profile_names_avatars.sql
 --   supabase/migrations/0005_invite_code_without_pgcrypto.sql (folded into
 --     create_group below, so this bundle needs no separate 0005 section)
+--   supabase/migrations/0006_preseason_picks.sql
+--   supabase/migrations/0007_profile_extras_and_buy_in.sql
+--   supabase/migrations/0008_private_profile_fields.sql
 -- Edit those, not this file. Run once on a fresh project.
 -- ============================================================================
 
@@ -587,3 +590,267 @@ drop policy if exists "avatars delete own" on storage.objects;
 create policy "avatars delete own" on storage.objects
   for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+
+-- Last Man Standing — make picks season-type aware, so the NFL preseason can be
+-- a live practice round that resets completely at Week 1.
+--
+-- `picks` gains season_type, and both survival invariants are re-scoped to it.
+-- The second one IS the "everything resets at Week 1" rule: preseason and
+-- regular season keep entirely separate used-team lists, so all 32 teams are
+-- available again when the real season starts.
+--
+-- No RLS change is required. Every picks policy (0001) keys on `game_id` alone
+-- and never references `picks.week`.
+--
+-- Preseason elimination state is deliberately NOT stored. group_members.status,
+-- .strikes and .eliminated_week stay exclusively regular-season; the app derives
+-- preseason standing at read time. That is what makes the Week 1 reset need no
+-- reset job at all.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1. picks.season_type
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.picks
+  add column if not exists season_type text not null default 'regular';
+
+-- Separate statement so a re-run doesn't fail on a duplicate constraint name.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.picks'::regclass and conname = 'picks_season_type_check'
+  ) then
+    alter table public.picks
+      add constraint picks_season_type_check
+      check (season_type in ('pre', 'regular', 'post'));
+  end if;
+end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. Re-scope the two survival invariants to (season_type, ...)
+--
+-- The originals were declared inline above as table-level `unique (...)`, so
+-- PostgreSQL auto-named them `picks_group_id_user_id_week_key` and
+-- `picks_group_id_user_id_team_id_key`.
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.picks drop constraint if exists picks_group_id_user_id_week_key;
+alter table public.picks drop constraint if exists picks_group_id_user_id_team_id_key;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.picks'::regclass and conname = 'picks_one_per_week'
+  ) then
+    -- One pick per member per week, per phase.
+    alter table public.picks
+      add constraint picks_one_per_week unique (group_id, user_id, season_type, week);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.picks'::regclass and conname = 'picks_team_once_per_phase'
+  ) then
+    -- A team may be used once per phase — so preseason practice does not consume
+    -- a team for the regular season.
+    alter table public.picks
+      add constraint picks_team_once_per_phase unique (group_id, user_id, season_type, team_id);
+  end if;
+end $$;
+
+create index if not exists picks_group_phase_week_idx
+  on public.picks (group_id, season_type, week);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. hidden_picks_for_week — the season-type-aware sibling of
+--    hidden_pick_user_ids(uuid, int) above.
+--
+-- The older version is left in place: it has already run against real databases,
+-- and rewriting an applied migration is how this repo has broken itself before.
+-- A distinct name rather than an overload also keeps supabase.rpc() unambiguous.
+-- ─────────────────────────────────────────────────────────────────────────────
+create or replace function public.hidden_picks_for_week(
+  p_group_id    uuid,
+  p_season_type text,
+  p_week        int
+)
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.user_id
+  from public.picks p
+  join public.games g on g.id = p.game_id
+  where p.group_id = p_group_id
+    and p.season_type = p_season_type
+    and p.week = p_week
+    and public.is_group_member(p_group_id)   -- caller must belong to the group
+    and g.kickoff > now()
+    and g.status = 'scheduled';
+$$;
+
+revoke all on function public.hidden_picks_for_week(uuid, text, int) from public;
+grant execute on function public.hidden_picks_for_week(uuid, text, int) to authenticated;
+
+
+-- Last Man Standing — profile extras (phone, favorite animal) and per-league
+-- buy-in tracking.
+--
+-- Buy-in lives on `group_members`, not `profiles`: a buy-in is owed to a league,
+-- and a player in three leagues can be square with one and not the others.
+--
+-- `group_members` has no UPDATE policy at all — membership state is written only
+-- by the service role, from netlify/functions/poll-scores.ts. Marking a buy-in
+-- paid is the first legitimate admin write to another member's row, so it goes
+-- through a SECURITY DEFINER RPC that checks is_group_admin() itself. A
+-- `for update` policy would be the wrong tool: it cannot restrict WHICH columns
+-- an admin writes, so it would hand the client role, status, strikes and
+-- eliminated_week as well.
+--
+-- Reads need nothing new. The existing "members read same group" SELECT policy
+-- already lets co-members see each other's rows.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1. profiles: phone + favorite animal
+--
+-- favorite_animal is deliberately unconstrained text rather than a check
+-- constraint or an enum. The allowed list is a shared TypeScript constant
+-- (src/lib/profile/animals.ts) validated in the server action, so adding an
+-- eleventh animal stays a code change instead of a migration against a live
+-- database. Both columns are nullable — neither is required to play.
+--
+-- (phone is superseded by 0008 below, which moves it to profile_private and
+-- drops this column — kept here so this bundle stays a faithful concatenation.)
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.profiles add column if not exists phone text;
+alter table public.profiles add column if not exists favorite_animal text;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. group_members: buy-in state
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.group_members
+  add column if not exists buy_in_paid boolean not null default false;
+alter table public.group_members
+  add column if not exists buy_in_paid_at timestamptz;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. set_member_buy_in — the admin write path
+--
+-- SECURITY DEFINER so it can bypass the (absent) UPDATE policy, but it re-checks
+-- authorisation itself before touching anything. is_group_admin() reads
+-- auth.uid(), which resolves from the request JWT and is unaffected by the
+-- definer switch.
+-- ─────────────────────────────────────────────────────────────────────────────
+create or replace function public.set_member_buy_in(
+  p_group_id uuid,
+  p_user_id  uuid,
+  p_paid     boolean
+)
+returns public.group_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated public.group_members;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  if not public.is_group_admin(p_group_id) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+
+  update public.group_members
+     set buy_in_paid    = p_paid,
+         buy_in_paid_at = case when p_paid then now() else null end
+   where group_id = p_group_id
+     and user_id  = p_user_id
+  returning * into updated;
+
+  if not found then
+    raise exception 'member_not_found' using errcode = 'P0002';
+  end if;
+
+  return updated;
+end;
+$$;
+
+revoke all on function public.set_member_buy_in(uuid, uuid, boolean) from public;
+grant execute on function public.set_member_buy_in(uuid, uuid, boolean) to authenticated;
+
+
+-- Last Man Standing — move the phone number behind real access control.
+--
+-- `phone` on world-readable `profiles` (0007) was the first genuinely private
+-- field on that table. It moves to `profile_private`: readable by the owner and
+-- by admins of leagues the owner belongs to, writable only by the owner. A
+-- separate table rather than a tighter profiles policy, because a policy
+-- subquerying group_members from a table group_members' own policy subqueries is
+-- the classic route to `infinite recursion detected in policy`.
+
+create table if not exists public.profile_private (
+  id    uuid primary key references public.profiles (id) on delete cascade,
+  phone text
+);
+
+alter table public.profile_private enable row level security;
+
+-- Am I an admin of any league this member belongs to? SECURITY DEFINER so the
+-- body bypasses RLS — self-contained, like is_group_member/is_group_admin above.
+create or replace function public.is_admin_for_member(p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members mine
+    join public.group_members theirs on theirs.group_id = mine.group_id
+    where mine.user_id = auth.uid()
+      and mine.role = 'admin'
+      and theirs.user_id = p_user_id
+  );
+$$;
+
+revoke all on function public.is_admin_for_member(uuid) from public;
+grant execute on function public.is_admin_for_member(uuid) to authenticated;
+
+drop policy if exists "private profile read" on public.profile_private;
+create policy "private profile read" on public.profile_private
+  for select to authenticated
+  using (id = auth.uid() or public.is_admin_for_member(id));
+
+drop policy if exists "private profile insert" on public.profile_private;
+create policy "private profile insert" on public.profile_private
+  for insert to authenticated
+  with check (id = auth.uid());
+
+drop policy if exists "private profile update" on public.profile_private;
+create policy "private profile update" on public.profile_private
+  for update to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+-- No DELETE policy: rows die with the profile via the FK cascade.
+
+-- Backfill from profiles.phone, then drop it. Guarded so a re-run is a no-op.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'phone'
+  ) then
+    insert into public.profile_private (id, phone)
+    select id, phone from public.profiles where phone is not null
+    on conflict (id) do update set phone = excluded.phone;
+  end if;
+end $$;
+
+alter table public.profiles drop column if exists phone;

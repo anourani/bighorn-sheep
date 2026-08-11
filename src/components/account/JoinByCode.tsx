@@ -65,7 +65,7 @@ export function JoinByCode({ onJoined }: { onJoined?: () => void }) {
           className="min-w-0 flex-1 rounded-control border border-line bg-white px-3 py-2.5 font-mono text-sm uppercase text-ink placeholder:font-sans placeholder:text-ink-mute/60 focus-visible:border-brand-strong"
           aria-label="Invite code"
         />
-        <Button variant="secondary" disabled={code.trim().length === 0 || pending} onClick={submit}>
+        <Button variant="soft" disabled={code.trim().length === 0 || pending} onClick={submit}>
           {pending ? "Joining…" : "Join"}
         </Button>
       </div>

@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 import type { Game } from "@/lib/nfl/types";
@@ -10,6 +11,7 @@ import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
 import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
+import { ACTIVE_LEAGUE_COOKIE, resolveActiveGroupId } from "./active";
 import type { Group, GroupRules, HistoryPick, Member } from "./types";
 
 export { FINAL_WEEK };
@@ -26,6 +28,8 @@ export interface Viewer {
   lastName: string;
   avatarUrl: string | null;
   email: string | null;
+  /** One of FAVORITE_ANIMALS, or null when unset or no longer on the list. */
+  favoriteAnimal: string | null;
 }
 
 /** The identity fields carried on a profile row, shared by viewer + members. */
@@ -33,6 +37,8 @@ interface ProfileName {
   firstName: string;
   lastName: string;
   avatarUrl: string | null;
+  /** From profile_private — present only for rows RLS let the viewer read. */
+  phone: string | null;
 }
 
 /**
@@ -115,9 +121,11 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
     firstName,
     lastName,
     avatarUrl: profile?.avatarUrl ?? null,
+    phone: profile?.phone ?? null,
     role: row.role,
     status: row.status,
     strikes: row.strikes,
+    buyInPaid: row.buy_in_paid,
     eliminatedWeek: row.eliminated_week,
     history,
     currentPick,
@@ -125,10 +133,22 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
 }
 
 /**
+ * The league the viewer last selected, if any. Read defensively: the cookie is
+ * client-visible only in the sense that it rides on the request, and the value
+ * is validated against real memberships by `resolveActiveGroupId` before it is
+ * used for anything.
+ */
+async function preferredGroupId(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(ACTIVE_LEAGUE_COOKIE)?.value ?? null;
+}
+
+/**
  * Load the current viewer's active league, RLS-scoped to them. Memoized per
  * request via React `cache`, so the layout header and the page body share one
- * round-trip. Pass `groupId` to target a specific membership (a future group
- * switcher); defaults to the earliest-joined group.
+ * round-trip. Pass `groupId` to target a specific membership; otherwise the
+ * league the viewer selected on the account page (a cookie) wins, falling back
+ * to the earliest-joined group.
  */
 export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> => {
   const supabase = await createClient();
@@ -139,7 +159,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, avatar_url")
+    .select("first_name, last_name, avatar_url, favorite_animal")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -154,6 +174,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     lastName: profile?.last_name ?? "",
     avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
+    favoriteAnimal: profile?.favorite_animal ?? null,
   };
 
   const { data: myMemberships } = await supabase
@@ -164,10 +185,11 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 
   if (!myMemberships || myMemberships.length === 0) return { kind: "no_group", viewer };
 
-  const activeGroupId =
-    groupId && myMemberships.some((m) => m.group_id === groupId)
-      ? groupId
-      : myMemberships[0]!.group_id;
+  const activeGroupId = resolveActiveGroupId(
+    myMemberships.map((m) => m.group_id),
+    groupId ?? (await preferredGroupId()),
+  );
+  if (!activeGroupId) return { kind: "no_group", viewer };
 
   const { data: groupRow } = await supabase
     .from("groups")
@@ -206,15 +228,20 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   const memberIds = (memberRows ?? []).map((m) => m.user_id);
   const profileById = new Map<string, ProfileName>();
   if (memberIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, first_name, last_name, avatar_url")
-      .in("id", memberIds);
+    // profile_private comes back RLS-filtered, not erroring: the viewer receives
+    // their own row, plus every member's row when they admin a shared league.
+    // Anyone else's phone is simply absent — no app-side gate exists or could.
+    const [{ data: profiles }, { data: privateRows }] = await Promise.all([
+      supabase.from("profiles").select("id, first_name, last_name, avatar_url").in("id", memberIds),
+      supabase.from("profile_private").select("id, phone").in("id", memberIds),
+    ]);
+    const phoneById = new Map((privateRows ?? []).map((r) => [r.id, r.phone]));
     for (const pr of profiles ?? [])
       profileById.set(pr.id, {
         firstName: pr.first_name,
         lastName: pr.last_name,
         avatarUrl: pr.avatar_url,
+        phone: phoneById.get(pr.id) ?? null,
       });
   }
 
@@ -302,6 +329,14 @@ export interface LeagueSummary {
   role: Member["role"];
   status: Member["status"];
   strikes: number;
+  /** Admin-controlled, read-only to the member. See migration 0007. */
+  buyInPaid: boolean;
+  /**
+   * Resolved here rather than in the client so the account page needs no clock
+   * of its own — a `new Date()` during render is a hydration mismatch waiting
+   * for someone to load the page across a kickoff.
+   */
+  phase: SeasonPhase;
   aliveCount: number;
   memberCount: number;
 }
@@ -309,7 +344,18 @@ export interface LeagueSummary {
 export interface AccountData {
   viewer: Viewer;
   memberSinceIso: string | null;
+  /**
+   * The viewer's own phone, from profile_private (account page only — it is
+   * deliberately not on Viewer, which rides on every screen's payload).
+   */
+  phone: string | null;
   leagues: LeagueSummary[];
+  /**
+   * Which of `leagues` every other screen is currently rendering. Null only when
+   * the viewer is in no leagues. The account page marks this one as selected and
+   * reads its buy-in status.
+   */
+  activeGroupId: string | null;
 }
 
 export const loadAccount = cache(async (): Promise<AccountData | null> => {
@@ -319,11 +365,14 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, avatar_url, created_at")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: privateRow }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("first_name, last_name, avatar_url, favorite_animal, created_at")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase.from("profile_private").select("phone").eq("id", user.id).maybeSingle(),
+  ]);
 
   const viewer: Viewer = {
     id: user.id,
@@ -336,41 +385,65 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
     lastName: profile?.last_name ?? "",
     avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
+    favoriteAnimal: profile?.favorite_animal ?? null,
   };
 
   const { data: myMemberships } = await supabase
     .from("group_members")
-    .select("group_id, role, status, strikes, joined_at")
+    .select("group_id, role, status, strikes, buy_in_paid, joined_at")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
 
+  const memberships = myMemberships ?? [];
+  const groupIds = memberships.map((m) => m.group_id);
+
+  // Two queries for the whole list, not two per league. RLS already restricts
+  // both to groups the viewer belongs to, so `.in()` cannot widen the result.
+  const [{ data: groupRows }, { data: peerRows }] = groupIds.length
+    ? await Promise.all([
+        supabase.from("groups").select("*").in("id", groupIds),
+        supabase.from("group_members").select("group_id, status").in("group_id", groupIds),
+      ])
+    : [{ data: [] as GroupRow[] }, { data: [] as { group_id: string; status: string }[] }];
+
+  const groupById = new Map((groupRows ?? []).map((g) => [g.id, g]));
+  const counts = new Map<string, { total: number; alive: number }>();
+  for (const p of peerRows ?? []) {
+    const c = counts.get(p.group_id) ?? { total: 0, alive: 0 };
+    c.total += 1;
+    if (p.status === "alive") c.alive += 1;
+    counts.set(p.group_id, c);
+  }
+
+  const now = new Date();
   const leagues: LeagueSummary[] = [];
-  for (const m of myMemberships ?? []) {
-    const { data: groupRow } = await supabase
-      .from("groups")
-      .select("*")
-      .eq("id", m.group_id)
-      .single();
+  for (const m of memberships) {
+    const groupRow = groupById.get(m.group_id);
     if (!groupRow) continue;
-    const { data: peers } = await supabase
-      .from("group_members")
-      .select("status")
-      .eq("group_id", m.group_id);
-    const memberCount = peers?.length ?? 0;
-    const aliveCount = (peers ?? []).filter((p) => p.status === "alive").length;
+    const c = counts.get(m.group_id) ?? { total: 0, alive: 0 };
+    const group = rowToGroup(groupRow);
     leagues.push({
-      group: rowToGroup(groupRow),
+      group,
       role: m.role,
       status: m.status,
       strikes: m.strikes,
-      aliveCount,
-      memberCount,
+      buyInPaid: m.buy_in_paid,
+      phase: seasonPhase(new Date(group.entryClosesAt), now),
+      aliveCount: c.alive,
+      memberCount: c.total,
     });
   }
 
   return {
     viewer,
     memberSinceIso: profile?.created_at ?? null,
+    phone: privateRow?.phone ?? null,
     leagues,
+    // Resolved exactly as loadLeague does, so the league marked "Selected" here
+    // is the one My Picks and Standings are actually showing.
+    activeGroupId: resolveActiveGroupId(
+      leagues.map((l) => l.group.id),
+      await preferredGroupId(),
+    ),
   };
 });
