@@ -16,16 +16,24 @@ export function Avatar({
   lastName,
   avatarUrl,
   size = 40,
+  shape = "circle",
   className,
 }: {
   firstName: string;
   lastName: string;
   avatarUrl: string | null;
   size?: number;
+  /**
+   * "square" is the account page's header portrait. The white ring is dropped
+   * with it: it exists to lift a circle off a slate panel and only reads as a
+   * halo on the white page.
+   */
+  shape?: "circle" | "square";
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const label = initials(firstName, lastName);
+  const round = shape === "circle" ? "rounded-full ring-2 ring-white/20" : "rounded-control";
 
   if (!avatarUrl || failed) {
     return (
@@ -33,7 +41,8 @@ export function Avatar({
         role="img"
         aria-label={label}
         className={cn(
-          "inline-grid shrink-0 place-items-center rounded-full bg-brand-sheen font-semibold leading-none text-white ring-2 ring-white/20",
+          "inline-grid shrink-0 place-items-center bg-brand-sheen font-semibold leading-none text-white",
+          round,
           className,
         )}
         style={{ width: size, height: size, fontSize: Math.max(10, Math.round(size * 0.36)) }}
@@ -52,7 +61,7 @@ export function Avatar({
       height={size}
       loading="lazy"
       onError={() => setFailed(true)}
-      className={cn("shrink-0 rounded-full object-cover ring-2 ring-white/20", className)}
+      className={cn("shrink-0 object-cover", round, className)}
       style={{ width: size, height: size }}
     />
   );

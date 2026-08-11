@@ -63,6 +63,12 @@ export interface Member {
   status: MemberStatus;
   /** Losses accrued (0..allowance). */
   strikes: number;
+  /**
+   * Whether the league admin has marked this member's buy-in as paid. Purely
+   * informative to the member — only an admin can change it, via the
+   * set_member_buy_in RPC.
+   */
+  buyInPaid: boolean;
   eliminatedWeek?: number | null;
   history: HistoryPick[];
   currentPick?: CurrentPick | null;

@@ -13,6 +13,10 @@ export interface Database {
           first_name: string;
           last_name: string;
           avatar_url: string | null;
+          /** Optional; free text, never parsed or dialled. */
+          phone: string | null;
+          /** One of src/lib/profile/animals.ts — validated in the action, not by a constraint. */
+          favorite_animal: string | null;
           created_at: string;
         };
         Insert: {
@@ -20,6 +24,8 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
+          phone?: string | null;
+          favorite_animal?: string | null;
           created_at?: string;
         };
         Update: {
@@ -27,6 +33,8 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
+          phone?: string | null;
+          favorite_animal?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -68,6 +76,13 @@ export interface Database {
           status: "alive" | "eliminated";
           strikes: number;
           eliminated_week: number | null;
+          /**
+           * Whether the admin has marked this member's league buy-in as paid.
+           * Writable only through the set_member_buy_in RPC — group_members has
+           * no UPDATE policy, so a direct .update() is silently a no-op.
+           */
+          buy_in_paid: boolean;
+          buy_in_paid_at: string | null;
           joined_at: string;
         };
         Insert: {
@@ -78,6 +93,8 @@ export interface Database {
           status?: "alive" | "eliminated";
           strikes?: number;
           eliminated_week?: number | null;
+          buy_in_paid?: boolean;
+          buy_in_paid_at?: string | null;
           joined_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["group_members"]["Insert"]>;
@@ -178,6 +195,15 @@ export interface Database {
       hidden_picks_for_week: {
         Args: { p_group_id: string; p_season_type: "pre" | "regular" | "post"; p_week: number };
         Returns: string[];
+      };
+      /**
+       * Admin-only buy-in write, added in 0007. SECURITY DEFINER because
+       * group_members has no UPDATE policy at all; the function re-checks
+       * is_group_admin() itself and raises `not_admin` otherwise.
+       */
+      set_member_buy_in: {
+        Args: { p_group_id: string; p_user_id: string; p_paid: boolean };
+        Returns: Database["public"]["Tables"]["group_members"]["Row"];
       };
       invite_preview: {
         Args: { p_code: string };

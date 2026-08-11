@@ -1,15 +1,121 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
+import { Switch } from "@/components/ui/Switch";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
+import { setMemberBuyIn } from "@/app/app/actions";
+import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { Group, Member } from "@/lib/league/types";
+
+const BUY_IN_ERROR_COPY: Record<string, string> = {
+  not_admin: "Only an admin can change that.",
+  member_not_found: "That member is no longer in the league.",
+  not_authenticated: "Your session expired — sign in again.",
+  buy_in_update_failed: "Couldn't save that. Try again.",
+  unexpected_error: "Something went wrong on our end. Try again in a moment.",
+};
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <Label className="text-ink-mute">{children}</Label>;
+}
+
+/**
+ * The roster, with the one thing an admin can actually change from here: who has
+ * paid their buy-in.
+ *
+ * The toggle writes through the `set_member_buy_in` RPC, not a table update —
+ * `group_members` has no UPDATE policy, so a direct write reports success and
+ * changes nothing. The RPC re-checks `is_group_admin` in Postgres, which is the
+ * real gate; rendering this section to an admin is only a convenience.
+ */
+function MembersSection({ groupId, members }: { groupId: string; members: Member[] }) {
+  const router = useRouter();
+  // Optimistic overlay, keyed by user id: only members whose switch has been
+  // touched this session appear here, so a refresh from the server still wins
+  // for everyone else.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  const paidFor = (m: Member) => overrides[m.id] ?? m.buyInPaid;
+  const paidCount = members.filter(paidFor).length;
+
+  function toggle(m: Member, next: boolean) {
+    if (pendingId) return;
+    setError(null);
+    setPendingId(m.id);
+    setOverrides((o) => ({ ...o, [m.id]: next }));
+    startTransition(async () => {
+      try {
+        const res = await setMemberBuyIn({ groupId, userId: m.id, paid: next });
+        if (!res.ok) {
+          setOverrides((o) => ({ ...o, [m.id]: !next }));
+          setError(BUY_IN_ERROR_COPY[res.error] ?? "Couldn't save that. Try again.");
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setOverrides((o) => ({ ...o, [m.id]: !next }));
+        setError("Couldn't save that. Try again.");
+      } finally {
+        setPendingId(null);
+      }
+    });
+  }
+
+  return (
+    <section className="space-y-2">
+      <SectionHeading>
+        Members · {members.length} · {paidCount} paid
+      </SectionHeading>
+      <ul className="divide-y divide-line rounded-control border border-line">
+        {members.map((m) => {
+          const paid = paidFor(m);
+          return (
+            <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                {m.role === "admin" ? (
+                  <Label className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</Label>
+                ) : null}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className={paid ? "text-xs font-medium text-ink-soft" : "text-xs text-ink-mute"}>
+                  {paid ? "Paid" : "Unpaid"}
+                </span>
+                <Switch
+                  checked={paid}
+                  disabled={pendingId !== null}
+                  onChange={(next) => toggle(m, next)}
+                  label={`Buy-in paid — ${m.name}`}
+                />
+              </span>
+              {m.status === "eliminated" ? <Pill variant="out">Out</Pill> : <Pill variant="alive">Alive</Pill>}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="flex items-start gap-1.5 text-xs leading-relaxed text-ink-mute">
+        <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        Buy-in is yours to track by hand — flip a switch as the money lands. Members see their own
+        status on their account page and can&apos;t change it.
+      </p>
+      {error ? (
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
+          <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 export function AdminSettingsModal({
@@ -104,26 +210,7 @@ export function AdminSettingsModal({
         </section>
 
         {/* Members */}
-        <section className="space-y-2">
-          <SectionHeading>Members · {members.length}</SectionHeading>
-          <ul className="divide-y divide-line rounded-control border border-line">
-            {members.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <span className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-ink">{m.name}</span>
-                  {m.role === "admin" ? (
-                    <Label className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</Label>
-                  ) : null}
-                </span>
-                {m.status === "eliminated" ? (
-                  <Pill variant="out">Out</Pill>
-                ) : (
-                  <Pill variant="alive">Alive</Pill>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <MembersSection groupId={group.id} members={members} />
 
         {/* Data & manual override fallback */}
         <section className="space-y-2">

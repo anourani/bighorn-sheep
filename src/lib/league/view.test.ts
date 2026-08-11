@@ -93,6 +93,7 @@ describe("survivorCounts", () => {
       role: "player",
       status,
       strikes: 0,
+      buyInPaid: false,
       history: [],
       currentPick: null,
     };

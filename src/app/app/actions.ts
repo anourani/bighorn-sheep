@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase } from "@/lib/game/season";
@@ -8,6 +9,8 @@ import { rowToGame } from "@/lib/game/score";
 import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import type { SeasonType } from "@/lib/nfl/types";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
+import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
+import { isFavoriteAnimal } from "@/lib/profile/animals";
 import type { EliminationType, TieRule } from "@/lib/league/types";
 
 export type ActionResult<T = undefined> =
@@ -188,15 +191,24 @@ export async function submitPick(input: {
   });
 }
 
+/** Longer than any real number once punctuation and a country code are allowed. */
+const MAX_PHONE_LENGTH = 32;
+
 /**
- * Update the viewer's name. The image bytes are uploaded client-side (the
- * browser holds the File); this persists the resulting fields and revalidates
- * the caches so the roster/account refresh. RLS "profiles update own" is the
- * backstop — a caller can only ever write their own row.
+ * Update the viewer's name and phone. The image bytes are uploaded client-side
+ * (the browser holds the File); this persists the resulting fields and
+ * revalidates the caches so the roster/account refresh. RLS "profiles update
+ * own" is the backstop — a caller can only ever write their own row.
+ *
+ * `phone` is optional and free text. It is never parsed, formatted or dialled —
+ * it exists so a commissioner can chase someone — so there is nothing to gain
+ * from validating a shape and plenty to lose (international numbers, extensions).
+ * Omit the key entirely to leave the stored number alone; pass "" to clear it.
  */
 export async function updateProfile(input: {
   firstName: string;
   lastName: string;
+  phone?: string | null;
 }): Promise<ActionResult> {
   return attempt(async () => {
     const supabase = await createClient();
@@ -209,10 +221,17 @@ export async function updateProfile(input: {
     const lastName = input.lastName.trim();
     if (firstName.length < 1) return { ok: false, error: "first_name_required" };
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ first_name: firstName, last_name: lastName })
-      .eq("id", user.id);
+    const patch: { first_name: string; last_name: string; phone?: string | null } = {
+      first_name: firstName,
+      last_name: lastName,
+    };
+    if (input.phone !== undefined) {
+      const phone = (input.phone ?? "").trim();
+      if (phone.length > MAX_PHONE_LENGTH) return { ok: false, error: "phone_invalid" };
+      patch.phone = phone.length > 0 ? phone : null;
+    }
+
+    const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
     if (error) {
       console.error("[updateProfile] update failed", error);
       return { ok: false, error: "unexpected_error" };
@@ -221,6 +240,37 @@ export async function updateProfile(input: {
     revalidatePath("/app");
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Persist the viewer's favorite animal, or null to clear it.
+ *
+ * Validated against FAVORITE_ANIMALS here rather than by a check constraint: the
+ * column is plain text so the list can grow without a migration run by hand
+ * against production, which makes this the only gate on what gets written.
+ */
+export async function updateFavoriteAnimal(animal: string | null): Promise<ActionResult> {
+  return attempt(async () => {
+    if (animal !== null && !isFavoriteAnimal(animal)) return { ok: false, error: "bad_animal" };
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ favorite_animal: animal })
+      .eq("id", user.id);
+    if (error) {
+      console.error("[updateFavoriteAnimal] update failed", error);
+      return { ok: false, error: "unexpected_error" };
+    }
+
+    revalidatePath("/app/account");
     return { ok: true };
   });
 }
@@ -351,5 +401,99 @@ export async function joinGroup(code: string): Promise<ActionResult<{ groupId: s
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
     return { ok: true, data: { groupId: data.id } };
+  });
+}
+
+/**
+ * Mark a member's league buy-in paid or unpaid. Admin only.
+ *
+ * Goes through the set_member_buy_in RPC rather than a plain `.update()`:
+ * `group_members` has no UPDATE policy at all (0001), so a direct update from
+ * the client is silently a no-op — it reports success having changed nothing.
+ * The RPC is SECURITY DEFINER and re-checks `is_group_admin` itself, so this is
+ * enforced in Postgres and not by whichever component chose to render a toggle.
+ */
+export async function setMemberBuyIn(input: {
+  groupId: string;
+  userId: string;
+  paid: boolean;
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("set_member_buy_in", {
+      p_group_id: input.groupId,
+      p_user_id: input.userId,
+      p_paid: input.paid,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      // A missing function means 0007 has not been applied to this database —
+      // worth its own code, because the symptom is otherwise indistinguishable
+      // from a permissions problem. See CLAUDE.md: migrations are applied by hand.
+      const reason = msg.includes("not_admin")
+        ? "not_admin"
+        : msg.includes("member_not_found")
+          ? "member_not_found"
+          : "buy_in_update_failed";
+      console.error("[setMemberBuyIn] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Switch which league every screen renders — My Picks, Standings, the header
+ * survivor strip. Stored in a cookie rather than a route param so it survives a
+ * cold start and needs no change to any existing link.
+ *
+ * Membership is verified before the cookie is written. RLS would already stop a
+ * non-member from reading the group, but an unchecked cookie would strand them
+ * on a league that resolves to nothing on every screen at once.
+ *
+ * Deliberately does not `redirect()`: `attempt()` would swallow the control-flow
+ * throw. The caller navigates (or refreshes) on `ok`.
+ */
+export async function selectLeague(groupId: string): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { data: membership, error } = await supabase
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", user.id)
+      .eq("group_id", groupId)
+      .maybeSingle();
+    if (error) {
+      console.error("[selectLeague] membership lookup failed", error);
+      return { ok: false, error: "unexpected_error" };
+    }
+    if (!membership) return { ok: false, error: "not_a_member" };
+
+    const store = await cookies();
+    store.set(ACTIVE_LEAGUE_COOKIE, groupId, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
   });
 }

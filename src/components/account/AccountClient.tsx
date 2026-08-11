@@ -1,64 +1,49 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
-import { Label } from "@/components/ui/Label";
-import { Pill, StrikePips } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { Field, FieldRow } from "@/components/ui/Field";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Label } from "@/components/ui/Label";
 import { CreateGroupModal } from "@/components/account/CreateGroupModal";
+import { EditProfileModal } from "@/components/account/EditProfileModal";
 import { JoinByCode } from "@/components/account/JoinByCode";
-import { PlusIcon, LogOutIcon, DownloadIcon, ClockIcon, TrophyIcon, InfoIcon } from "@/components/icons";
+import { CheckIcon, ChevronDownIcon, InfoIcon, LogOutIcon, PlusIcon } from "@/components/icons";
 import { createClient } from "@/lib/supabase/client";
-import { updateProfile, updateAvatar } from "@/app/app/actions";
+import { selectLeague, updateAvatar, updateFavoriteAnimal } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
-import { strikeAllowance } from "@/lib/league/types";
-import { timeZoneLabel } from "@/lib/time";
-import type { AccountData, Viewer } from "@/lib/league/load";
-
-function monthYear(iso: string | null): string | null {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" });
-  } catch {
-    return null;
-  }
-}
-
-function TimeZoneNote() {
-  const [tz, setTz] = useState<string>("");
-  useEffect(() => {
-    try {
-      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const label = timeZoneLabel();
-      setTz(label ? `${zone} (${label})` : zone);
-    } catch {
-      setTz("your device timezone");
-    }
-  }, []);
-  return <span className="font-mono text-xs text-ink-soft">{tz || "…"}</span>;
-}
+import { FAVORITE_ANIMALS, isFavoriteAnimal } from "@/lib/profile/animals";
+import type { AccountData, LeagueSummary, Viewer } from "@/lib/league/load";
 
 const ACCEPT = "image/png,image/jpeg,image/webp";
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
+/** An inline error line — the app's standard treatment, hex and all. */
+function ErrorLine({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
+      <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      {children}
+    </p>
+  );
+}
+
 /**
- * The profile header — now editable. Names live in `first_name`/`last_name` and
- * render as "First L."; the avatar is a sticker the player uploads. Image bytes
- * go straight to Supabase Storage (the browser holds the File); the resulting URL
- * and any name change are persisted via server actions so caches revalidate.
+ * The page's title block: the player's portrait over "Your Account".
+ *
+ * The portrait is the avatar upload — tapping it opens the file picker, with no
+ * separate edit mode to enter first. Bytes go straight to Supabase Storage from
+ * the browser; only the resulting URL is persisted through a server action, so
+ * the caches revalidate and the header picks the new image up.
  */
-function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }) {
+function AccountHeader({ viewer }: { viewer: Viewer }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [firstName, setFirstName] = useState(viewer.firstName);
-  const [lastName, setLastName] = useState(viewer.lastName);
   const [avatarUrl, setAvatarUrl] = useState(viewer.avatarUrl);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startSave] = useTransition();
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -89,7 +74,7 @@ function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }
       const url = `${data.publicUrl}?v=${Date.now()}`;
       const res = await updateAvatar(url);
       if (!res.ok) {
-        setError("Couldn't save your avatar.");
+        setError("Couldn't save your photo.");
         return;
       }
       setAvatarUrl(url);
@@ -103,109 +88,190 @@ function ProfileCard({ viewer, since }: { viewer: Viewer; since: string | null }
     }
   }
 
-  function saveName() {
-    if (firstName.trim().length < 1 || pending) return;
+  return (
+    <header className="flex flex-col items-center gap-2 border-b border-line pb-4 pt-1">
+      <label
+        className="tap-target group relative cursor-pointer rounded-control focus-within:ring-2 focus-within:ring-brand-strong/70 focus-within:ring-offset-2"
+        title="Change your photo"
+      >
+        <Avatar
+          firstName={viewer.firstName}
+          lastName={viewer.lastName}
+          avatarUrl={avatarUrl}
+          size={60}
+          shape="square"
+        />
+        <span className="absolute inset-0 grid place-items-center rounded-control bg-ink/45 text-[10px] font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {uploading ? "…" : "Edit"}
+        </span>
+        <input
+          type="file"
+          accept={ACCEPT}
+          onChange={handleFile}
+          disabled={uploading}
+          className="sr-only"
+          aria-label="Upload a profile photo"
+        />
+      </label>
+
+      <h1 className="text-center text-[1.75rem] font-bold leading-[1.4] text-black">Your Account</h1>
+      {error ? <ErrorLine>{error}</ErrorLine> : null}
+    </header>
+  );
+}
+
+/**
+ * The favorite-animal picker: a native <select> painted to read as the field's
+ * value with a chevron, not as a form control. Native keeps the iOS wheel and
+ * the platform keyboard behaviour, which no hand-rolled dropdown would.
+ *
+ * Saves on change — there is no Save button on this page — and rolls the
+ * displayed value back if the write fails.
+ */
+function FavoriteAnimalField({ value }: { value: string | null }) {
+  const router = useRouter();
+  // An unrecognised stored value (list changed, or edited by hand in SQL) reads
+  // as unset rather than rendering an option that isn't there.
+  const initial = isFavoriteAnimal(value) ? value : "";
+  const [animal, setAnimal] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function change(next: string) {
+    const previous = animal;
+    setAnimal(next);
     setError(null);
-    startSave(async () => {
+    startTransition(async () => {
       try {
-        const res = await updateProfile({ firstName, lastName });
+        const res = await updateFavoriteAnimal(next === "" ? null : next);
         if (!res.ok) {
-          setError(res.error === "first_name_required" ? "Enter your first name." : "Couldn't save your name.");
+          setAnimal(previous);
+          setError("Couldn't save that. Try again.");
           return;
         }
-        setEditing(false);
         router.refresh();
       } catch (err) {
         // A deploy landed while this tab was open — reload onto the new build.
         if (isStaleDeploymentError(err) && reloadOnce()) return;
-        setError("Couldn't save your name.");
+        setAnimal(previous);
+        setError("Couldn't save that. Try again.");
       }
     });
   }
 
-  function cancel() {
-    setFirstName(viewer.firstName);
-    setLastName(viewer.lastName);
+  return (
+    <Field label="Favorite animal">
+      <span className="relative inline-flex items-center self-start">
+        <select
+          value={animal}
+          disabled={pending}
+          onChange={(e) => change(e.target.value)}
+          aria-label="Favorite animal"
+          className={
+            animal
+              ? "cursor-pointer appearance-none rounded bg-transparent pr-6 text-lg font-semibold leading-[1.2] text-ink disabled:opacity-60"
+              : "cursor-pointer appearance-none rounded bg-transparent pr-6 text-lg font-medium leading-[1.2] text-link disabled:opacity-60"
+          }
+        >
+          <option value="">Choose one</option>
+          {FAVORITE_ANIMALS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <ChevronDownIcon
+          className={`pointer-events-none absolute right-0 h-4 w-4 ${animal ? "text-ink" : "text-link"}`}
+        />
+      </span>
+      {error ? <ErrorLine>{error}</ErrorLine> : null}
+    </Field>
+  );
+}
+
+/** Plain-language standing, from the member's status and the season's phase. */
+function statusLabel({ status, phase }: Pick<LeagueSummary, "status" | "phase">): string {
+  if (status === "eliminated") return "Eliminated";
+  if (phase === "preseason") return "Pre-season";
+  if (phase === "ended") return "Season over";
+  return "In Season";
+}
+
+/**
+ * One membership. "Select League" is the app's league switcher: it writes the
+ * active-league cookie, so My Picks, Standings and the header survivor strip all
+ * follow. The card for the league already active says so instead.
+ */
+function LeagueCard({ league, active }: { league: LeagueSummary; active: boolean }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function select() {
+    if (active || pending) return;
     setError(null);
-    setEditing(false);
+    startTransition(async () => {
+      try {
+        const res = await selectLeague(league.group.id);
+        if (!res.ok) {
+          setError(
+            res.error === "not_a_member"
+              ? "You're no longer in that league."
+              : "Couldn't switch leagues. Try again.",
+          );
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setError("Couldn't switch leagues. Try again.");
+      }
+    });
   }
 
   return (
-    <Panel className="p-card">
-      <div className="flex items-center gap-4">
-        <div className="relative shrink-0">
-          <Avatar firstName={firstName} lastName={lastName} avatarUrl={avatarUrl} size={64} />
-          {editing ? (
-            <label className="absolute inset-0 grid cursor-pointer place-items-center rounded-full bg-black/45 text-[10px] font-semibold uppercase tracking-wide text-white">
-              {uploading ? "…" : "Edit"}
-              <input type="file" accept={ACCEPT} onChange={handleFile} disabled={uploading} className="sr-only" />
-            </label>
-          ) : null}
-        </div>
-
-        {editing ? (
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex gap-2">
-              <input
-                aria-label="First name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="First name"
-                className="w-full rounded-control border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-mute/60 focus-visible:border-brand-strong"
-              />
-              <input
-                aria-label="Last name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Last name"
-                className="w-full rounded-control border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-mute/60 focus-visible:border-brand-strong"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-semibold text-onsurface">{viewer.name}</h1>
-            {viewer.email ? (
-              <p className="truncate text-sm text-onsurface-soft">{viewer.email}</p>
-            ) : null}
-            {since ? (
-              <div className="mt-2 flex items-center gap-2">
-                <Label className="text-onsurface-mute">Since {since}</Label>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      {error ? (
-        <p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
-          <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          {error}
-        </p>
-      ) : null}
-
-      {editing ? (
-        <div className="mt-4 flex gap-2">
-          <Button variant="primary" block disabled={firstName.trim().length < 1 || pending} onClick={saveName}>
-            {pending ? "Saving…" : "Save"}
-          </Button>
-          <Button variant="outline" block onClick={cancel} disabled={pending}>
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <Button variant="outline" block className="mt-4" onClick={() => setEditing(true)}>
-          Edit profile
+    <div className="rounded-control border border-line bg-fill-soft p-4">
+      <div className="grid items-center gap-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
+        <Field label="League name" value={league.group.name} />
+        <Field label="Your role" value={league.role === "admin" ? "Admin" : "Player"} />
+        <Field label="Your status" value={statusLabel(league)} />
+        <Button
+          variant="outline"
+          size="lg"
+          block
+          disabled={active || pending}
+          onClick={select}
+          className="bg-white"
+        >
+          {active ? <CheckIcon /> : null}
+          {active ? "Selected" : pending ? "Switching…" : "Select League"}
         </Button>
-      )}
-    </Panel>
+      </div>
+      {error ? <div className="mt-3">
+        <ErrorLine>{error}</ErrorLine>
+      </div> : null}
+    </div>
+  );
+}
+
+/** One row of the Preferences card. */
+function PreferenceRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+      <span className="text-lg font-semibold leading-[1.2] text-ink">{label}</span>
+      {children}
+    </div>
   );
 }
 
 export function AccountClient({ account }: { account: AccountData }) {
-  const { viewer, leagues } = account;
+  const { viewer, leagues, activeGroupId } = account;
   const [createOpen, setCreateOpen] = useState(false);
-  const since = monthYear(account.memberSinceIso);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
+  const hasName = viewer.firstName.trim().length > 0;
 
   async function handleLogout() {
     try {
@@ -217,97 +283,119 @@ export function AccountClient({ account }: { account: AccountData }) {
   }
 
   return (
-    <div className="stagger mx-auto max-w-2xl space-y-4">
-      {/* Profile */}
-      <div>
-        <ProfileCard viewer={viewer} since={since} />
-      </div>
+    <div className="stagger space-y-6">
+      {/* Identity */}
+      <section>
+        <AccountHeader viewer={viewer} />
+
+        <FieldRow>
+          <Field
+            label="Name"
+            value={hasName ? viewer.name : null}
+            emptyLabel="Add"
+            onEdit={() => setEditOpen(true)}
+          />
+          <Field label="Email" value={viewer.email} />
+          <Field
+            label="Number (optional)"
+            value={viewer.phone}
+            emptyLabel="Add"
+            onEdit={() => setEditOpen(true)}
+          />
+        </FieldRow>
+
+        <FieldRow>
+          <FavoriteAnimalField value={viewer.favoriteAnimal} />
+          {activeLeague ? (
+            <Field
+              label="Did you pay the buy in?"
+              value={activeLeague.buyInPaid ? "Yes!" : "Not yet"}
+            />
+          ) : (
+            <div />
+          )}
+          {/* Third cell keeps the row on the same three-column rhythm as the one
+              above it. The design spec carries a hidden field here too. */}
+          <div />
+        </FieldRow>
+
+        {activeLeague ? (
+          <p className="pt-3 text-xs leading-relaxed text-ink-mute">
+            Buy-in is tracked per league and set by your admin — nothing for you to do here.
+          </p>
+        ) : null}
+      </section>
 
       {/* Leagues */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">Your leagues</h2>
-          <Label className="text-ink-mute">
-            {leagues.length} {leagues.length === 1 ? "league" : "leagues"}
-          </Label>
-        </div>
-        <Panel tone="light" className="divide-y divide-line p-0">
-          {leagues.map(({ group, role, status, strikes }) => {
-            const allowance = strikeAllowance(group.rules.eliminationType);
-            return (
-              <Link
-                key={group.id}
-                href="/app/standings"
-                className="flex items-center gap-3 px-card py-4 transition-colors hover:bg-[#FAFAFB]"
-              >
-                <div className="grid h-10 w-10 place-items-center rounded-control bg-brand-wash text-brand-strong">
-                  <TrophyIcon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-ink">{group.name}</span>
-                    {role === "admin" ? <Pill variant="brand">Admin</Pill> : null}
-                  </div>
-                  <Label className="text-ink-mute">
-                    {group.rules.eliminationType === "single" ? "Single elim" : "Two-time"} ·{" "}
-                    {group.rules.tieRule}
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  {status === "alive" ? <Pill variant="alive">Alive</Pill> : <Pill variant="out">Out</Pill>}
-                  <StrikePips strikes={strikes} allowance={allowance} tone="light" />
-                </div>
-              </Link>
-            );
-          })}
+      <section>
+        <SectionHeader
+          title="Your leagues"
+          right={
+            <Label className="text-ink-mute">
+              {leagues.length} {leagues.length === 1 ? "league" : "leagues"}
+            </Label>
+          }
+        />
 
-          <div className="space-y-3 px-card py-4">
-            {leagues.length === 0 ? (
-              <p className="text-sm text-ink-mute">
-                You&apos;re not in a league yet. Create one, or join with an invite code.
-              </p>
-            ) : null}
-            <Button variant="outline" block onClick={() => setCreateOpen(true)}>
+        <div className="mt-3 space-y-3">
+          {leagues.map((league) => (
+            <LeagueCard
+              key={league.group.id}
+              league={league}
+              active={league.group.id === activeGroupId}
+            />
+          ))}
+
+          {leagues.length === 0 ? (
+            <p className="text-sm text-ink-mute">
+              You&apos;re not in a league yet. Create one, or join with an invite code.
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 py-3">
+            <Button variant="soft" size="lg" onClick={() => setCreateOpen(true)}>
               <PlusIcon />
-              Create a group
+              Create a New League
             </Button>
-            <JoinByCode />
+            <span className="text-lg font-semibold leading-[1.2] text-ink">OR</span>
+            <div className="w-full min-w-[260px] max-w-[390px] flex-1">
+              <JoinByCode />
+            </div>
           </div>
-        </Panel>
-      </div>
+        </div>
+      </section>
 
-      {/* Preferences */}
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-ink">Preferences</h2>
-        <Panel tone="light" className="divide-y divide-line p-0">
-          <div className="flex items-center justify-between px-card py-3.5">
-            <span className="flex items-center gap-2.5">
-              <ClockIcon className="h-5 w-5 text-ink-mute" />
-              <span className="text-sm text-ink">Timezone</span>
-            </span>
-            <TimeZoneNote />
-          </div>
-          <div className="flex items-center justify-between px-card py-3.5">
-            <span className="flex items-center gap-2.5">
-              <DownloadIcon className="h-5 w-5 text-ink-mute" />
-              <span className="text-sm text-ink">Install app</span>
-            </span>
-            <span className="text-xs text-ink-mute">Add to Home Screen</span>
-          </div>
+      {/* Preferences — placeholder surface. Nothing here is wired up yet; the
+          rows exist so the shape of the settings is visible and reviewable. */}
+      <section>
+        <SectionHeader title="Preferences" />
+        <Panel tone="light" className="mt-3 divide-y divide-line bg-fill-raised p-0">
+          <PreferenceRow label="Notifications">
+            <span className="text-sm text-ink-mute">Coming soon</span>
+          </PreferenceRow>
+          <PreferenceRow label="Timezone">
+            <span className="text-sm text-ink-mute">Coming soon</span>
+          </PreferenceRow>
+          <PreferenceRow label="Add to Home Screen">
+            <Button variant="soft" disabled>
+              Install App
+            </Button>
+          </PreferenceRow>
         </Panel>
-        <p className="mt-2 px-1 text-xs text-ink-mute">
-          Times shown in your device timezone. Install from your browser&apos;s share menu for a full-screen,
-          app-like experience.
+        <p className="mt-2 px-1 text-xs leading-relaxed text-ink-mute">
+          Times are shown in your device timezone. To install, use{" "}
+          <b className="font-semibold text-ink-soft">Add to Home Screen</b> in your browser&apos;s share
+          menu — the in-app button is coming soon.
         </p>
-      </div>
+      </section>
 
-      {/* Logout */}
       <Button variant="outline" block onClick={handleLogout}>
         <LogOutIcon />
         Log out
       </Button>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <EditProfileModal open={editOpen} onClose={() => setEditOpen(false)} viewer={viewer} />
     </div>
   );
 }
