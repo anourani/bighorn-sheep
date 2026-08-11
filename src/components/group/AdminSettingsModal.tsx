@@ -85,7 +85,7 @@ function MembersSection({ groupId, members }: { groupId: string; members: Member
                 <span className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-ink">{m.name}</span>
                   {m.role === "admin" ? (
-                    <Label className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</Label>
+                    <Label className="rounded bg-[#EEF1F6] px-1 text-ink-mute">Admin</Label>
                   ) : null}
                 </span>
                 {/* Phone arrives only when RLS let this viewer read it (their own

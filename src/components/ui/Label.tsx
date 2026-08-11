@@ -1,8 +1,9 @@
 import { cn } from "@/lib/cn";
 
 /**
- * Uppercase semibold metadata label — 14px, the "Change week" eyebrow one size
- * up. Every grey label in the app is this component.
+ * Uppercase semibold metadata label — 14px. Every grey label in the app is this
+ * component, bar the "Change week" eyebrow in `WeekPicker`, which has to be a
+ * real <label htmlFor> and so repeats these classes by hand.
  *
  * The size is `text-sm`, NOT the `label-md` token from `tailwind.config.ts`, and
  * that is load-bearing. `cn()` runs tailwind-merge, which decides what a class

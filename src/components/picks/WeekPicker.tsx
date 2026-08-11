@@ -45,10 +45,13 @@ export function WeekPicker({
         string on screen and cannot drift from it, and clicking the eyebrow
         focuses the control. `w-fit` stops a block label from claiming the rest
         of the line as an invisible hit area.
+
+        Which is also why the classes are `Label`'s repeated by hand rather than
+        the component itself: `Label` renders a <span>. Keep the two in sync.
       */}
       <label
         htmlFor={selectId}
-        className="block w-fit cursor-pointer text-xs font-semibold uppercase leading-none text-[#757575]"
+        className="block w-fit cursor-pointer text-sm font-semibold uppercase leading-none text-[#757575]"
       >
         Change week
       </label>

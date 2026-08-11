@@ -52,7 +52,10 @@ export function Pill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-label-sm uppercase",
+        // 16px/600 spelled out rather than the `label-sm` token: `cn()` deletes a
+        // custom fontSize token whenever a colour lands beside it, and every
+        // variant below is a colour. See the note in `Label`.
+        "inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-base font-semibold uppercase",
         variantClasses[variant],
         className,
       )}
