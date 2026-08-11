@@ -1,5 +1,6 @@
 "use client";
 
+import { Label } from "@/components/ui/Label";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { GearIcon } from "@/components/icons";
 import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "@/lib/league/picks";
@@ -17,7 +18,7 @@ const NO_PENDING: PendingPicks = new Map();
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-[9rem] flex-1 flex-col gap-1.5">
-      <span className="text-xs font-semibold uppercase leading-none text-[#757575]">{label}</span>
+      <Label>{label}</Label>
       {children}
     </div>
   );

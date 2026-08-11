@@ -57,7 +57,7 @@ export function CreateGroupModal({ open, onClose }: { open: boolean; onClose: ()
       open={open}
       onClose={onClose}
       eyebrow="New league"
-      title="Create a group"
+      title="Create a Group"
       description="You'll be the admin. Invite friends after."
       footer={
         <Button variant="primary" block disabled={name.trim().length === 0 || pending} onClick={submit}>

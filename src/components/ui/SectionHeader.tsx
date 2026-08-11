@@ -11,6 +11,9 @@ import { cn } from "@/lib/cn";
  * Figma exports the property whether or not the rendered text uses it, and the
  * mockup plainly shows a descending "g" in both "League" and "Standings" — i.e.
  * ordinary title case. Synthesising small caps from it renders "LEAGUE".
+ *
+ * Titles are Title Case, small words lowercase: "Practice Standings", "Grow the
+ * Pool", "Who's In" — the last word is capitalised even when it is a preposition.
  */
 export function SectionHeader({
   title,

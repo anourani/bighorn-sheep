@@ -21,7 +21,7 @@ const BUY_IN_ERROR_COPY: Record<string, string> = {
 };
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <Label className="text-ink-mute">{children}</Label>;
+  return <Label>{children}</Label>;
 }
 
 /**
@@ -85,7 +85,7 @@ function MembersSection({ groupId, members }: { groupId: string; members: Member
                 <span className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-ink">{m.name}</span>
                   {m.role === "admin" ? (
-                    <Label className="rounded bg-[#EEF1F6] px-1 text-[10px] text-ink-mute">Admin</Label>
+                    <Label className="rounded bg-[#EEF1F6] px-1 text-ink-mute">Admin</Label>
                   ) : null}
                 </span>
                 {/* Phone arrives only when RLS let this viewer read it (their own
@@ -156,7 +156,7 @@ export function AdminSettingsModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} eyebrow="Admin" title="Group settings" description={group.name}>
+    <Modal open={open} onClose={onClose} eyebrow="Admin" title="Group Settings" description={group.name}>
       <div className="space-y-6">
         {/* Rules */}
         <section className="space-y-2">
@@ -170,13 +170,13 @@ export function AdminSettingsModal({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-              <Label className="text-ink-mute">Elimination</Label>
+              <Label>Elimination</Label>
               <div className="mt-1 text-sm font-medium text-ink">
                 {group.rules.eliminationType === "single" ? "Single (1 loss)" : "Two-time (2 losses)"}
               </div>
             </div>
             <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-              <Label className="text-ink-mute">Tie rule</Label>
+              <Label>Tie rule</Label>
               <div className="mt-1 text-sm font-medium text-ink">
                 {group.rules.tieRule === "push" ? "Push (survive)" : "Loss"}
               </div>
@@ -207,7 +207,7 @@ export function AdminSettingsModal({
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Label className="text-ink-mute">Code</Label>
+            <Label>Code</Label>
             <span className="font-mono text-sm font-semibold text-ink">{group.inviteCode}</span>
           </div>
           {entryClosed ? (

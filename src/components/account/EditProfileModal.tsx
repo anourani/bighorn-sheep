@@ -81,7 +81,7 @@ export function EditProfileModal({
       open={open}
       onClose={onClose}
       eyebrow="Account"
-      title="Your details"
+      title="Your Details"
       description="Your name is how the rest of the league sees you."
       footer={
         <Button variant="primary" block disabled={firstName.trim().length === 0 || pending} onClick={submit}>

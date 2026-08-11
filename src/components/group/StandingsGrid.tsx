@@ -144,7 +144,7 @@ export function StandingsGrid({
                           {member.name}
                         </span>
                         {!isYou && member.role === "admin" ? (
-                          <Label className="shrink-0 rounded bg-ink/10 px-1 text-[10px] text-ink-mute">
+                          <Label className="shrink-0 rounded bg-ink/10 px-1 text-ink-mute">
                             Admin
                           </Label>
                         ) : null}
