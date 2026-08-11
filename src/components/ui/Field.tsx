@@ -35,7 +35,7 @@ export function Field({
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
-      <Label className="text-ink-mute">{label}</Label>
+      <Label>{label}</Label>
       {children ?? (
         onEdit ? (
           <button

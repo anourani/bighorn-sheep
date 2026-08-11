@@ -329,9 +329,9 @@ export function AccountClient({ account }: { account: AccountData }) {
       {/* Leagues */}
       <section>
         <SectionHeader
-          title="Your leagues"
+          title="Your Leagues"
           right={
-            <Label className="text-ink-mute">
+            <Label>
               {leagues.length} {leagues.length === 1 ? "league" : "leagues"}
             </Label>
           }

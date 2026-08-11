@@ -23,9 +23,9 @@ export function WhosIn({ members, preseason }: { members: Member[]; preseason: b
   return (
     <section>
       <SectionHeader
-        title="Who's in"
+        title="Who's In"
         right={
-          <Label className="text-ink-mute">
+          <Label>
             {members.length} {members.length === 1 ? "player" : "players"}
           </Label>
         }
@@ -36,7 +36,7 @@ export function WhosIn({ members, preseason }: { members: Member[]; preseason: b
             <Avatar firstName={m.firstName} lastName={m.lastName} avatarUrl={m.avatarUrl} size={36} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-ink">{m.name}</div>
-              {m.role === "admin" ? <Label className="text-ink-mute">Commissioner</Label> : null}
+              {m.role === "admin" ? <Label>Commissioner</Label> : null}
             </div>
             {/* Before Week 1 nobody can be eliminated, so the status pill would
                 only ever read "Alive" — "In" says the useful thing instead. */}
@@ -77,7 +77,7 @@ export function InviteCta({ group, appUrl, now }: { group: Group; appUrl: string
 
   return (
     <section>
-      <SectionHeader title="Grow the pool" />
+      <SectionHeader title="Grow the Pool" />
       <Panel tone="light" className="mt-4 p-card">
         <p className="text-sm text-ink-soft">
           Bigger pools are more fun — and last longer. Share the invite before entry closes.

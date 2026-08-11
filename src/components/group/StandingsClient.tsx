@@ -93,7 +93,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
       {isPreseason ? (
         practice && practiceRanked && practiceColumns && practiceIdx ? (
           <section>
-            <SectionHeader title="Practice standings" />
+            <SectionHeader title="Practice Standings" />
             <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
               A real run-through — a wrong pick strikes you here too. None of it carries over: this
               table disappears and everyone starts Week 1 alive, with all 32 teams available.

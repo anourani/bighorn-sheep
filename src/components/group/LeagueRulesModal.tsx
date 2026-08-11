@@ -9,13 +9,13 @@ import { InfoIcon, LockIcon } from "@/components/icons";
 import { strikeAllowance, type Group, type Member } from "@/lib/league/types";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <Label className="text-ink-mute">{children}</Label>;
+  return <Label>{children}</Label>;
 }
 
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-      <Label className="text-ink-mute">{label}</Label>
+      <Label>{label}</Label>
       <div className="mt-1 text-sm font-medium text-ink">{children}</div>
     </div>
   );
@@ -54,7 +54,7 @@ export function LeagueRulesModal({
       : "A tie counts exactly the same as a loss.";
 
   return (
-    <Modal open={open} onClose={onClose} eyebrow="League" title="League rules" description={group.name}>
+    <Modal open={open} onClose={onClose} eyebrow="League" title="League Rules" description={group.name}>
       <div className="space-y-6">
         {/* Who runs it */}
         <section className="space-y-2">
