@@ -13,8 +13,6 @@ export interface Database {
           first_name: string;
           last_name: string;
           avatar_url: string | null;
-          /** Optional; free text, never parsed or dialled. */
-          phone: string | null;
           /** One of src/lib/profile/animals.ts — validated in the action, not by a constraint. */
           favorite_animal: string | null;
           created_at: string;
@@ -24,7 +22,6 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
-          phone?: string | null;
           favorite_animal?: string | null;
           created_at?: string;
         };
@@ -33,9 +30,31 @@ export interface Database {
           first_name?: string;
           last_name?: string;
           avatar_url?: string | null;
-          phone?: string | null;
           favorite_animal?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      /**
+       * Private per-user fields, split out of world-readable `profiles` in 0008.
+       * RLS: readable by the owner and by admins of leagues the owner belongs to
+       * (via is_admin_for_member); writable only by the owner. Queries against it
+       * come back filtered, not erroring — select .in(...) a list of ids and you
+       * receive only the rows you're entitled to.
+       */
+      profile_private: {
+        Row: {
+          id: string;
+          /** Optional; free text, never parsed or dialled. */
+          phone: string | null;
+        };
+        Insert: {
+          id: string;
+          phone?: string | null;
+        };
+        Update: {
+          id?: string;
+          phone?: string | null;
         };
         Relationships: [];
       };
@@ -169,6 +188,8 @@ export interface Database {
       account_exists: { Args: { p_email: string }; Returns: boolean };
       is_group_member: { Args: { gid: string }; Returns: boolean };
       is_group_admin: { Args: { gid: string }; Returns: boolean };
+      /** 0008: is the caller an admin of any league p_user_id belongs to? */
+      is_admin_for_member: { Args: { p_user_id: string }; Returns: boolean };
       join_by_invite: {
         Args: { p_code: string };
         Returns: Database["public"]["Tables"]["groups"]["Row"];

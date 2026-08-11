@@ -221,20 +221,35 @@ export async function updateProfile(input: {
     const lastName = input.lastName.trim();
     if (firstName.length < 1) return { ok: false, error: "first_name_required" };
 
-    const patch: { first_name: string; last_name: string; phone?: string | null } = {
-      first_name: firstName,
-      last_name: lastName,
-    };
+    // Validate everything before writing anything, so a bad phone can't leave a
+    // half-applied edit (name saved, phone rejected).
+    let phone: string | null | undefined;
     if (input.phone !== undefined) {
-      const phone = (input.phone ?? "").trim();
-      if (phone.length > MAX_PHONE_LENGTH) return { ok: false, error: "phone_invalid" };
-      patch.phone = phone.length > 0 ? phone : null;
+      const trimmed = (input.phone ?? "").trim();
+      if (trimmed.length > MAX_PHONE_LENGTH) return { ok: false, error: "phone_invalid" };
+      phone = trimmed.length > 0 ? trimmed : null;
     }
 
-    const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ first_name: firstName, last_name: lastName })
+      .eq("id", user.id);
     if (error) {
       console.error("[updateProfile] update failed", error);
       return { ok: false, error: "unexpected_error" };
+    }
+
+    // The phone lives on profile_private (0008), not profiles: readable only by
+    // the owner and their league admins. Upsert, because the row doesn't exist
+    // until the first time a user sets a private field.
+    if (phone !== undefined) {
+      const { error: privErr } = await supabase
+        .from("profile_private")
+        .upsert({ id: user.id, phone }, { onConflict: "id" });
+      if (privErr) {
+        console.error("[updateProfile] private upsert failed", privErr);
+        return { ok: false, error: "unexpected_error" };
+      }
     }
 
     revalidatePath("/app");

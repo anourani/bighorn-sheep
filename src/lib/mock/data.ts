@@ -234,7 +234,7 @@ export const GROUP: Group = {
 };
 
 /** Full-name seed rows; first/last/avatar are derived below so this stays terse. */
-type SeedMember = Omit<Member, "firstName" | "lastName" | "avatarUrl" | "buyInPaid">;
+type SeedMember = Omit<Member, "firstName" | "lastName" | "avatarUrl" | "buyInPaid" | "phone">;
 
 const SEED_MEMBERS: SeedMember[] = [
   {
@@ -339,6 +339,9 @@ export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
     firstName,
     lastName,
     avatarUrl: null,
+    // Null as it would be for a non-admin viewer: RLS withholds other members'
+    // numbers, so the realistic mock is no numbers at all.
+    phone: null,
     name: formatDisplayName(firstName, lastName),
     // Everyone in the demo league has settled up; the interesting states for
     // buy-in live in the admin modal, not here.

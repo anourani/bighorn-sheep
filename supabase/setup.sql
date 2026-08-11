@@ -12,6 +12,7 @@
 --     create_group below, so this bundle needs no separate 0005 section)
 --   supabase/migrations/0006_preseason_picks.sql
 --   supabase/migrations/0007_profile_extras_and_buy_in.sql
+--   supabase/migrations/0008_private_profile_fields.sql
 -- Edit those, not this file. Run once on a fresh project.
 -- ============================================================================
 
@@ -720,6 +721,9 @@ grant execute on function public.hidden_picks_for_week(uuid, text, int) to authe
 -- (src/lib/profile/animals.ts) validated in the server action, so adding an
 -- eleventh animal stays a code change instead of a migration against a live
 -- database. Both columns are nullable — neither is required to play.
+--
+-- (phone is superseded by 0008 below, which moves it to profile_private and
+-- drops this column — kept here so this bundle stays a faithful concatenation.)
 -- ─────────────────────────────────────────────────────────────────────────────
 alter table public.profiles add column if not exists phone text;
 alter table public.profiles add column if not exists favorite_animal text;
@@ -778,3 +782,75 @@ $$;
 
 revoke all on function public.set_member_buy_in(uuid, uuid, boolean) from public;
 grant execute on function public.set_member_buy_in(uuid, uuid, boolean) to authenticated;
+
+
+-- Last Man Standing — move the phone number behind real access control.
+--
+-- `phone` on world-readable `profiles` (0007) was the first genuinely private
+-- field on that table. It moves to `profile_private`: readable by the owner and
+-- by admins of leagues the owner belongs to, writable only by the owner. A
+-- separate table rather than a tighter profiles policy, because a policy
+-- subquerying group_members from a table group_members' own policy subqueries is
+-- the classic route to `infinite recursion detected in policy`.
+
+create table if not exists public.profile_private (
+  id    uuid primary key references public.profiles (id) on delete cascade,
+  phone text
+);
+
+alter table public.profile_private enable row level security;
+
+-- Am I an admin of any league this member belongs to? SECURITY DEFINER so the
+-- body bypasses RLS — self-contained, like is_group_member/is_group_admin above.
+create or replace function public.is_admin_for_member(p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members mine
+    join public.group_members theirs on theirs.group_id = mine.group_id
+    where mine.user_id = auth.uid()
+      and mine.role = 'admin'
+      and theirs.user_id = p_user_id
+  );
+$$;
+
+revoke all on function public.is_admin_for_member(uuid) from public;
+grant execute on function public.is_admin_for_member(uuid) to authenticated;
+
+drop policy if exists "private profile read" on public.profile_private;
+create policy "private profile read" on public.profile_private
+  for select to authenticated
+  using (id = auth.uid() or public.is_admin_for_member(id));
+
+drop policy if exists "private profile insert" on public.profile_private;
+create policy "private profile insert" on public.profile_private
+  for insert to authenticated
+  with check (id = auth.uid());
+
+drop policy if exists "private profile update" on public.profile_private;
+create policy "private profile update" on public.profile_private
+  for update to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+-- No DELETE policy: rows die with the profile via the FK cascade.
+
+-- Backfill from profiles.phone, then drop it. Guarded so a re-run is a no-op.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'phone'
+  ) then
+    insert into public.profile_private (id, phone)
+    select id, phone from public.profiles where phone is not null
+    on conflict (id) do update set phone = excluded.phone;
+  end if;
+end $$;
+
+alter table public.profiles drop column if exists phone;

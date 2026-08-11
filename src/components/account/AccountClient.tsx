@@ -298,7 +298,7 @@ export function AccountClient({ account }: { account: AccountData }) {
           <Field label="Email" value={viewer.email} />
           <Field
             label="Number (optional)"
-            value={viewer.phone}
+            value={account.phone}
             emptyLabel="Add"
             onEdit={() => setEditOpen(true)}
           />
@@ -395,7 +395,12 @@ export function AccountClient({ account }: { account: AccountData }) {
       </Button>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      <EditProfileModal open={editOpen} onClose={() => setEditOpen(false)} viewer={viewer} />
+      <EditProfileModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        viewer={viewer}
+        currentPhone={account.phone}
+      />
     </div>
   );
 }

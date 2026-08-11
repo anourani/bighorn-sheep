@@ -31,15 +31,18 @@ export function EditProfileModal({
   open,
   onClose,
   viewer,
+  currentPhone,
 }: {
   open: boolean;
   onClose: () => void;
   viewer: Viewer;
+  /** Separate from Viewer: the phone is private data loaded only for the account page. */
+  currentPhone: string | null;
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(viewer.firstName);
   const [lastName, setLastName] = useState(viewer.lastName);
-  const [phone, setPhone] = useState(viewer.phone ?? "");
+  const [phone, setPhone] = useState(currentPhone ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -49,9 +52,9 @@ export function EditProfileModal({
     if (!open) return;
     setFirstName(viewer.firstName);
     setLastName(viewer.lastName);
-    setPhone(viewer.phone ?? "");
+    setPhone(currentPhone ?? "");
     setError(null);
-  }, [open, viewer.firstName, viewer.lastName, viewer.phone]);
+  }, [open, viewer.firstName, viewer.lastName, currentPhone]);
 
   function submit() {
     if (firstName.trim().length === 0 || pending) return;
@@ -133,7 +136,7 @@ export function EditProfileModal({
             className={INPUT_CLASS}
           />
           <p className="mt-2 text-xs leading-relaxed text-ink-mute">
-            Only your league admin sees this. Leave it blank to remove it.
+            Only you and your league admins can see this. Leave it blank to remove it.
           </p>
         </div>
 
