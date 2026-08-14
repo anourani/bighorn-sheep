@@ -11,12 +11,14 @@ import { isHome, opponentOf } from "@/lib/league/view";
  * with.
  *
  * Text color is chosen per team so it always clears WCAG AA (4.5:1), and every
- * bit of text in the section stays on one side of light/dark (never a mix):
+ * bit of text *on the card* stays on one side of light/dark (never a mix):
  *  - Bright teams keep dark text on a light→saturated gradient; the gradient's
  *    bottom is capped at the darkest tint where dark text still passes.
  *  - Dark teams flip to white text on a deep team-color card; the top is
- *    darkened until white passes, and the lock line moves inside the card so it
- *    is white too.
+ *    darkened until white passes.
+ *
+ * The lock line underneath is page text, not card text, and stays put in both
+ * cases — see the comment at its render site for why it is not a branch.
  */
 export function PickHero({
   teamId,
@@ -106,24 +108,19 @@ export function PickHero({
           </p>
           <LocalTime iso={game.kickoff} mode="full" className="text-xs font-medium" />
         </div>
-
-        {/* Dark-team cards carry the lock line inside so all text stays white. */}
-        {theme.light ? (
-          <div
-            className="relative z-10 mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs font-medium"
-            style={{ color: theme.text }}
-          >
-            {lockLine}
-          </div>
-        ) : null}
       </div>
 
-      {/* Bright-team cards keep the lock line below on the light page (also dark). */}
-      {theme.light ? null : (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
-          {lockLine}
-        </div>
-      )}
+      {/* Below the card always, whatever the team's colors — and deliberately
+          not a branch. Placement used to follow the theme: dark cards pulled the
+          line inside so it could be white, bright ones left it out here. That
+          made the colored block's height a function of which team you picked, so
+          it grew and shrank as you moved down the schedule. A card that holds
+          still is worth more than a lock line that is uniformly white.
+
+          It matches NoPickHero, which has always kept the line outside. */}
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
+        {lockLine}
+      </div>
     </section>
   );
 }
@@ -175,9 +172,11 @@ const WHITE = "#FFFFFF";
 const LABEL_DARK = "#4B5563"; // muted eyebrow that still clears AA on the near-white top
 const INK_LUM = relLuminance(30, 30, 30);
 
+// No `light` flag here any more. It said "the card is dark and the text is
+// white" — inverted enough to misread on sight — and its only consumer was the
+// lock line's placement, which no longer branches. The gradient and the two
+// colors already carry the outcome of the choice below.
 interface HeroTheme {
-  /** true when the card is dark and text is white. */
-  light: boolean;
   gradient: string;
   text: string;
   label: string;
@@ -203,7 +202,6 @@ function heroTheme(hex: string): HeroTheme {
   // A team bright enough to carry a punchy dark-text wash keeps the light look.
   if (darkBottom >= 0.6) {
     return {
-      light: false,
       gradient: gradient(rgb, 0.05, darkBottom),
       text: INK,
       label: LABEL_DARK,
@@ -220,7 +218,6 @@ function heroTheme(hex: string): HeroTheme {
     }
   }
   return {
-    light: true,
     gradient: gradient(rgb, lightTop, 1),
     text: WHITE,
     label: WHITE,
