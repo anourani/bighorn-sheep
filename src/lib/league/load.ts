@@ -11,10 +11,16 @@ import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
 import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
-import { ACTIVE_LEAGUE_COOKIE, resolveActiveGroupId } from "./active";
+import {
+  ACTIVE_LEAGUE_COOKIE,
+  resolveActiveGroupId,
+  toLeagueOptions,
+  type LeagueOption,
+} from "./active";
 import type { Group, GroupRules, HistoryPick, Member } from "./types";
 
 export { FINAL_WEEK };
+export type { LeagueOption };
 
 type GroupRow = Database["public"]["Tables"]["groups"]["Row"];
 type MemberRow = Database["public"]["Tables"]["group_members"]["Row"];
@@ -50,6 +56,16 @@ interface ProfileName {
 export interface LeagueData {
   viewer: Viewer;
   group: Group;
+  /**
+   * Every league the viewer belongs to, earliest-joined first — the header
+   * switcher's list, always including `group` itself.
+   *
+   * Note the near-collision: `AccountData.leagues` is `LeagueSummary[]` (role,
+   * status, strikes, buy-in, phase, counts) because the account page renders a
+   * card per league. This one is `LeagueOption[]` — an id and a name, which is
+   * all a `<select>` can display.
+   */
+  leagues: LeagueOption[];
   /** Regular-season standing. Never touched by preseason practice. */
   members: Member[];
   /** Regular-season games only (`season_type = 'regular'`). */
@@ -185,17 +201,20 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 
   if (!myMemberships || myMemberships.length === 0) return { kind: "no_group", viewer };
 
-  const activeGroupId = resolveActiveGroupId(
-    myMemberships.map((m) => m.group_id),
-    groupId ?? (await preferredGroupId()),
-  );
+  const myGroupIds = myMemberships.map((m) => m.group_id);
+  const activeGroupId = resolveActiveGroupId(myGroupIds, groupId ?? (await preferredGroupId()));
   if (!activeGroupId) return { kind: "no_group", viewer };
 
-  const { data: groupRow } = await supabase
-    .from("groups")
-    .select("*")
-    .eq("id", activeGroupId)
-    .single();
+  // Every league the viewer belongs to, not just the active one — the header's
+  // switcher needs the list and this is the same single round-trip either way
+  // (`loadAccount:402-406` already uses this shape). RLS restricts the result to
+  // groups the viewer is in, so `.in()` cannot widen it.
+  const { data: groupRows } = await supabase.from("groups").select("*").in("id", myGroupIds);
+
+  // Join order, restored: `.in()` returns rows arbitrarily ordered.
+  const leagues = toLeagueOptions(myGroupIds, groupRows ?? []);
+
+  const groupRow = (groupRows ?? []).find((g) => g.id === activeGroupId);
   if (!groupRow) return { kind: "no_group", viewer };
   const group = rowToGroup(groupRow);
 
@@ -311,6 +330,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     data: {
       viewer,
       group,
+      leagues,
       members,
       games,
       nowIso: now.toISOString(),

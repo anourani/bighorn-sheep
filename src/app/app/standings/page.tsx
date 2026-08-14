@@ -1,5 +1,6 @@
 import { loadLeague } from "@/lib/league/load";
 import { StandingsClient } from "@/components/group/StandingsClient";
+import { LeagueStatusBar } from "@/components/app/LeagueStatusBar";
 import { NoLeagueState } from "@/components/app/NoLeagueState";
 
 /**
@@ -10,5 +11,11 @@ import { NoLeagueState } from "@/components/app/NoLeagueState";
 export default async function StandingsPage() {
   const load = await loadLeague();
   if (load.kind !== "ok") return <NoLeagueState />;
-  return <StandingsClient data={load.data} />;
+  // Sibling of the client root — see the note in src/app/app/page.tsx.
+  return (
+    <>
+      <LeagueStatusBar />
+      <StandingsClient data={load.data} />
+    </>
+  );
 }

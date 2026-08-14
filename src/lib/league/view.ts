@@ -36,6 +36,53 @@ export function survivorCounts(members: readonly Member[]): SurvivorCounts {
   return { alive, eliminated, total: alive + eliminated };
 }
 
+/**
+ * What the league status bar reads, in one shape for both of its variants.
+ *
+ * Discriminated on pre-season vs. not, rather than on `SeasonPhase`, because
+ * "regular" and "ended" render identically — a week number and a tally — and a
+ * three-armed union would invite a third copy of the same strings.
+ */
+export type StatusLineInput =
+  | { kind: "preseason"; joined: number; startsIn: string }
+  | { kind: "season"; week: number; alive: number; eliminated: number };
+
+export interface StatusLine {
+  /** Top line: the week's name, or "Pre-season". */
+  lead: string;
+  /** The emphasised half of the second line, in near-black. */
+  primary: string;
+  /** The muted half of the second line. */
+  secondary: string;
+}
+
+/** `1 survivor` / `2 survivors`, with the count. */
+function count(n: number, singular: string, plural = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * The status bar's copy. Extracted from the JSX so the two variants are one
+ * function with tests rather than two nearly-identical blocks — which is how
+ * `{joined === 1 ? "joined" : "joined"}` survived in the old header: a plural
+ * form dutifully applied to a word that has none. "joined" is a past participle
+ * here ("29 joined."), not a countable noun, so it never inflects.
+ */
+export function statusLine(input: StatusLineInput): StatusLine {
+  if (input.kind === "preseason") {
+    return {
+      lead: "Pre-season",
+      primary: `Starts in ${input.startsIn}.`,
+      secondary: `${input.joined} joined.`,
+    };
+  }
+  return {
+    lead: `Week ${input.week}`,
+    primary: `${count(input.alive, "survivor")}.`,
+    secondary: `${count(input.eliminated, "death")}.`,
+  };
+}
+
 /** Per-team availability for one member's own grid (available / used / bye). */
 export function buildTeamStates(
   member: Member,

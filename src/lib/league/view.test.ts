@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
 import type { Member, TeamRecord } from "./types";
-import { orderPickerTeams, survivorCounts, type TeamAvailability } from "./view";
+import { orderPickerTeams, statusLine, survivorCounts, type TeamAvailability } from "./view";
 
 function game(kickoff: string, home: TeamId, away: TeamId): Game {
   return {
@@ -119,5 +119,51 @@ describe("survivorCounts", () => {
     const rogue = { ...member("d", "alive"), status: "zombie" as Member["status"] };
     const out = survivorCounts([member("a", "alive"), member("b", "eliminated"), rogue]);
     expect(out).toEqual({ alive: 1, eliminated: 1, total: 2 });
+  });
+});
+
+describe("statusLine", () => {
+  it("reads the week and the tally in season", () => {
+    expect(statusLine({ kind: "season", week: 6, alive: 29, eliminated: 15 })).toEqual({
+      lead: "Week 6",
+      primary: "29 survivors.",
+      secondary: "15 deaths.",
+    });
+  });
+
+  it("counts down to kickoff in pre-season", () => {
+    expect(statusLine({ kind: "preseason", joined: 12, startsIn: "3d 4h" })).toEqual({
+      lead: "Pre-season",
+      primary: "Starts in 3d 4h.",
+      secondary: "12 joined.",
+    });
+  });
+
+  it("singularises both nouns at one", () => {
+    expect(statusLine({ kind: "season", week: 1, alive: 1, eliminated: 1 })).toMatchObject({
+      primary: "1 survivor.",
+      secondary: "1 death.",
+    });
+  });
+
+  // "joined" is a past participle here, not a countable noun — which is exactly
+  // what the old header's `{joined === 1 ? "joined" : "joined"}` was groping at.
+  it("never inflects 'joined'", () => {
+    for (const joined of [0, 1, 2, 40]) {
+      expect(statusLine({ kind: "preseason", joined, startsIn: "1h 0m" }).secondary).toBe(
+        `${joined} joined.`,
+      );
+    }
+  });
+
+  it("handles a wiped-out league and an untouched one", () => {
+    expect(statusLine({ kind: "season", week: 18, alive: 0, eliminated: 44 })).toMatchObject({
+      primary: "0 survivors.",
+      secondary: "44 deaths.",
+    });
+    expect(statusLine({ kind: "season", week: 1, alive: 44, eliminated: 0 })).toMatchObject({
+      primary: "44 survivors.",
+      secondary: "0 deaths.",
+    });
   });
 });

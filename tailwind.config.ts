@@ -61,6 +61,24 @@ const config: Config = {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
         },
+        // The app shell's own greys — AppHeader and LeagueStatusBar, nothing else.
+        //
+        // These are the design spec's PURE neutrals, deliberately a separate
+        // family from `ink`/`line`: those are blue-tinted (#111827, #6B7280,
+        // #D8DADF) and the difference is visible where the two meet at a 1px
+        // border. Every other screen keeps the tinted family untouched.
+        //
+        // Named `shell` and NOT `neutral`: `extend.colors.neutral` silently
+        // replaces Tailwind's built-in neutral-50..950 scale. (Safe either way
+        // today — no neutral-*/zinc-*/stone-* class exists in src/ — but the
+        // trap is worth not setting.)
+        shell: {
+          ink: "#1E1E1E", // app name, league name, "Week 6", chevron
+          mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
+          soft: "#6A6A6A", // "15 deaths."
+          line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
+          alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
+        },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },
