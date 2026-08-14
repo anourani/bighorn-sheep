@@ -116,7 +116,16 @@ export interface WeekOption {
   /** `weekKey(ref)` — the `<option value>`. */
   key: string;
   label: string;
-  /** True for the live week of its own phase. */
+  /**
+   * True for the one live week in the whole list — the week the NFL is actually
+   * in. Deliberately not per-phase: marking each group's own live week put
+   * "· current" on two options at once during the preseason, which reads as a
+   * contradiction rather than as a phase distinction.
+   *
+   * Note this is a *label*, not a permission. Regular Week 1 picks are open all
+   * through the preseason (see `liveRef` in MyPicksClient); the marker only says
+   * which week is being played right now.
+   */
   isCurrent: boolean;
 }
 
@@ -142,13 +151,22 @@ export interface GroupedWeekOptionsInput {
  * The dropdown model: an optional "Preseason" group followed by "Regular
  * Season". Regular weeks stay forward-only (current → final), matching the
  * existing behaviour — a member cannot browse to a week they have already played.
+ *
+ * Exactly one option across both groups carries `isCurrent`, and while the
+ * preseason group exists it is one of that group's.
  */
 export function groupedWeekOptions(input: GroupedWeekOptionsInput): WeekOptionGroup[] {
   const finalWeek = input.finalWeek ?? FINAL_WEEK;
   const groups: WeekOptionGroup[] = [];
 
+  // Whether the preseason group is actually being offered, which is the same
+  // thing as "the preseason is the phase being played" — it is the presence of a
+  // practice slate that puts the group on screen, and its absence that retires
+  // it at Week 1. So it also decides which group owns the "current" marker.
   const practice = input.practice;
-  if (practice && practice.weeks.length > 0) {
+  const practising = practice != null && practice.weeks.length > 0;
+
+  if (practising) {
     const maxPreWeek = Math.max(...practice.weeks);
     groups.push({
       label: "Preseason",
@@ -174,7 +192,9 @@ export function groupedWeekOptions(input: GroupedWeekOptionsInput): WeekOptionGr
       ref,
       key: weekKey(ref),
       label: weekLabel(ref),
-      isCurrent: week === input.currentWeek,
+      // Not marked while practice is live: the regular season hasn't started, so
+      // Week 1 is the next week, not the current one.
+      isCurrent: !practising && week === input.currentWeek,
     });
   }
   groups.push({ label: groups.length > 0 ? "Regular Season" : null, options: regular });

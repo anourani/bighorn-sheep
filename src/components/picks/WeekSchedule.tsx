@@ -100,10 +100,17 @@ function GameCard({
 
   return (
     <div className="overflow-hidden rounded-control border border-line bg-white">
-      <div className="flex items-center justify-between px-3 pt-2.5">
-        <LocalTime iso={game.kickoff} className="text-[11px] font-semibold tabular-nums text-ink-mute" />
+      {/* items-start, not items-center: the full kickoff line ("Sunday, September
+          14th at 12:00 PM EDT") wraps to two lines on a narrow card, and centring
+          would then drag the status badge down off the first line. */}
+      <div className="flex items-start justify-between gap-2 px-3 pt-2.5">
+        <LocalTime
+          iso={game.kickoff}
+          mode="long"
+          className="text-[11px] font-semibold leading-snug tabular-nums text-ink-mute"
+        />
         {kicked ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-mute">
+          <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase leading-[1.45] tracking-wide text-ink-mute">
             <LockIcon className="h-3 w-3" />
             {game.status === "final" ? "Final" : game.status === "in_progress" ? "Live" : "Locked"}
           </span>

@@ -98,6 +98,19 @@ describe("groupedWeekOptions", () => {
     expect(groups[1]!.options).toHaveLength(FINAL_WEEK);
   });
 
+  // Two "· current" options at once read as a contradiction, not as a phase
+  // distinction: the dropdown said Preseason 2 and Week 1 were both current.
+  // While practice is live the preseason owns the marker outright.
+  it("marks exactly one week current across both groups", () => {
+    const groups = groupedWeekOptions({
+      currentWeek: 1,
+      practice: { weeks: [1, 2, 3], currentWeek: 2 },
+    });
+
+    const current = groups.flatMap((g) => g.options).filter((o) => o.isCurrent);
+    expect(current.map((o) => o.ref)).toEqual([{ seasonType: "pre", week: 2 }]);
+  });
+
   // This is the Week 1 reset, seen from the UI: practice goes null and the whole
   // group vanishes. Nothing is deleted and no migration runs.
   it("drops the preseason group entirely once practice is over", () => {
@@ -105,6 +118,8 @@ describe("groupedWeekOptions", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]!.label).toBeNull();
     expect(groups[0]!.options[0]!.ref).toEqual({ seasonType: "regular", week: 4 });
+    // And the marker comes back to the regular season with the group gone.
+    expect(groups[0]!.options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([4]);
   });
 
   it("keeps regular weeks forward-only from the current week", () => {
@@ -116,6 +131,8 @@ describe("groupedWeekOptions", () => {
     const groups = groupedWeekOptions({ currentWeek: 1, practice: { weeks: [], currentWeek: 1 } });
     expect(groups).toHaveLength(1);
     expect(groups[0]!.label).toBeNull();
+    // No group on screen means nothing else can hold the marker.
+    expect(groups[0]!.options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([1]);
   });
 
   it("clamps a current week outside the season", () => {

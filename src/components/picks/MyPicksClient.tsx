@@ -222,15 +222,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             <LocalTime iso={group.entryClosesAt} mode="full" className="font-semibold" />. Make your Week 1
             pick now — it locks when your team plays, and you can change it anytime until then.
           </p>
-          {practice ? (
-            <p className="mt-2 text-sm leading-relaxed text-ink">
-              Want a dry run first? Use <span className="font-semibold">Change week</span> above to
-              switch to a <span className="font-semibold">Preseason</span> week and play the
-              practice round. It works exactly like the real thing — a wrong pick strikes you — but{" "}
-              <span className="font-semibold">everything resets for Week 1</span>: strikes clear,
-              eliminated players come back, and every team is available again.
-            </p>
-          ) : null}
         </div>
       ) : null}
 

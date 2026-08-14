@@ -9,7 +9,7 @@ import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta, WhosIn } from "@/components/group/WhosIn";
 import { buildGameIndex } from "@/lib/league/games";
-import { PRE_WEEK, weekLabel, weekShortLabel } from "@/lib/nfl/calendar";
+import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
 import type { LeagueData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
@@ -68,13 +68,29 @@ export function StandingsClient({ data }: { data: LeagueData }) {
     return rankMembers(merged);
   }, [data.members, practice]);
 
+  /**
+   * The practice weeks, then the regular season previewed behind them, so the
+   * table shows the whole season's shape instead of four columns and a stretch
+   * of empty panel. The previewed columns carry no picks — see `WeekColumn`.
+   *
+   * Labelled W1…W18 rather than the bare numbers the real standings grid uses:
+   * only here do they sit immediately after P1…P3, where a lone "1" beside "P3"
+   * reads as one more preseason week.
+   */
   const practiceColumns = useMemo<WeekColumn[] | null>(() => {
     if (!practice) return null;
-    return practice.weeks.map((week) => ({
-      week,
-      label: weekShortLabel(PRE_WEEK(week), { maxPreWeek: practice.maxPreWeek }),
-    }));
-  }, [practice]);
+    return [
+      ...practice.weeks.map((week) => ({
+        week,
+        label: weekShortLabel(PRE_WEEK(week), { maxPreWeek: practice.maxPreWeek }),
+      })),
+      ...Array.from({ length: finalWeek }, (_, i) => ({
+        week: i + 1,
+        label: `W${i + 1}`,
+        preview: true,
+      })),
+    ];
+  }, [finalWeek, practice]);
 
   return (
     <div className="stagger space-y-6">
@@ -104,7 +120,6 @@ export function StandingsClient({ data }: { data: LeagueData }) {
               currentWeek={practice.currentWeek}
               finalWeek={practice.maxPreWeek}
               columns={practiceColumns}
-              outLabel={(w) => weekLabel(PRE_WEEK(w), { maxPreWeek: practice.maxPreWeek })}
               rules={group.rules}
               now={now}
               gameForTeam={practiceIdx.gameForTeam}
