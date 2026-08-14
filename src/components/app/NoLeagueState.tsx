@@ -1,21 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import { Panel } from "@/components/ui/Panel";
 import { Label } from "@/components/ui/Label";
-import { Button } from "@/components/ui/Button";
-import { PlusIcon, UsersIcon } from "@/components/icons";
-import { CreateGroupModal } from "@/components/account/CreateGroupModal";
+import { UsersIcon } from "@/components/icons";
 import { JoinByCode } from "@/components/account/JoinByCode";
 
 /**
  * Shown on My Picks / Standings when the signed-in player belongs to no league
- * yet (the "start empty" first run). Two ways forward: spin up a league as its
- * admin, or join a friend's with an invite code.
+ * yet (the "start empty" first run). One way forward: join with an invite code.
+ *
+ * There is deliberately no "create a league" path. The inaugural season runs a
+ * single league, so every player arrives through an invite. The `create_group`
+ * RPC still exists in the database (removing it would need another hand-applied
+ * migration, and it is harmless with nothing calling it), but nothing in the
+ * product reaches it.
  */
 export function NoLeagueState() {
-  const [createOpen, setCreateOpen] = useState(false);
-
   return (
     <div className="stagger mx-auto max-w-md space-y-4 py-6">
       <Panel className="p-card text-center">
@@ -27,26 +27,13 @@ export function NoLeagueState() {
           Get in the game
         </h1>
         <p className="mx-auto mt-2 max-w-[34ch] text-sm leading-relaxed text-onsurface-soft">
-          Create your own survival league and invite friends, or join one you were invited to with its code.
+          Join the league you were invited to with its code.
         </p>
       </Panel>
 
       <Panel tone="light" className="space-y-4 p-card">
-        <Button variant="primary" block onClick={() => setCreateOpen(true)}>
-          <PlusIcon />
-          Create a group
-        </Button>
-
-        <div className="flex items-center gap-3">
-          <span className="h-px flex-1 bg-line" />
-          <Label className="text-ink-mute">or join by code</Label>
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
         <JoinByCode />
       </Panel>
-
-      <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

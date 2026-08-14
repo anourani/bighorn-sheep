@@ -51,9 +51,35 @@ ignored — `--phase kickoff` ran `final` and `--winners` was a coin flip. Fixed
 
 ## 1. Create your league
 
-Sign in with your own email (the magic link creates your account), then on
-**Account** → **Create a group**. You land in it as admin. Open **Standings →
-the gear → invite** (or the roster panel) to copy your **invite code**.
+The app has **no create-a-league UI** — the inaugural season runs a single
+league, so every player arrives through an invite and the only way in is a code.
+The league itself is created once, by hand.
+
+Sign in with your own email first (the magic link creates your account and its
+`profiles` row). Then, in the Supabase **SQL editor**, create the league as
+yourself:
+
+```sql
+-- Your user id: select id from auth.users where email = 'you@example.com';
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"<your-user-uuid>","role":"authenticated"}';
+
+select * from public.create_group(
+  'Your League Name',
+  'single',            -- or 'two_time'
+  'push',              -- or 'loss'
+  2026,                -- season
+  '2026-09-10T00:20:00Z'::timestamptz   -- entry closes at the first Week 1 kickoff
+);
+```
+
+`create_group` reads `auth.uid()`, so it raises `not_authenticated` without those
+two `set local` lines — the SQL editor is otherwise an unauthenticated session.
+Passing `p_entry_closes_at` matters: the fallback is `now() + 7 days`, which
+would close entry a week later and lock everyone out permanently.
+
+The returned row includes your **invite code**. You land in the league as admin;
+**Standings → the gear → invite** (or the roster panel) shows the code again.
 
 ## 2. Seed a test weekend, aligned to your league
 
