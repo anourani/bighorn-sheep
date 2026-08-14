@@ -21,6 +21,26 @@ export interface RankedMember {
 export interface WeekColumn {
   week: number;
   label: string;
+  /**
+   * A column this grid holds no picks for — the regular season previewed at the
+   * end of the practice table, so the season's full shape is on screen rather
+   * than four columns and a stretch of empty panel.
+   *
+   * It renders as an upcoming slot WITHOUT consulting `history`, and that is
+   * load-bearing: history is keyed by week number alone, so a regular-season
+   * column for week 1 would otherwise collide with preseason week 1 and print
+   * the practice pick under the regular-season header. Same collision `WeekRef`
+   * exists to prevent everywhere else.
+   */
+  preview?: boolean;
+}
+
+/**
+ * React key for a column. Not `col.week` — preview columns repeat the preseason
+ * week numbers, and duplicate keys had two headers fighting over one slot.
+ */
+function colKey(col: WeekColumn): string {
+  return `${col.preview ? "preview" : "week"}-${col.week}`;
 }
 
 /**
@@ -36,7 +56,6 @@ export function StandingsGrid({
   currentWeek,
   finalWeek,
   columns,
-  outLabel,
   rules,
   now,
   gameForTeam,
@@ -53,8 +72,6 @@ export function StandingsGrid({
    * simply stops rendering that grid.
    */
   columns?: WeekColumn[];
-  /** How to name a week in the "Out · …" badge. Defaults to `W{n}`. */
-  outLabel?: (week: number) => string;
   rules: GroupRules;
   now: Date;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
@@ -68,14 +85,15 @@ export function StandingsGrid({
   const allowance = strikeAllowance(rules.eliminationType);
   const weeks: WeekColumn[] =
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
-  const formatOut = outLabel ?? ((w: number) => `W${w}`);
   const hiddenSet = new Set(hiddenPickUserIds);
 
   return (
     <div className="space-y-2">
       <Panel tone="light" className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-max border-collapse text-sm">
+          {/* min-w-full so the table is never narrower than the panel; w-max so
+              it still grows past it and scrolls once the columns need the room. */}
+          <table className="w-max min-w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-line">
                 <HeadCell className="left-0 w-9 text-center">#</HeadCell>
@@ -84,16 +102,22 @@ export function StandingsGrid({
                 </HeadCell>
                 {weeks.map((col) => (
                   <th
-                    key={col.week}
+                    key={colKey(col)}
                     scope="col"
                     className={cn(
                       "px-1 py-2.5 text-center text-[11px] font-semibold tabular-nums",
-                      col.week === currentWeek ? "text-brand-strong" : "text-ink-mute",
+                      // Guarded on !preview: the practice grid's currentWeek is a
+                      // preseason week number, which a previewed regular-season
+                      // column of the same number would otherwise light up too.
+                      !col.preview && col.week === currentWeek
+                        ? "text-brand-strong"
+                        : "text-ink-mute",
                     )}
                   >
                     {col.label}
                   </th>
                 ))}
+                <Spacer head />
               </tr>
             </thead>
             <tbody>
@@ -143,36 +167,49 @@ export function StandingsGrid({
                         >
                           {member.name}
                         </span>
+                        {/* Beside the name, as a pill matching Admin's, rather
+                            than on its own line below — and without the week it
+                            happened, which the row's own washed cells already
+                            show. The ink is darkened from `text-out`, which only
+                            reaches 3.5:1 on this wash; #8A2C2C clears AA at 6.9
+                            and is the same pair used for pick errors. */}
+                        {eliminated ? (
+                          <Label className="shrink-0 rounded bg-out-wash px-1 text-[#8A2C2C]">
+                            Out
+                          </Label>
+                        ) : null}
                         {!isYou && member.role === "admin" ? (
                           <Label className="shrink-0 rounded bg-ink/10 px-1 text-ink-mute">
                             Admin
                           </Label>
                         ) : null}
                       </div>
-                      <div className="mt-1 flex items-center gap-1.5">
-                        {eliminated ? (
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-out">
-                            Out · {member.eliminatedWeek ? formatOut(member.eliminatedWeek) : "—"}
+                      {/* Strikes only while they can still accumulate. The row
+                          keeps its height regardless — the 40px pick cells set
+                          it, not this column. */}
+                      {eliminated ? null : (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <StrikePips strikes={member.strikes} allowance={allowance} tone="light" />
+                          <span className="text-[10px] font-semibold tabular-nums text-ink-mute">
+                            {member.strikes}/{allowance}
                           </span>
-                        ) : (
-                          <>
-                            <StrikePips strikes={member.strikes} allowance={allowance} tone="light" />
-                            <span className="text-[10px] font-semibold tabular-nums text-ink-mute">
-                              {member.strikes}/{allowance}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </td>
 
                     {/* Weekly picks */}
                     {weeks.map((col) => (
-                      <td key={col.week} className="px-1 py-1.5 text-center align-middle">
+                      <td key={colKey(col)} className="px-1 py-1.5 text-center align-middle">
                         <WeekCell
-                          cell={cellFor(member, viewerId, col.week, currentWeek, gameForTeam, rules, now, hiddenSet)}
+                          cell={
+                            col.preview
+                              ? { kind: "empty" }
+                              : cellFor(member, viewerId, col.week, currentWeek, gameForTeam, rules, now, hiddenSet)
+                          }
                         />
                       </td>
                     ))}
+                    <Spacer />
                   </tr>
                 );
               })}
@@ -184,6 +221,19 @@ export function StandingsGrid({
       <Legend />
     </div>
   );
+}
+
+/**
+ * A final, empty column that soaks up whatever width the real columns leave.
+ *
+ * Row rules are drawn on the `<tr>`, so they run exactly as far as the last cell
+ * — which is why the header's underline used to stop mid-panel whenever the
+ * columns didn't fill it, reading as a half-drawn table. `width: 100%` on an
+ * auto-layout column claims all the slack, leaving every other column at its
+ * natural size, so the rules reach the edge at any column count.
+ */
+function Spacer({ head = false }: { head?: boolean }) {
+  return head ? <th aria-hidden className="w-full" /> : <td aria-hidden className="w-full" />;
 }
 
 function HeadCell({ children, className }: { children: React.ReactNode; className?: string }) {
