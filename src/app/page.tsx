@@ -1,10 +1,8 @@
-import type { SVGProps } from "react";
-import Link from "next/link";
-import { BrandMark } from "@/components/shell/BrandMark";
-import { Panel } from "@/components/ui/Panel";
+import { LandingHeader } from "@/components/landing/LandingHeader";
+import { StatusReport } from "@/components/landing/StatusReport";
+import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
-import { InviteEntry } from "@/components/landing/InviteEntry";
-import { ShieldIcon, UsersIcon, TrophyIcon } from "@/components/icons";
+import { loadPublicLeague } from "@/lib/league/load";
 
 export const metadata = {
   title: "Last Man Standing — NFL Survival League",
@@ -13,92 +11,79 @@ export const metadata = {
 };
 
 /**
- * Public landing page (the canonical root). Signed-in visitors are redirected to
- * /app by middleware; everyone else gets the pitch + an invite-code entry box.
+ * ISR rather than `force-dynamic`: this page reads no cookies and no headers,
+ * so it caches — one database read a minute regardless of traffic, and
+ * middleware still runs per-request, so a signed-in visitor is still redirected
+ * to /app and never sees the cached HTML.
+ *
+ * The staleness is bounded and one-directional. Picks were filtered by SQL at
+ * fetch time, so a clock up to 60s behind can only leave a padlock on a pick
+ * that has just unlocked — never reveal one early.
  */
-export default function LandingPage() {
+export const revalidate = 60;
+
+/**
+ * The public landing page (the canonical root). Signed-in visitors are
+ * redirected to /app by middleware; everyone else gets the league's current
+ * standing plus the two ways in.
+ *
+ * `loadPublicLeague()` is total — null covers "Supabase unconfigured",
+ * "migration 0009 not applied" and "no league published" alike. All three drop
+ * the status and standings sections and keep the header, title and description,
+ * so the invite path still works and the page reads as deliberate rather than
+ * broken. That is also the state this ships in, before the publish row is
+ * inserted by hand.
+ */
+export default async function LandingPage() {
+  const league = await loadPublicLeague();
+  // No members means an empty band and a headers-only table — both read as
+  // broken, so treat it the same as no league at all.
+  const board = league && league.members.length > 0 ? league : null;
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-wide flex-col px-5 py-12 sm:py-16">
-      {/* Hero + invite entry */}
-      <section className="mx-auto flex w-full max-w-app flex-col items-center text-center">
-        <BrandMark size="lg" />
-        <Label className="mt-5 text-brand-strong">NFL Survival League</Label>
-        <h1 className="mt-2 text-display-lg font-medium leading-[1.02] tracking-tight text-ink">
-          Last Man Standing
-        </h1>
-        <p className="mx-auto mt-4 max-w-[42ch] text-base leading-relaxed text-ink-soft">
-          A private NFL survivor pool with your friends. Pick one team a week — win to survive, lose
-          and you&apos;re out. The last one standing takes the season.
-        </p>
+    <div className="mx-auto flex min-h-dvh max-w-shell flex-col bg-white">
+      <LandingHeader />
 
-        <div className="mt-8 w-full">
-          <InviteEntry />
-        </div>
+      <main className="flex-1">
+        {/* The design gives the title block no horizontal padding, so the
+            heading hangs left of the brand name above it. Transcribed as given;
+            `px-4` here and on the description is the fix if it reads as a slip
+            in the browser rather than intent. */}
+        <section className="pb-5 pt-[60px]">
+          <Label className="text-base">Welcome to</Label>
+          {/*
+            88px at full width. An arbitrary clamp rather than a new
+            `display-*` fontSize token on purpose: tailwind-merge classifies
+            `text-display-*` as a colour and silently drops it whenever a
+            `cn()` call also passes one — the bug documented in Label.tsx. With
+            one call site a token buys nothing and carries that risk.
+            5.5rem = 88px, reached at ~978px; −2px ÷ 88px = −0.023em, so the
+            tracking scales with the size instead of crushing the mobile step.
+          */}
+          <h1 className="mt-2 text-[clamp(2.5rem,9vw,5.5rem)] font-semibold leading-none tracking-[-0.023em] text-black">
+            Last Man Standing
+          </h1>
+        </section>
 
-        <p className="mt-4 text-sm text-ink-mute">
-          Already have an account?{" "}
-          <Link href="/login" className="font-medium text-brand-strong hover:underline">
-            Log in
-          </Link>
-        </p>
-      </section>
+        {/* `align-items: flex-end` in the spec positions the block, not the text
+            inside it — the paragraph stays left-aligned within its 436px. */}
+        <section className="flex justify-end pb-4">
+          <p className="max-w-[436px] text-base leading-[1.25] text-shell-mute">
+            A private NFL survivor pool with friends. Pick one team a week. Win to survive, lose
+            or tie and you&apos;re out. The last one standing takes the season.
+          </p>
+        </section>
 
-      {/* How it works */}
-      <section className="mx-auto mt-16 w-full max-w-wide sm:mt-24">
-        <div className="mb-5 text-center">
-          <Label className="text-ink-mute">How it works</Label>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <HowStep
-            n="01"
-            Icon={ShieldIcon}
-            title="Get an invite, pick a team"
-            body="Join your league with an invite code, then pick one NFL team you think will win this week."
-          />
-          <HowStep
-            n="02"
-            Icon={UsersIcon}
-            title="Win to survive"
-            body="Your team wins, you advance. Lose and you're out — and you can't reuse a team all season."
-          />
-          <HowStep
-            n="03"
-            Icon={TrophyIcon}
-            title="Last one standing wins"
-            body="Survive week after week. The final survivor takes the season. No money, just bragging rights."
-          />
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="mx-auto mt-16 max-w-app text-center sm:mt-24">
-        <p className="text-xs text-ink-mute">Private &amp; invite-only. No stakes, no app store.</p>
-      </footer>
-    </main>
-  );
-}
-
-function HowStep({
-  n,
-  Icon,
-  title,
-  body,
-}: {
-  n: string;
-  Icon: (props: SVGProps<SVGSVGElement>) => React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <Panel tone="light" className="p-card">
-      <div className="flex items-center gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-brand-wash text-brand-strong">
-          <Icon className="h-5 w-5" />
-        </span>
-        <Label className="text-ink-mute">{n}</Label>
-      </div>
-      <h3 className="mt-3 text-base font-semibold text-ink">{title}</h3>
-      <p className="mt-1 text-sm leading-relaxed text-ink-soft">{body}</p>
-    </Panel>
+        {board ? (
+          <>
+            <StatusReport status={board.status} />
+            <section className="flex flex-col gap-6 px-4 py-6">
+              <Label className="text-base">League</Label>
+              <PublicStandings data={board} />
+            </section>
+          </>
+        ) : null}
+      </main>
+    </div>
   );
 }

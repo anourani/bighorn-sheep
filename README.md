@@ -104,7 +104,14 @@ select 'function: ' || f,
          where routine_schema='public' and routine_name=f)
        then 'PRESENT' else 'MISSING' end
 from unnest(array['account_exists','create_group','join_by_invite',
-                  'invite_preview','hidden_pick_user_ids','handle_new_user']) f
+                  'invite_preview','hidden_pick_user_ids','handle_new_user',
+                  'public_league_snapshot']) f
+union all
+select 'table: ' || t,
+       case when exists (select 1 from information_schema.tables
+         where table_schema='public' and table_name=t)
+       then 'PRESENT' else 'MISSING' end
+from unnest(array['public_league']) t
 union all
 select 'bucket: avatars',
        case when exists (select 1 from storage.buckets where id='avatars')
@@ -113,6 +120,23 @@ order by 1;
 ```
 
 Fully migrated means everything PRESENT **except** `display_name`, which 0004 drops.
+
+`public_league` being PRESENT only means 0009 ran. It does **not** mean the
+landing page is showing anything — publishing is a separate, deliberate step:
+
+```sql
+select count(*) from public.public_league;   -- 0 = nothing published yet
+```
+
+With zero rows the landing page renders its header, title and description and
+omits the status report and standings entirely. To publish, and to retract:
+
+```sql
+insert into public.public_league (group_id)
+select id from public.groups where invite_code = 'YOURCODE';
+
+delete from public.public_league;   -- retract; no redeploy needed
+```
 
 In **Authentication → URL Configuration** on the production project:
 

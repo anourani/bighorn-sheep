@@ -9,24 +9,10 @@ import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta, WhosIn } from "@/components/group/WhosIn";
 import { buildGameIndex } from "@/lib/league/games";
+import { rankMembers } from "@/lib/league/view";
 import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
 import type { LeagueData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
-
-function rankMembers(members: Member[]): RankedMember[] {
-  const ordered = [...members].sort((a, b) => {
-    if (a.status !== b.status) return a.status === "alive" ? -1 : 1;
-    if (a.status === "alive") {
-      if (a.strikes !== b.strikes) return a.strikes - b.strikes;
-      return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-    }
-    const aw = a.eliminatedWeek ?? 0;
-    const bw = b.eliminatedWeek ?? 0;
-    if (aw !== bw) return bw - aw;
-    return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-  });
-  return ordered.map((member, i) => ({ member, rank: i + 1 }));
-}
 
 export function StandingsClient({ data }: { data: LeagueData }) {
   const { group, currentWeek, finalWeek, nowIso, phase, hiddenPickUserIds, practice } = data;

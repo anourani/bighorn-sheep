@@ -37,6 +37,42 @@ export function survivorCounts(members: readonly Member[]): SurvivorCounts {
 }
 
 /**
+ * Structurally identical to `RankedMember` in StandingsGrid, declared here
+ * rather than imported: this module is pure view-model logic and must not
+ * depend on a component (that would be an import cycle waiting to happen).
+ */
+export interface RankedMemberView {
+  member: Member;
+  rank: number;
+}
+
+/**
+ * Standings order: alive before eliminated; among the living, fewer strikes
+ * first; among the dead, most-recently eliminated first (they survived longest).
+ * Name then id break every tie, so the order is total and stable rather than
+ * dependent on the input array.
+ *
+ * Lives here, not in StandingsClient, because the landing page ranks the same
+ * members and importing the client component to reach it would drag
+ * AdminSettingsModal, LeagueRulesModal, LeagueDetails and WhosIn into a
+ * signed-out page's bundle.
+ */
+export function rankMembers(members: readonly Member[]): RankedMemberView[] {
+  const ordered = [...members].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "alive" ? -1 : 1;
+    if (a.status === "alive") {
+      if (a.strikes !== b.strikes) return a.strikes - b.strikes;
+      return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    }
+    const aw = a.eliminatedWeek ?? 0;
+    const bw = b.eliminatedWeek ?? 0;
+    if (aw !== bw) return bw - aw;
+    return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  });
+  return ordered.map((member, i) => ({ member, rank: i + 1 }));
+}
+
+/**
  * What the league status bar reads, in one shape for both of its variants.
  *
  * Discriminated on pre-season vs. not, rather than on `SeasonPhase`, because

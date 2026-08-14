@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 import type { Database } from "@/lib/supabase/types";
 import type { Game } from "@/lib/nfl/types";
 import { rowToGame } from "@/lib/game/score";
@@ -11,6 +12,7 @@ import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
 import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
+import { mapPublicSnapshot, type PublicLeagueData } from "./public";
 import {
   ACTIVE_LEAGUE_COOKIE,
   resolveActiveGroupId,
@@ -466,4 +468,38 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
       await preferredGroupId(),
     ),
   };
+});
+
+/**
+ * The published league's board, for the anonymous landing page.
+ *
+ * Nothing in common with `loadLeague()` above except the file: no session, no
+ * cookies, no RLS-scoped queries. It reads one anon-callable RPC
+ * (`public_league_snapshot`, migration 0009) whose SQL body decides what is
+ * public — see that file for why the privacy lock cannot live here.
+ *
+ * Total by construction. It returns null, never throws, when Supabase is
+ * unconfigured, when the migration hasn't been applied (the RPC 404s), or when
+ * no league has been published. All three degrade to the same landing page
+ * without the status and standings sections, which is the state this ships in.
+ *
+ * `cache()` for the same reason `loadLeague()` uses it: one round-trip per
+ * request even if several components ask.
+ */
+export const loadPublicLeague = cache(async (): Promise<PublicLeagueData | null> => {
+  const supabase = createPublicClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc("public_league_snapshot");
+    if (error) {
+      // Lands in the Netlify function logs. Never rendered — a stranger cannot
+      // act on it, and this repo's convention is codes out, detail to the log.
+      console.error("[loadPublicLeague] rpc failed", error);
+      return null;
+    }
+    return mapPublicSnapshot(data, new Date());
+  } catch (e) {
+    console.error("[loadPublicLeague] threw", e);
+    return null;
+  }
 });

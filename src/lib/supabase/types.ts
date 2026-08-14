@@ -186,6 +186,17 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       account_exists: { Args: { p_email: string }; Returns: boolean };
+      /**
+       * 0009: the published league's public board, for the signed-out landing
+       * page. Zero-arg by design — an argument would make it a universal
+       * standings reader for every league in the project. Returns SQL NULL
+       * (→ `null` here) when no league is published.
+       *
+       * Typed loosely because the shape is nested JSON that the mapper in
+       * `src/lib/league/public.ts` validates structurally anyway; a hand-written
+       * row type here would be a second source of truth that can drift.
+       */
+      public_league_snapshot: { Args: Record<string, never>; Returns: unknown };
       is_group_member: { Args: { gid: string }; Returns: boolean };
       is_group_admin: { Args: { gid: string }; Returns: boolean };
       /** 0008: is the caller an admin of any league p_user_id belongs to? */

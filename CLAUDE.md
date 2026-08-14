@@ -35,7 +35,13 @@ To find out what production actually has, run the read-only query in README.md
 Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0003_group_create_and_pick_flags` → `0004_profile_names_avatars` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
-`0007_profile_extras_and_buy_in` → `0008_private_profile_fields`.
+`0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
+`0009_public_standings`.
+
+**0009 needs a second, separate statement.** Applying it publishes nothing; the
+landing page stays in its no-data state until a row is inserted into
+`public_league` (see README, `#### Deploying`). That is the intended default —
+the public board is opt-in.
 
 **0004 is one-shot.** Its backfill reads `display_name` and a later statement
 drops that column, so a second run fails with "column display_name does not
