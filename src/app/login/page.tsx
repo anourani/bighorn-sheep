@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/errors";
+import { verifyErrorReason } from "@/lib/auth-callback";
 import { formatDisplayName } from "@/lib/league/name";
 import { BrandMark } from "@/components/shell/BrandMark";
 import { Panel } from "@/components/ui/Panel";
@@ -38,6 +39,8 @@ const ENTRY_CLOSED_COPY =
 const ERROR_COPY: Record<string, string> = {
   link_expired: "That sign-in link expired or was already used. Request a fresh one below.",
   link_missing_code: "That sign-in link arrived incomplete. Request a fresh one below.",
+  link_rejected: "That sign-in link couldn't be verified. Request a fresh one below.",
+  access_denied: "That sign-in link is no longer valid. Request a fresh one below.",
   verifier_missing:
     "A sign-in link only works in the browser that asked for it. Request a fresh one below and open it on this device.",
   entry_closed: "Entry for that league has closed — it locks at the first Week 1 kickoff.",
@@ -69,7 +72,30 @@ type Preview =
 function LoginInner() {
   const params = useSearchParams();
   const invite = params.get("invite");
-  const errorParam = params.get("error");
+  const queryError = params.get("error");
+
+  // GoTrue can report a rejected token in the URL *fragment* instead of the
+  // query, and a fragment never reaches the server — so the callback route
+  // cannot see this case at all, and without this it fails completely silently.
+  const [hashError, setHashError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!window.location.hash) return;
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const reason = verifyErrorReason(hash);
+    if (reason) {
+      console.error("[login] sign-in link rejected, reported in the URL fragment", {
+        error: hash.get("error"),
+        error_code: hash.get("error_code"),
+        error_description: hash.get("error_description"),
+      });
+      setHashError(reason);
+    }
+    // Clear it either way: a stale fragment would otherwise survive every
+    // subsequent attempt on this page.
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
+
+  const errorParam = queryError ?? hashError;
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");

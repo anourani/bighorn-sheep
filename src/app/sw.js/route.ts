@@ -106,6 +106,12 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return; // leave ESPN / cross-origin alone
   if (url.pathname.startsWith("/api/")) return; // never cache live data
   if (url.pathname === "/sw.js") return; // never cache ourselves
+  // Never come between a magic link and the server. The emailed code is
+  // single-use, so swallowing a failed navigation here and showing /offline
+  // spends the sign-in on a page that cannot complete it, and the next click
+  // reports a link that genuinely is used up. Let the browser show its own
+  // error instead — that one is retryable.
+  if (url.pathname === "/auth/callback") return;
 
   if (req.mode === "navigate") {
     event.respondWith(

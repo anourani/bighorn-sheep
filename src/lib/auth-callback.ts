@@ -11,9 +11,37 @@ export type CallbackError =
   | "link_missing_code"
   | "verifier_missing"
   | "link_expired"
+  | "link_rejected"
+  | "access_denied"
   | "entry_closed"
   | "invalid_code"
   | "join_failed";
+
+/**
+ * GoTrue's own verdict on the emailed token, if it gave one.
+ *
+ * `/auth/v1/verify` is the first hop of a magic link. When it accepts the token
+ * it redirects here with a `code`; when it rejects one it redirects here with no
+ * `code` at all and `error` / `error_code` / `error_description` instead. The
+ * callback used to see only "no code" and report `link_expired` — the app's
+ * guess, printed over the top of the answer.
+ *
+ * Returns null when there is no error to report, so callers can carry on.
+ *
+ * These may also arrive in the URL *fragment*, which never reaches the server —
+ * the login page reads that case client-side.
+ */
+export function verifyErrorReason(params: URLSearchParams): CallbackError | null {
+  const error = params.get("error");
+  const code = params.get("error_code");
+  if (!error && !code) return null;
+
+  // Both the expiry of an unused link and the second click on a spent one.
+  if (code === "otp_expired") return "link_expired";
+  // Rejected before any user decision — a tampered or unknown token.
+  if (error === "access_denied") return "access_denied";
+  return "link_rejected";
+}
 
 /**
  * Is the PKCE code verifier present for this request?

@@ -157,10 +157,14 @@ Still in Supabase: **Authentication → URL Configuration**.
   address like `https://6a7f9b1f91786e00086f40d4--bighorn-sheep.netlify.app` — that
   long hex prefix is a deploy id, and the URL is a permanent link to *that one
   build*, not to your site. It is a bare origin with no path, so it looks like it
-  obeys the rule above, and it breaks every sign-in: the emailed link only works on
-  the address it was requested from, and that hex-prefixed host is a different one.
-  Players get **"That sign-in link expired or was already used"** on a link that is
-  perfectly fresh. Use `https://bighorn-sheep.netlify.app`.
+  obeys the rule above. Use `https://bighorn-sheep.netlify.app`.
+
+  **And don't hand that address to players either.** The wildcard entry below
+  matches it, so signing in from a deploy permalink is *permitted* — the emailed
+  link goes back to the permalink and the player signs in against a frozen old
+  copy of the site, with nothing reporting an error. The app now redirects
+  `/login` away from a permalink for exactly this reason, but the link you share
+  should be the site's own address regardless.
 - **Redirect URLs** — add all three:
 
   ```
@@ -293,7 +297,8 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | Scores never update after a game ends | The five-minute job isn't running. Check `SUPABASE_SERVICE_ROLE_KEY` is set and the site has redeployed since. |
 | Header counts down to next week, not September | The entry deadline is the stale `create_group` default. Re-open the loader link — it repairs this. |
 | An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. |
-| Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) and says it expired | **Site URL** is set to a deploy permalink instead of the site. Fix it in 2c-bis; applies immediately, no redeploy. The link isn't expired — it just can't be completed on that host. |
+| Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) | Someone opened `/login` on a deploy permalink, so the link was addressed back there. Check the `redirect_to` in the emailed link: if it still ends in `/auth/callback`, Supabase honoured what was asked and the host came from the browser — share the site's own address. If `redirect_to` is a bare origin with the path stripped, **Site URL** is wrong instead; see 2c-bis. |
+| "Expired or already used" on a link that is genuinely fresh | Read Netlify → Logs → **Functions** for the `[auth/callback]` line — it now carries GoTrue's own `error_code`. `otp_expired` means the token really is spent or timed out (a mail scanner following the link in transit will do this); `verifier_missing` means it was opened in a different browser or device from the one that requested it. |
 | Sign-in says the link only works in the browser that asked for it | Exactly what it says: the link was requested on one device and opened on another (a common one — requesting on a phone and tapping through on a laptop). Request a fresh link on the device you'll open it on. |
 
 When reporting a problem, include the exact text you're seeing (copy-paste beats a

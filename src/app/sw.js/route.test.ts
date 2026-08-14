@@ -37,6 +37,13 @@ describe("service worker route", () => {
     expect(await body()).toContain("/_next/static/");
   });
 
+  it("stays out of the magic-link callback", async () => {
+    // The emailed code is single-use. If the worker catches a failed navigation
+    // to /auth/callback and answers with /offline, the sign-in is spent on a
+    // page that cannot complete it and the next click reports a used-up link.
+    expect(await body()).toContain('/auth/callback"');
+  });
+
   it("is served as JavaScript at root scope, and revalidated", async () => {
     const res = GET();
     expect(res.headers.get("content-type")).toMatch(/javascript/);

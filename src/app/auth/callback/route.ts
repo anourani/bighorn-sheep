@@ -2,21 +2,27 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canonicalNetlifyHost } from "@/lib/deploy-origin";
-import { exchangeFailureReason, joinFailureReason } from "@/lib/auth-callback";
+import {
+  exchangeFailureReason,
+  hasVerifierCookie,
+  joinFailureReason,
+  verifyErrorReason,
+  type CallbackError,
+} from "@/lib/auth-callback";
 
 /**
- * Magic-link landing. Supabase redirects here with a `code` after the user taps
- * the email link. We exchange it for a session (cookies are writable in a Route
- * Handler, unlike a Server Component), then — if the link carried an invite —
- * join the league via the SECURITY DEFINER RPC before dropping the user into the
- * app. Any failure routes back to /login with a reason the page can explain.
+ * Magic-link landing, and the second hop of the link — `/auth/v1/verify` on
+ * Supabase is the first. If it accepted the emailed token it sends us a `code`
+ * to exchange for a session (cookies are writable in a Route Handler, unlike a
+ * Server Component); if it rejected the token it sends `error`/`error_code`
+ * instead and no `code` at all. Then, if the link carried an invite, we join the
+ * league via the SECURITY DEFINER RPC before dropping the user into the app.
  *
- * Every failure also gets a `console.error` with the real detail. The reason
- * codes are deliberately coarse — they're user-facing copy keys — and for a
- * long time the coarsest of them, `link_expired`, was the *only* thing this
- * route ever said, about four unrelated causes, while logging nothing. A
- * misconfigured Site URL then looked exactly like an expired link. Read the
- * function logs before theorising.
+ * Every failure routes back to /login with a stable reason and gets a
+ * `console.error` carrying the real detail. That matters more than it sounds:
+ * this route used to answer `link_expired` to four unrelated causes while
+ * logging nothing, so "the link expired" was the app's guess printed over the
+ * top of GoTrue's actual finding. Read the function logs before theorising.
  */
 export async function GET(request: Request) {
   const { searchParams, origin, pathname, search, host } = new URL(request.url);
@@ -26,34 +32,54 @@ export async function GET(request: Request) {
   // redirect, since `x-forwarded-host` carries no protocol to rebuild it with.
   const publicHost = request.headers.get("x-forwarded-host") ?? host;
 
-  // The link landed on a deploy permalink, where the PKCE verifier cookie set
-  // at sign-in time does not exist and never will. Move to the real site and
-  // let that origin finish the exchange. See src/lib/deploy-origin.ts.
+  // Read before anything else: a failed exchange clears the verifier cookie, so
+  // reading afterwards would erase the evidence used to explain the failure.
+  const cookieNames = (await cookies()).getAll().map((c) => c.name);
+
+  // Last-resort recovery for a link that landed on a deploy permalink *and* has
+  // no verifier here — that combination cannot succeed on this origin. When the
+  // verifier IS here the handshake started here too and completes fine, so
+  // leave it alone: the redirect allowlist permits signing in from a permalink,
+  // and bouncing would move the code to an origin that has no verifier at all.
   const canonicalHost = canonicalNetlifyHost(publicHost);
-  if (canonicalHost) {
+  if (canonicalHost && !hasVerifierCookie(cookieNames)) {
     console.error(
-      `[auth/callback] magic link landed on deploy permalink ${publicHost}; ` +
-        `forwarding to ${canonicalHost}. Fix Supabase Auth → URL Configuration: Site URL ` +
-        `must be the site's own origin, not a <deploy-id>--<site>.netlify.app permalink.`,
+      `[auth/callback] link landed on deploy permalink ${publicHost} with no verifier; ` +
+        `forwarding to ${canonicalHost}. Sign-in should not start on a permalink — see ` +
+        `src/lib/deploy-origin.ts.`,
     );
     return NextResponse.redirect(`https://${canonicalHost}${pathname}${search}`);
   }
 
-  const code = searchParams.get("code");
   const invite = searchParams.get("invite");
 
   // Only ever redirect to an internal /app path (open-redirect guard).
   const nextParam = searchParams.get("next");
   const next = nextParam && nextParam.startsWith("/app") ? nextParam : "/app";
 
-  if (!code) {
-    console.error(`[auth/callback] no code on the request (host ${publicHost})`);
-    return NextResponse.redirect(`${origin}/login?error=link_missing_code`);
+  const fail = (reason: CallbackError) =>
+    noStore(NextResponse.redirect(`${origin}/login?error=${reason}`));
+
+  // GoTrue rejected the token before we ever saw a code. It said why; say that
+  // rather than guessing, and log its exact words.
+  const rejected = verifyErrorReason(searchParams);
+  if (rejected) {
+    console.error(`[auth/callback] verify rejected the token as ${rejected}`, {
+      host: publicHost,
+      error: searchParams.get("error"),
+      error_code: searchParams.get("error_code"),
+      error_description: searchParams.get("error_description"),
+    });
+    return fail(rejected);
   }
 
-  // Read before the exchange: a failed exchange can clear the verifier cookie,
-  // which would erase the very evidence we use to explain the failure.
-  const cookieNames = (await cookies()).getAll().map((c) => c.name);
+  const code = searchParams.get("code");
+  if (!code) {
+    // No code and no error either — the link was truncated, or something
+    // fetched this URL directly.
+    console.error(`[auth/callback] no code and no error params (host ${publicHost})`);
+    return fail("link_missing_code");
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -64,7 +90,7 @@ export async function GET(request: Request) {
       status: error.status,
       message: error.message,
     });
-    return NextResponse.redirect(`${origin}/login?error=${reason}`);
+    return fail(reason);
   }
 
   if (invite) {
@@ -72,9 +98,22 @@ export async function GET(request: Request) {
     if (joinError) {
       const reason = joinFailureReason(joinError.message);
       console.error(`[auth/callback] join_by_invite failed as ${reason}`, joinError.message);
-      return NextResponse.redirect(`${origin}/login?error=${reason}`);
+      return fail(reason);
     }
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  return noStore(NextResponse.redirect(`${origin}${next}`));
+}
+
+/**
+ * The emailed token is single-use, and this is a GET that spends it — so
+ * anything that follows links on the user's behalf can burn a sign-in before
+ * the person ever clicks. Corporate mail scanners do exactly that. These
+ * headers don't stop a determined scanner, but they keep the response out of
+ * every cache and out of search indexes, which is the cheap half of the fix.
+ */
+function noStore(response: NextResponse): NextResponse {
+  response.headers.set("Cache-Control", "no-store, max-age=0");
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return response;
 }

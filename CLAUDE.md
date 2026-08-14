@@ -80,26 +80,50 @@ silently strands magic links on a page that can't exchange them, and sign-in
 breaks with no error anywhere. `src/middleware.ts` now forwards a stray `?code=`
 to `/auth/callback` as a safety net, but the setting still has to be right.
 
-**A bare origin can still be the wrong one: never use a deploy permalink.** Netlify
-gives every deploy a permanent address of its own,
-`https://<24-hex-deploy-id>--bighorn-sheep.netlify.app`, and shows it on the deploy
-page — so it gets pasted into Site URL, where it passes the "bare origin, no path"
-test above and is still wrong. Every magic link then lands on that host via the
-fallback, and dies, because sign-in is a two-part handshake: `signInWithOtp` stores
-a PKCE verifier in a cookie on the origin that requested the link, that cookie is
-host-only, and `netlify.app` is on the Public Suffix List so it cannot be widened
-to cover both. `exchangeCodeForSession` gets a code with no verifier.
+**The preview wildcard also matches a deploy permalink, and that lets sign-in
+happen on a frozen copy of the site.** `https://**--bighorn-sheep.netlify.app/**`
+is there for deploy previews, but it equally matches
+`https://<24-hex-deploy-id>--bighorn-sheep.netlify.app` — the permanent
+per-deploy address Netlify shows on the deploy page. `login/page.tsx` builds
+`emailRedirectTo` from `window.location.origin`, so anyone who reaches `/login`
+on a permalink gets a magic link addressed back to the permalink, Supabase
+accepts it as allowlisted, and **nothing errors anywhere**. They sign in against
+an old build on an origin whose cookies are its own.
 
-The symptom is the tell, and it lies: a perfectly good link says **"expired or was
-already used."** Whole deploys' worth of invitees can't sign in while the link
-looks stale. Worse for debugging, auth-js checks its own storage and throws
-`AuthPKCECodeVerifierMissingError` *before* it calls GoTrue — so the request never
-reaches Supabase and **the Supabase auth logs show nothing at all**. An empty log
-is not evidence the link was never clicked. `src/lib/deploy-origin.ts` now recognises that host shape and bounces
-the code to the real site (previews and branch deploys are deliberately exempt —
-they are their own origins with their own cookies), and the callback logs a
-`verifier_missing` reason rather than blaming the link. That's recovery, not a
-fix; correct the Site URL.
+Read the `redirect_to` in the emailed link before diagnosing this. It is the
+whole answer, and it distinguishes the two cases that look identical from the
+outside: if `redirect_to` still carries the `/auth/callback` path the app asked
+for, Supabase **honoured** it and the odd host came from the browser — someone
+was on the permalink. If `redirect_to` is a bare origin with the path thrown
+away, that is the Site-URL fallback above, and the allowlist is what to fix.
+
+`src/middleware.ts` now redirects `/login` off a permalink before any verifier
+cookie exists, which is the only place the fix is free. Previews and branch
+deploys are deliberately exempt — they are their own origins by design.
+
+**Never let a failed magic link report the app's guess instead of GoTrue's
+answer.** `/auth/v1/verify` is the first hop of the link; on rejection it
+redirects to `redirect_to` with `error`/`error_code`/`error_description` and
+**no `code`**. The callback used to treat "no code" as `link_expired`, so
+"expired or was already used" got printed over the top of whatever actually
+happened, with nothing logged. `verifyErrorReason` in `src/lib/auth-callback.ts`
+now reads those params, and the login page reads them from the URL **fragment**
+too — GoTrue sometimes puts them there, and a fragment never reaches the server,
+so that class of failure was previously invisible on both sides.
+
+Two more things worth knowing when the exchange itself fails. auth-js checks its
+own storage and throws `AuthPKCECodeVerifierMissingError` *before* it calls
+GoTrue, so **the Supabase auth logs show nothing at all** — an empty log is not
+evidence the link was never clicked. And it deletes the verifier cookie on any
+failure, so read the cookie jar *before* the exchange or every failure looks like
+a missing verifier.
+
+**The emailed token is single-use and spent by a GET, so anything that follows
+links can burn it.** Corporate mail scanners do. The service worker used to be
+another way: it caught failed navigations and answered `/offline`, which spends
+the code on a page that cannot complete it and makes the next click report a
+link that genuinely is used up. `/auth/callback` is now excluded from the
+worker's fetch handler and the response is `no-store`.
 
 **Deploy previews hit that same fallback, and it looks nothing like a bug.**
 `src/app/login/page.tsx` builds `emailRedirectTo` from `window.location.origin`,
