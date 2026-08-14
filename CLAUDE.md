@@ -80,6 +80,27 @@ silently strands magic links on a page that can't exchange them, and sign-in
 breaks with no error anywhere. `src/middleware.ts` now forwards a stray `?code=`
 to `/auth/callback` as a safety net, but the setting still has to be right.
 
+**A bare origin can still be the wrong one: never use a deploy permalink.** Netlify
+gives every deploy a permanent address of its own,
+`https://<24-hex-deploy-id>--bighorn-sheep.netlify.app`, and shows it on the deploy
+page — so it gets pasted into Site URL, where it passes the "bare origin, no path"
+test above and is still wrong. Every magic link then lands on that host via the
+fallback, and dies, because sign-in is a two-part handshake: `signInWithOtp` stores
+a PKCE verifier in a cookie on the origin that requested the link, that cookie is
+host-only, and `netlify.app` is on the Public Suffix List so it cannot be widened
+to cover both. `exchangeCodeForSession` gets a code with no verifier.
+
+The symptom is the tell, and it lies: a perfectly good link says **"expired or was
+already used."** Whole deploys' worth of invitees can't sign in while the link
+looks stale. Worse for debugging, auth-js checks its own storage and throws
+`AuthPKCECodeVerifierMissingError` *before* it calls GoTrue — so the request never
+reaches Supabase and **the Supabase auth logs show nothing at all**. An empty log
+is not evidence the link was never clicked. `src/lib/deploy-origin.ts` now recognises that host shape and bounces
+the code to the real site (previews and branch deploys are deliberately exempt —
+they are their own origins with their own cookies), and the callback logs a
+`verifier_missing` reason rather than blaming the link. That's recovery, not a
+fix; correct the Site URL.
+
 **Deploy previews hit that same fallback, and it looks nothing like a bug.**
 `src/app/login/page.tsx` builds `emailRedirectTo` from `window.location.origin`,
 so a preview correctly asks to come back to

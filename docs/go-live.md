@@ -152,6 +152,15 @@ Still in Supabase: **Authentication → URL Configuration**.
 - **Site URL** — your production origin, bare, with **no path**. Supabase falls
   back to this whenever a sign-in asks to return somewhere that isn't allowlisted,
   so a path here strands magic links on a page that can't complete them.
+
+  **Copy it from the site overview, not from a deploy.** A deploy's page shows an
+  address like `https://6a7f9b1f91786e00086f40d4--bighorn-sheep.netlify.app` — that
+  long hex prefix is a deploy id, and the URL is a permanent link to *that one
+  build*, not to your site. It is a bare origin with no path, so it looks like it
+  obeys the rule above, and it breaks every sign-in: the emailed link only works on
+  the address it was requested from, and that hex-prefixed host is a different one.
+  Players get **"That sign-in link expired or was already used"** on a link that is
+  perfectly fresh. Use `https://bighorn-sheep.netlify.app`.
 - **Redirect URLs** — add all three:
 
   ```
@@ -284,6 +293,8 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | Scores never update after a game ends | The five-minute job isn't running. Check `SUPABASE_SERVICE_ROLE_KEY` is set and the site has redeployed since. |
 | Header counts down to next week, not September | The entry deadline is the stale `create_group` default. Re-open the loader link — it repairs this. |
 | An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. |
+| Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) and says it expired | **Site URL** is set to a deploy permalink instead of the site. Fix it in 2c-bis; applies immediately, no redeploy. The link isn't expired — it just can't be completed on that host. |
+| Sign-in says the link only works in the browser that asked for it | Exactly what it says: the link was requested on one device and opened on another (a common one — requesting on a phone and tapping through on a laptop). Request a fresh link on the device you'll open it on. |
 
 When reporting a problem, include the exact text you're seeing (copy-paste beats a
 description), which step you were on, and what you expected. **Never include the

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
+import { canonicalNetlifyHost } from "@/lib/deploy-origin";
 
 /**
  * Auth boundary for the app.
@@ -34,6 +35,26 @@ export async function middleware(request: NextRequest) {
   if (searchParams.has("code") && pathname !== "/auth/callback") {
     const target = request.nextUrl.clone();
     target.pathname = "/auth/callback";
+
+    // ...and if the Site URL it fell back to was a Netlify *deploy permalink*,
+    // correct the host in the same hop. The PKCE verifier cookie lives on the
+    // origin that requested the link, so exchanging here would fail no matter
+    // what — the fallback host has to be left behind, not just the path.
+    // Previews and branch deploys are their own origins and are left alone.
+    const publicHost = request.headers.get("x-forwarded-host") ?? target.host;
+    const canonicalHost = canonicalNetlifyHost(publicHost);
+    if (canonicalHost) {
+      // Loud on purpose. This safety net quietly completing the exchange on
+      // whichever host it landed on is what hid a wrong Site URL for weeks.
+      console.error(
+        `[middleware] magic link landed on deploy permalink ${publicHost}; ` +
+          `forwarding to ${canonicalHost}. Fix Supabase Auth → URL Configuration: Site URL ` +
+          `must be the site's own origin, not a <deploy-id>--<site>.netlify.app permalink.`,
+      );
+      target.protocol = "https:";
+      target.host = canonicalHost;
+    }
+
     return NextResponse.redirect(target);
   }
 

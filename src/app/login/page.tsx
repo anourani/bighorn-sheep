@@ -25,9 +25,21 @@ type SendResult = { ok: true } | { ok: false; reason: "signup_disabled" | "other
 const ENTRY_CLOSED_COPY =
   "Entry for this league has closed — it locks at the first Week 1 kickoff.";
 
-/** Human copy for the `?error=` reasons the auth callback can bounce back with. */
+/**
+ * Human copy for the `?error=` reasons the auth callback can bounce back with.
+ *
+ * `verifier_missing` is deliberately separate from `link_expired`. Sign-in is a
+ * handshake: requesting the link leaves half of it in the browser that asked.
+ * Open the link somewhere else — another device, another browser, or an origin
+ * the Supabase Site URL redirected it to — and the halves never meet. That used
+ * to report itself as "expired or already used", which sent everyone hunting
+ * for a stale link that was never the problem.
+ */
 const ERROR_COPY: Record<string, string> = {
   link_expired: "That sign-in link expired or was already used. Request a fresh one below.",
+  link_missing_code: "That sign-in link arrived incomplete. Request a fresh one below.",
+  verifier_missing:
+    "A sign-in link only works in the browser that asked for it. Request a fresh one below and open it on this device.",
   entry_closed: "Entry for that league has closed — it locks at the first Week 1 kickoff.",
   invalid_code: "That invite code didn't match a league. Double-check it and try again.",
   join_failed: "Something went wrong joining that league. Give it another try.",
