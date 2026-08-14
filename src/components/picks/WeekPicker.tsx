@@ -51,7 +51,7 @@ export function WeekPicker({
       */}
       <label
         htmlFor={selectId}
-        className="block w-fit cursor-pointer text-sm font-semibold uppercase leading-none text-[#757575]"
+        className="block w-fit cursor-pointer text-xs font-semibold uppercase leading-none text-[#757575]"
       >
         Change week
       </label>
