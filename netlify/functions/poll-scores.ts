@@ -33,6 +33,24 @@ export const config = {
 };
 
 function json(body: unknown, status = 200): Response {
+  /*
+   * Log the verdict, don't just return it.
+   *
+   * A scheduled invocation has no caller: Netlify runs this on a cron and
+   * discards the response body. So every outcome this function computes — the
+   * `skipped` reasons, the failure stage, how many members were updated — was
+   * being thrown away, and the function log showed nothing but a duration. The
+   * league's heartbeat ran unattended and unobservable, and diagnosing it meant
+   * reasoning backwards from how many milliseconds it took.
+   *
+   * Every return path goes through this helper, which is why the line lives
+   * here rather than at each `return` — a new branch added later is logged
+   * without anyone remembering to.
+   *
+   * Safe to log: the body carries week targets, counts and provider/Postgres
+   * error strings. Neither key is ever in it.
+   */
+  console.log(`[poll-scores] ${status} ${JSON.stringify(body)}`);
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },

@@ -1,5 +1,6 @@
 import { loadLeague } from "@/lib/league/load";
 import { statusLine, survivorCounts, type StatusLineInput } from "@/lib/league/view";
+import { SurvivorStrip } from "@/components/app/SurvivorStrip";
 import { countdown } from "@/lib/time";
 
 /**
@@ -47,13 +48,6 @@ export async function LeagueStatusBar() {
 export function LeagueStatusBarView({ status }: { status: StatusLineInput }) {
   const { lead, primary, secondary } = statusLine(status);
 
-  const eliminated = status.kind === "season" ? status.eliminated : 0;
-  const alive = status.kind === "season" ? status.alive : status.joined;
-  const stripLabel =
-    status.kind === "season"
-      ? `${alive} of ${alive + eliminated} players still alive, ${eliminated} eliminated`
-      : `${alive} players joined, all alive`;
-
   /*
     Full-bleed by negative margin. `main` is `flex-1 px-4 pb-28 pt-5`
     (src/app/app/layout.tsx:15) and this is its first child, so without this it
@@ -82,24 +76,7 @@ export function LeagueStatusBarView({ status }: { status: StatusLineInput }) {
         </div>
       </div>
 
-      {/*
-        One cell per member, eliminated first. Known limit, pre-existing and
-        deliberately not fixed here: given px-4, gap-6, a ~160px text block and
-        2px gaps, cells fall below 1 CSS pixel at roughly 59 members at 390px
-        (262 at 1000px), and past ~87 on a phone the gaps consume the whole
-        track. The fix, recorded so it isn't re-derived: a pure
-        `survivorStrip(alive, eliminated, { maxCells })` in view.ts returning
-        per-member cells below a ~48 threshold and a two-segment proportional bar
-        above it, which preserves the ratio — the only information left at 1px.
-      */}
-      <div className="flex flex-1 items-center gap-0.5" role="img" aria-label={stripLabel}>
-        {Array.from({ length: eliminated }).map((_, i) => (
-          <span key={`out-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-line" />
-        ))}
-        {Array.from({ length: alive }).map((_, i) => (
-          <span key={`alive-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-alive" />
-        ))}
-      </div>
+      <SurvivorStrip status={status} className="flex-1" />
     </div>
   );
 }

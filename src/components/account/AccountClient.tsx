@@ -8,10 +8,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Field, FieldRow } from "@/components/ui/Field";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Label } from "@/components/ui/Label";
-import { CreateGroupModal } from "@/components/account/CreateGroupModal";
 import { EditProfileModal } from "@/components/account/EditProfileModal";
 import { JoinByCode } from "@/components/account/JoinByCode";
-import { CheckIcon, ChevronDownIcon, InfoIcon, LogOutIcon, PlusIcon } from "@/components/icons";
+import { CheckIcon, ChevronDownIcon, InfoIcon, LogOutIcon } from "@/components/icons";
 import { createClient } from "@/lib/supabase/client";
 import { selectLeague, updateAvatar, updateFavoriteAnimal } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
@@ -267,7 +266,6 @@ function PreferenceRow({ label, children }: { label: string; children: React.Rea
 
 export function AccountClient({ account }: { account: AccountData }) {
   const { viewer, leagues, activeGroupId } = account;
-  const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
   const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
@@ -348,17 +346,14 @@ export function AccountClient({ account }: { account: AccountData }) {
 
           {leagues.length === 0 ? (
             <p className="text-sm text-ink-mute">
-              You&apos;re not in a league yet. Create one, or join with an invite code.
+              You&apos;re not in a league yet. Join with an invite code.
             </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 py-3">
-            <Button variant="soft" size="lg" onClick={() => setCreateOpen(true)}>
-              <PlusIcon />
-              Create a New League
-            </Button>
-            <span className="text-lg font-semibold leading-[1.2] text-ink">OR</span>
-            <div className="w-full min-w-[260px] max-w-[390px] flex-1">
+          {/* Joining is the only way into a league — the inaugural season runs a
+              single league, so there is no "create" path in the product. */}
+          <div className="flex justify-center py-3">
+            <div className="w-full min-w-[260px] max-w-[390px]">
               <JoinByCode />
             </div>
           </div>
@@ -394,7 +389,6 @@ export function AccountClient({ account }: { account: AccountData }) {
         Log out
       </Button>
 
-      <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />
       <EditProfileModal
         open={editOpen}
         onClose={() => setEditOpen(false)}

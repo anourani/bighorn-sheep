@@ -35,7 +35,13 @@ To find out what production actually has, run the read-only query in README.md
 Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0003_group_create_and_pick_flags` → `0004_profile_names_avatars` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
-`0007_profile_extras_and_buy_in` → `0008_private_profile_fields`.
+`0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
+`0009_public_standings`.
+
+**0009 needs a second, separate statement.** Applying it publishes nothing; the
+landing page stays in its no-data state until a row is inserted into
+`public_league` (see README, `#### Deploying`). That is the intended default —
+the public board is opt-in.
 
 **0004 is one-shot.** Its backfill reads `display_name` and a later statement
 drops that column, so a second run fails with "column display_name does not
@@ -103,11 +109,15 @@ The one that bites is `NEXT_PUBLIC_APP_URL`, which builds invite links in
 `WhosIn.tsx` and `AdminSettingsModal.tsx`. Being a build-time constant, it holds
 the *same* host in every context unless it's scoped per deploy context — so a
 deploy preview hands out **production** invite links, and "Copy link" looks wrong
-while nothing is actually broken. Worse, nothing in this repo sets it: it's
-absent from `netlify.toml` and from the go-live env checklist, so unless someone
-added it by hand in Netlify, the fallback in `StandingsClient.tsx` is what ships
-— `?? "https://bighorn.example"`, a domain that does not exist. Check it before
-trusting any invite link.
+while nothing is actually broken.
+
+It **is** set in the Netlify environment (verified Aug 2026), but as *"Same value
+in all deploy contexts"*, which is exactly the failure above. Nothing in the repo
+sets it — it's absent from `netlify.toml` — so the fallback in
+`StandingsClient.tsx` (`?? "https://bighorn.example"`, a domain that does not
+exist) is what ships anywhere the variable is missing. To fix the preview case,
+switch it to *"Different value for each deploy context"* in Netlify and give each
+context its own origin.
 
 ---
 
@@ -147,8 +157,8 @@ rendered `{}` to a real user. Use `errorMessage(error, fallback)` from
 `src/lib/errors.ts`.
 
 **Server actions return stable codes, never database text.** Callers key off
-`res.error` in a copy dictionary with a `??` fallback (see
-`CreateGroupModal.tsx`, `JoinByCode.tsx`, `MyPicksClient.tsx`). Returning
+`res.error` in a copy dictionary with a `??` fallback (see `JoinByCode.tsx`,
+`MyPicksClient.tsx`). Returning
 `error.message` puts raw Postgres text — constraint names and all — one
 `?? res.error` away from the UI. Map to `unexpected_error` and `console.error`
 the detail so it lands in the Netlify function logs.
@@ -191,13 +201,66 @@ live site can't be fetched from here. The user has to run browser checks.
 
 ## Open issues
 
-- **`SUPABASE_SERVICE_ROLE_KEY` is not set in the Netlify environment**, so
-  `netlify/functions/poll-scores.ts` no-ops: no score polling, no automated
-  eliminations. Matters before Week 1.
-- `CRON_SECRET` is documented in `.env.example` but never read; `poll-scores.ts`
-  has no secret check despite a comment claiming one.
+**Two entries here were wrong for months and cost real debugging time. Verify an
+environment claim against Netlify or the database before repeating it — this
+file is not evidence.** Both are corrected below; the pattern is the lesson.
+
 - The magic-link sender is still another project's domain. Needs a domain owned
   by this app, verified with the SMTP provider.
-- Everything downstream of creating a group — standings, picks, weekly locks,
-  eliminations — is **unexercised against real data**, because `create_group` was
-  broken until 0005.
+- `NEXT_PUBLIC_APP_URL` is set, but shared across all deploy contexts, so
+  previews hand out production invite links. See the Supabase traps section.
+- `poll-scores` runs `*/5 * * * *` all year, including February. The code comment
+  says to narrow it to Thu/Sun/Mon game windows in production; nobody has. Costs
+  function minutes, not correctness.
+- `docs/go-live.md` Step 1 still walks through 0006's constraint rename, long
+  since applied. Steps 2–4 are current.
+
+### Resolved — do not re-open
+
+- ~~`SUPABASE_SERVICE_ROLE_KEY` is not set, so `poll-scores` no-ops.~~ **It is
+  set** (verified in the Netlify dashboard, Aug 2026), the schedule is loaded,
+  and the scorer polls and writes on schedule. The claim survived because
+  `poll-scores` logged nothing and its only output — the returned `Response` —
+  is discarded by Netlify's cron, so a working run and a dead one looked
+  identical. It now `console.log`s every verdict; read that log before
+  theorising about it.
+- ~~`CRON_SECRET` is never read.~~ `src/lib/cron-auth.ts` reads it, and
+  `load-schedule` **fails closed** — a 503 when it's unset, so an unset secret
+  never means "anyone may reload the schedule". `poll-scores` is deliberately
+  *not* gated: Netlify's cron cannot send a custom header, and recognising the
+  platform by `user-agent` would be worse than no check. The rationale is
+  written out at the bottom of `cron-auth.ts`.
+- ~~Everything downstream of creating a group is unexercised against real
+  data.~~ Partly resolved: the schedule is loaded and the scorer writes. Still
+  genuinely unexercised is anything that needs a *completed regular-season
+  game* — elimination, strike accrual, the weekly lock/reveal cycle at a real
+  kickoff. None of that has run against live results yet, so treat Week 1 as
+  the first real test.
+
+---
+
+## Things that are true now and weren't
+
+- **There is no create-a-league path.** One standalone league for the inaugural
+  season, so every player arrives via an invite code. `CreateGroupModal` and the
+  `createGroup` server action are gone — an exported Server Action is a
+  reachable HTTP endpoint, not dead code. The `create_group` RPC remains in the
+  database because the league still has to be created through it once;
+  `docs/dry-run.md` documents that path, and it needs `set local
+  request.jwt.claims` because the function reads `auth.uid()`.
+- **The landing page reads real league data.** `/` is anonymous-only (middleware
+  redirects signed-in visitors to `/app`) and every 0001 policy is `to
+  authenticated`, so it goes through one anon-callable RPC,
+  `public_league_snapshot()` (0009). Three things about it are load-bearing:
+  - **The pick-privacy lock is in SQL, not TypeScript.** The anon key ships in
+    the browser bundle, so anyone can call the RPC directly; filtering in the
+    server component would be theatre. Un-kicked picks are absent from the
+    payload entirely.
+  - **Publication is a pointer table (`public_league`) with RLS on and no
+    policies**, not a column on `groups`. 0001's `"groups update by admin
+    (unlocked)"` policy lets any admin UPDATE their own group row, and RLS
+    cannot restrict *which columns* an update writes — so a flag on `groups`
+    would let any league admin publish their own members' board with the anon
+    key.
+  - **The function takes no arguments.** A group id or invite code parameter
+    would make it a universal standings reader for every league in the project.

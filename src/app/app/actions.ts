@@ -11,7 +11,6 @@ import type { SeasonType } from "@/lib/nfl/types";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
 import { isFavoriteAnimal } from "@/lib/profile/animals";
-import type { EliminationType, TieRule } from "@/lib/league/types";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -312,83 +311,6 @@ export async function updateAvatar(url: string): Promise<ActionResult> {
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
     return { ok: true };
-  });
-}
-
-/**
- * The earliest regular-season Week 1 kickoff for the season a new group will land in,
- * or null when the schedule hasn't been loaded.
- *
- * Regular season and week 1 specifically: the earliest game of the year is the Hall of
- * Fame game in early August, and using that as an entry deadline would close entry on
- * a league the moment it was created.
- *
- * `games` is world-readable to authenticated users (0001_init.sql:179), so this needs
- * no elevated privileges.
- */
-async function firstWeek1Kickoff(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<string | null> {
-  const season = new Date().getUTCFullYear();
-  const { data } = await supabase
-    .from("games")
-    .select("kickoff")
-    .eq("season", season)
-    .eq("season_type", "regular")
-    .eq("week", 1)
-    .order("kickoff", { ascending: true })
-    .limit(1);
-  return data?.[0]?.kickoff ?? null;
-}
-
-/** Create a league and enroll the caller as admin (atomic, via create_group). */
-export async function createGroup(input: {
-  name: string;
-  eliminationType: EliminationType;
-  tieRule: TieRule;
-  entryClosesAt?: string;
-}): Promise<ActionResult<{ groupId: string; inviteCode: string }>> {
-  return attempt(async () => {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { ok: false, error: "not_authenticated" };
-
-    /*
-     * Entry closes at the first Week 1 kickoff — that is what the column means
-     * (0001_init.sql:54) and what every consumer assumes.
-     *
-     * `create_group` can't know it: its fallback is `now() + interval '7 days'`, so a
-     * league created in August closed its own entry a week later, and `join_by_invite`
-     * then refuses every new member permanently with no override in the app. The RPC
-     * has always accepted `p_entry_closes_at`; nothing ever passed one.
-     *
-     * `season` here must match what the RPC will choose, which is
-     * `extract(year from now())` — the same default `create_group` applies when
-     * `p_season` is null. If no schedule is loaded we send nothing and the 7-day
-     * fallback stands, which is the best guess available.
-     */
-    const entryClosesAt = input.entryClosesAt ?? (await firstWeek1Kickoff(supabase));
-
-    const { data, error } = await supabase.rpc("create_group", {
-      p_name: input.name.trim(),
-      p_elimination_type: input.eliminationType,
-      p_tie_rule: input.tieRule,
-      ...(entryClosesAt ? { p_entry_closes_at: entryClosesAt } : {}),
-    });
-    if (error || !data) {
-      // The RPC raises name_required / bad_elimination_type / bad_tie_rule as
-      // bare codes; pass those through, but never a raw Postgres message.
-      const raised = error?.message?.match(/\b(name_required|bad_elimination_type|bad_tie_rule)\b/)?.[1];
-      if (!raised && error) console.error("[createGroup] rpc failed", error);
-      return { ok: false, error: raised ?? "create_failed" };
-    }
-
-    revalidatePath("/app");
-    revalidatePath("/app/account");
-    revalidatePath("/app/standings");
-    return { ok: true, data: { groupId: data.id, inviteCode: data.invite_code } };
   });
 }
 
