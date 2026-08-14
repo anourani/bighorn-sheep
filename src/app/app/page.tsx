@@ -1,5 +1,6 @@
 import { loadLeague } from "@/lib/league/load";
 import { MyPicksClient } from "@/components/picks/MyPicksClient";
+import { LeagueStatusBar } from "@/components/app/LeagueStatusBar";
 import { NoLeagueState } from "@/components/app/NoLeagueState";
 
 /**
@@ -10,5 +11,12 @@ import { NoLeagueState } from "@/components/app/NoLeagueState";
 export default async function MyPicksPage() {
   const load = await loadLeague();
   if (load.kind !== "ok") return <NoLeagueState />;
-  return <MyPicksClient data={load.data} />;
+  // Sibling of the client root, never a child: inside `.stagger` it would shift
+  // every existing delay by 55ms and give the bar an entrance it shouldn't have.
+  return (
+    <>
+      <LeagueStatusBar />
+      <MyPicksClient data={load.data} />
+    </>
+  );
 }

@@ -2,8 +2,15 @@ import { cn } from "@/lib/cn";
 
 /**
  * Uppercase semibold metadata label — 12px. Every grey label in the app is this
- * component, bar the "Change week" eyebrow in `WeekPicker`, which has to be a
- * real <label htmlFor> and so repeats these classes by hand.
+ * component.
+ *
+ * Pass `htmlFor` and it renders a real `<label>` instead of a `<span>`. That is
+ * not cosmetic: where the label names a form control, the control's accessible
+ * name becomes the exact string on screen and cannot drift from it (as an
+ * `aria-label` silently can), and clicking the label focuses the control.
+ * `w-fit` then stops a block-level label from claiming the rest of the line as
+ * an invisible hit area. `WeekPicker` and the header's league switcher both use
+ * this form; before it existed they copied these classes by hand.
  *
  * The size is spelled `text-xs`, NOT the `label-md` token from
  * `tailwind.config.ts` that happens to specify the same 0.75rem, and that is
@@ -20,13 +27,25 @@ import { cn } from "@/lib/cn";
 export function Label({
   children,
   className,
+  htmlFor,
 }: {
   children: React.ReactNode;
   className?: string;
+  /** Id of the control this labels. Switches the element to a real `<label>`. */
+  htmlFor?: string;
 }) {
-  return (
-    <span className={cn("text-xs font-semibold uppercase leading-none text-[#757575]", className)}>
-      {children}
-    </span>
+  const classes = cn(
+    "text-xs font-semibold uppercase leading-none text-shell-mute",
+    htmlFor && "block w-fit cursor-pointer",
+    className,
   );
+
+  if (htmlFor) {
+    return (
+      <label htmlFor={htmlFor} className={classes}>
+        {children}
+      </label>
+    );
+  }
+  return <span className={classes}>{children}</span>;
 }

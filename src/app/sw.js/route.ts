@@ -57,6 +57,12 @@ const SHELL = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  // The header mark, on screen on every authenticated route. It lives under
+  // /icons/ precisely so the runtime handler below will cache it at all — and
+  // precaching it here means it is there on first install rather than after the
+  // first online render. NB: addAll is atomic, so every path in this array must
+  // actually exist or NOTHING gets precached.
+  "/icons/app-mark.jpg",
 ];
 
 self.addEventListener("install", (event) => {

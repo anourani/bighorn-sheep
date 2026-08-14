@@ -1,125 +1,75 @@
 import Link from "next/link";
-import { BrandMark } from "./BrandMark";
+import { LeagueSwitcher } from "./LeagueSwitcher";
+import { APP_NAME } from "@/lib/app";
 import { loadLeague } from "@/lib/league/load";
-import { survivorCounts } from "@/lib/league/view";
-import { countdown } from "@/lib/time";
 
 /**
- * The app shell header — two stacked bars, driven by the viewer's live league.
+ * The app shell header — 68px of chrome and nothing else.
  *
- *  1. A minimized global bar: the brand mark + league name + season range.
- *  2. A survivor-status bar: the current week, a "N survivors · N deaths" tally,
- *     and a proportional strip of cells — one per member (gray = eliminated,
- *     orange = alive). Pre-season shows a countdown to kickoff + who's joined.
+ * Left is the app's own identity: a mark and {@link APP_NAME}, constant in
+ * every league. Right is the league, labelled and switchable. The survivor
+ * tally that used to be stacked underneath is now `LeagueStatusBar`, rendered
+ * by each page — it is a *reading* of the league at this moment, which is page
+ * content, and pinning it to the viewport spent a quarter of a phone screen on
+ * a number that never changes as you scroll.
+ *
+ * There is no longer a separate "minimal" header for a player in no league:
+ * under this design the left block doesn't touch league data, so the two
+ * headers had identical left halves. It is now the left block always, plus the
+ * right block only when there's an active league.
  *
  * Server Component: it shares the request-memoized `loadLeague()` with the page
- * body, so this costs no extra round-trip. A player in no league yet gets a
- * minimal identity-only header.
+ * body and with `LeagueStatusBar`, so all three cost one round-trip between
+ * them.
  */
 export async function AppHeader() {
   const load = await loadLeague();
-
-  if (load.kind !== "ok") return <MinimalHeader />;
-
-  const { group, members, currentWeek, phase } = load.data;
-  const now = new Date(load.data.nowIso);
-
-  const { alive: survivors, eliminated: deaths, total } = survivorCounts(members);
-  const seasonLabel = `${group.season}-${group.season + 1}`;
-
-  const isPreseason = phase === "preseason";
-  const startsIn = countdown(new Date(group.entryClosesAt), now);
-  const joined = members.length;
+  const league = load.kind === "ok" ? load.data : null;
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md">
-      {/* Bar 1 — minimized global header: brand identity only. */}
-      <div className="border-b border-line px-4 pb-3 pt-4">
+    <header className="sticky top-0 z-30 border-b border-shell-line bg-white/85 backdrop-blur-md">
+      {/* 16 + 40 + 12 = 68px, falling out of the 40px mark rather than being
+          hardcoded. `items-start` so the right column hangs from the top edge
+          alongside the mark rather than centring against it. */}
+      <div className="flex items-start justify-between gap-4 px-4 pb-3 pt-4">
         <Link
           href="/app"
-          className="inline-flex items-center gap-3 rounded-control"
-          aria-label={`${group.name} — home`}
+          className="flex min-w-0 items-center gap-3 rounded-control"
+          aria-label={`${APP_NAME} — home`}
         >
-          <BrandMark size="md" />
-          <span className="flex flex-col gap-1">
-            <span className="text-lg font-semibold leading-[1.2] tracking-tight text-ink">
-              {group.name}
-            </span>
-            <span className="text-xs font-medium leading-[1.1] text-ink-mute">{seasonLabel}</span>
+          {/*
+            A plain <img>, not next/image. `Avatar`'s documented reason (avoiding
+            remotePatterns) doesn't apply to a local file, so the honest ones
+            are: next/image would put the app's most visible above-the-fold
+            element behind the image-optimisation endpoint on every
+            authenticated screen, and the saving on a 40px mark is single-digit
+            kilobytes.
+
+            bg-shell-line mirrors the design's own `url(.jpg), #D9D9D9`: if the
+            asset is missing the grey square shows, with no broken-image icon
+            (alt is empty, so the image is decorative) and no layout shift (the
+            width/height attributes reserve the box). The visible app name inside
+            this same link already names the destination.
+          */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icons/app-mark.jpg"
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-[4px] bg-shell-line object-cover"
+          />
+          <span className="truncate text-lg font-semibold leading-[1.2] text-shell-ink">
+            {APP_NAME}
           </span>
         </Link>
-      </div>
 
-      {/* Bar 2 — status. In-season: survivor tally + per-member strip. Pre-season:
-          a countdown to kickoff + how many have joined so far. */}
-      {isPreseason ? (
-        <div className="flex items-center gap-6 border-b border-line px-4 py-2">
-          <div className="flex shrink-0 flex-col gap-1">
-            <span className="text-sm font-medium leading-[1.2] text-ink">Pre-season</span>
-            <div className="flex gap-1.5 whitespace-nowrap text-sm font-medium leading-[1.2]">
-              <span className="text-[#B35838]">Starts in {startsIn.label}.</span>
-              <span className="text-ink-mute">
-                {joined} {joined === 1 ? "joined" : "joined"}.
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="flex flex-1 items-center gap-0.5"
-            role="img"
-            aria-label={`${joined} players joined, all alive`}
-          >
-            {Array.from({ length: joined }).map((_, i) => (
-              <span key={`in-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-[#FC855C]" />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-6 border-b border-line px-4 py-2">
-          <div className="flex shrink-0 flex-col gap-1">
-            <span className="text-sm font-medium leading-[1.2] text-ink">Week {currentWeek}</span>
-            <div className="flex gap-1.5 whitespace-nowrap text-sm font-medium leading-[1.2]">
-              <span className="text-[#B35838]">
-                {survivors} {survivors === 1 ? "survivor" : "survivors"}.
-              </span>
-              <span className="text-ink-mute">
-                {deaths} {deaths === 1 ? "death" : "deaths"}.
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="flex flex-1 items-center gap-0.5"
-            role="img"
-            aria-label={`${survivors} of ${total} players still alive, ${deaths} eliminated`}
-          >
-            {Array.from({ length: deaths }).map((_, i) => (
-              <span key={`out-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-[#D9D9D9]" />
-            ))}
-            {Array.from({ length: survivors }).map((_, i) => (
-              <span key={`alive-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-[#FC855C]" />
-            ))}
-          </div>
-        </div>
-      )}
-    </header>
-  );
-}
-
-/** Identity-only header for a signed-in player who isn't in a league yet. */
-function MinimalHeader() {
-  return (
-    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md">
-      <div className="border-b border-line px-4 pb-3 pt-4">
-        <Link href="/app" className="inline-flex items-center gap-3 rounded-control" aria-label="Last Man Standing — home">
-          <BrandMark size="md" />
-          <span className="flex flex-col gap-1">
-            <span className="text-lg font-semibold leading-[1.2] tracking-tight text-ink">
-              Last Man Standing
-            </span>
-            <span className="text-xs font-medium leading-[1.1] text-ink-mute">NFL Survival League</span>
-          </span>
-        </Link>
+        {/* No league: the block is omitted entirely rather than showing a
+            "LEAGUE / none" placeholder — the body already renders
+            `NoLeagueState`, which says so in the right place. */}
+        {league ? (
+          <LeagueSwitcher leagues={league.leagues} activeId={league.group.id} />
+        ) : null}
       </div>
     </header>
   );

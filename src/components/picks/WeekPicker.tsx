@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { ChevronDownIcon } from "@/components/icons";
+import { Label } from "@/components/ui/Label";
 import type { WeekOptionGroup } from "@/lib/nfl/calendar";
 
 /**
@@ -43,18 +44,10 @@ export function WeekPicker({
       {/*
         A real <label>, not aria-label: the accessible name is then the exact
         string on screen and cannot drift from it, and clicking the eyebrow
-        focuses the control. `w-fit` stops a block label from claiming the rest
-        of the line as an invisible hit area.
-
-        Which is also why the classes are `Label`'s repeated by hand rather than
-        the component itself: `Label` renders a <span>. Keep the two in sync.
+        focuses the control. `Label` handles both — passing `htmlFor` is what
+        switches it from a <span> to a <label>.
       */}
-      <label
-        htmlFor={selectId}
-        className="block w-fit cursor-pointer text-xs font-semibold uppercase leading-none text-[#757575]"
-      >
-        Change week
-      </label>
+      <Label htmlFor={selectId}>Change week</Label>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-2">
         <div className="relative flex">
@@ -105,7 +98,7 @@ export function WeekPicker({
             <span className="text-xl font-bold leading-[1.4] text-black">{title}</span>
             {/* The icon set is drawn on a 24-unit grid, so at 20×20 it scales by
                 20/24 — 2.4 units is what renders as a true 2px stroke. */}
-            <ChevronDownIcon className="h-5 w-5 shrink-0 text-[#1E1E1E]" strokeWidth={2.4} />
+            <ChevronDownIcon className="h-5 w-5 shrink-0 text-shell-ink" strokeWidth={2.4} />
           </span>
         </div>
       </div>
