@@ -81,8 +81,8 @@ breaks with no error anywhere. `src/middleware.ts` now forwards a stray `?code=`
 to `/auth/callback` as a safety net, but the setting still has to be right.
 
 **Deploy previews hit that same fallback, and it looks nothing like a bug.**
-`src/app/login/page.tsx` builds `emailRedirectTo` from `window.location.origin`,
-so a preview correctly asks to come back to
+`src/components/auth/LoginFlow.tsx` builds `emailRedirectTo` from
+`window.location.origin`, so a preview correctly asks to come back to
 `https://deploy-preview-12--bighorn-sheep.netlify.app/auth/callback`. But
 `https://bighorn-sheep.netlify.app/**` does not cover that host: the allowlist is
 globbed with `.` **and** `/` as separators, so the wildcard spans paths, not

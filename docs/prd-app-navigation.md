@@ -97,7 +97,7 @@ a duplicated brand block.
 
 **The app name conflicts with the rest of the app.** "Last Man Standing" appears
 in `src/app/layout.tsx:14-17`, `public/manifest.webmanifest`, `src/app/page.tsx:10,27`,
-`src/app/login/page.tsx:374`, and `src/app/global-error.tsx:48`. Putting "Sheep
+`src/app/login/page.tsx`, and `src/app/global-error.tsx:48`. Putting "Sheep
 with Glasses" in the header alone means the browser tab and the PWA install
 prompt say one thing and the header says another. Introduce a single exported
 `APP_NAME` constant so there is one place to change it, and treat the rename as a
