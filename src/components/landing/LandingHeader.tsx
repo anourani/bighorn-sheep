@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { APP_NAME } from "@/lib/app";
+import { LogInButton } from "@/components/landing/LogInButton";
 import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
 
 /**
@@ -50,9 +50,7 @@ export function LandingHeader() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/login" className={headerButton}>
-            Log In
-          </Link>
+          <LogInButton className={headerButton} />
           <InviteCodeButton className={headerButton} />
         </div>
       </div>
