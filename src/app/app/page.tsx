@@ -7,9 +7,9 @@ import { NoLeagueState } from "@/components/app/NoLeagueState";
  * them) and hands the serialized data to the client screen. A player in no
  * league yet gets the create/join onboarding.
  *
- * No `LeagueStatusBar` here, unlike Standings. This screen opens on the week
- * picker: the week you are picking for is the one fact the page is about, and
- * the bar restated it above the fold while pushing the pick itself down. The
+ * No `StatusReport` here, unlike Standings. This screen opens on the week
+ * picker: the week you are picking for is the one fact the page is about, and a
+ * band restating it above the fold only pushed the pick itself down. The
  * countdown and the joined/survivor tally still live one tab away.
  */
 export default async function MyPicksPage() {

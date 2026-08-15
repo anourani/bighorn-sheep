@@ -5,9 +5,9 @@ import type { StatusLineInput } from "@/lib/league/view";
  * One cell per member, eliminated first: grey for the dead, orange for the
  * living, sized proportionally so the ratio is readable at a glance.
  *
- * Its own module rather than an export from `LeagueStatusBar.tsx`, which
- * imports `loadLeague` and is therefore server-only — the landing page has no
- * business pulling that in to draw a row of rectangles.
+ * Its own module rather than an export from whichever section draws it, so a
+ * signed-out landing page never risks pulling server-only league loading in to
+ * draw a row of rectangles.
  */
 export function SurvivorStrip({
   status,

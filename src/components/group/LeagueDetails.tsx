@@ -3,16 +3,9 @@
 import { Label } from "@/components/ui/Label";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { GearIcon } from "@/components/icons";
-import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "@/lib/league/picks";
 import { survivorCounts } from "@/lib/league/view";
-import { PRE_WEEK, REGULAR_WEEK, weekLabel, type WeekRef } from "@/lib/nfl/calendar";
-import { getTeam } from "@/lib/nfl/teams";
-import type { PracticeState } from "@/lib/league/practice";
 import type { Group, Member } from "@/lib/league/types";
 import type { SeasonPhase } from "@/lib/game/season";
-
-/** No optimistic overlay on this screen — the picks screen owns that. */
-const NO_PENDING: PendingPicks = new Map();
 
 /** The mockup's grey label / dark value pair. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -25,63 +18,39 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Value({ children }: { children: React.ReactNode }) {
-  return <span className="text-lg font-semibold leading-[1.2] text-[#1E1E1E]">{children}</span>;
+  return <span className="text-lg font-semibold leading-[1.2] text-shell-ink">{children}</span>;
 }
 
 /**
- * The standings page's league summary: name, your pick for the week in play, how
- * many are left, and the rules link.
+ * The standings page's league summary: name, the week in play, how many are
+ * left, and the rules link.
  *
- * Phase-aware in two of the four fields. Before Week 1 nobody can be eliminated,
- * so "survivors" is meaningless and the live pick is the practice one; in season
- * both flip to the real thing.
+ * Phase-aware in two of the four fields. Before Week 1 there is no week number
+ * to name and nobody can be eliminated, so both read the pre-season form until
+ * the season starts.
+ *
+ * Your own pick is deliberately NOT one of these fields, though it was: the
+ * mockup gives that slot to the week, and the pick is still a tab away on My
+ * Picks and in the row the standings table highlights for you.
  */
 export function LeagueDetails({
   group,
   members,
-  viewerId,
   currentWeek,
   phase,
-  practice,
   isAdmin,
   onOpenRules,
   onOpenSettings,
 }: {
   group: Group;
   members: Member[];
-  viewerId: string;
   currentWeek: number;
   phase: SeasonPhase;
-  practice: PracticeState | null;
   isAdmin: boolean;
   onOpenRules: () => void;
   onOpenSettings: () => void;
 }) {
   const isPreseason = phase === "preseason";
-  const me = members.find((m) => m.id === viewerId);
-  const practiceMe = practice?.members[viewerId];
-
-  // The week this field is answering for. A bare number would merge preseason
-  // week 1 with opening Sunday — they are different picks in different games.
-  const weekInPlay: WeekRef =
-    isPreseason && practice ? PRE_WEEK(practice.currentWeek) : REGULAR_WEEK(currentWeek);
-
-  // Indexed by week, so a `currentPick` left over from another week can never be
-  // painted under this week's label.
-  const picks = viewerPicksByWeek({
-    history: me?.history,
-    currentPick: me?.currentPick ?? null,
-    practicePicks: practiceMe?.picks,
-  });
-  const teamId = pickForWeek(weekInPlay, picks, NO_PENDING);
-  const pickValue = (teamId && getTeam(teamId)?.name) || "No Team Selected";
-
-  const pickLabel = isPreseason
-    ? practice
-      ? `Your ${weekLabel(weekInPlay, { maxPreWeek: practice.maxPreWeek })} pick`
-      : "Your practice pick"
-    : `Your W${currentWeek} pick`;
-
   const { alive, total } = survivorCounts(members);
 
   return (
@@ -107,8 +76,10 @@ export function LeagueDetails({
           <Value>{group.name}</Value>
         </Field>
 
-        <Field label={pickLabel}>
-          <Value>{pickValue}</Value>
+        {/* Derived from `currentWeek`, never a literal — the number advances on
+            its own as the season does, here and in the status report below. */}
+        <Field label="Current week">
+          <Value>{isPreseason ? "Pre-season" : `Week ${currentWeek}`}</Value>
         </Field>
 
         {isPreseason ? (
