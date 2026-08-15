@@ -1,40 +1,40 @@
 import Link from "next/link";
-import { LeagueSwitcher } from "./LeagueSwitcher";
-import { APP_NAME } from "@/lib/app";
-import { loadLeague } from "@/lib/league/load";
+import { HeaderNav } from "./HeaderNav";
+import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
 
 /**
- * The app shell header — 68px of chrome and nothing else.
+ * The app shell header — 62px of chrome carrying all of the app's navigation.
  *
- * Left is the app's own identity: a mark and {@link APP_NAME}, constant in
- * every league. Right is the league, labelled and switchable. The survivor
- * tally that used to be stacked underneath is now `LeagueStatusBar`, rendered
- * by each page — it is a *reading* of the league at this moment, which is page
- * content, and pinning it to the viewport spent a quarter of a phone screen on
- * a number that never changes as you scroll.
+ * Three blocks on one row: the app's mark and initials on the left, the tab pill
+ * centred on the shell, and the account button on the right. It is one row at
+ * every width; below 430px the wordmark drops and the mark stands alone, which
+ * is what keeps a 360px viewport from overflowing.
  *
- * There is no longer a separate "minimal" header for a player in no league:
- * under this design the left block doesn't touch league data, so the two
- * headers had identical left halves. It is now the left block always, plus the
- * right block only when there's an active league.
+ * Two things used to live here and no longer do. The bottom `TabBar` folded into
+ * the pill, so the app no longer has navigation in two places. And the
+ * `LeagueSwitcher` is gone with it: this season there is only one league, so the
+ * control disclosed a single already-selected option. The account page does not
+ * switch leagues either — its league card is a read-only summary — so nothing in
+ * the app calls `selectLeague` today; `resolveActiveGroupId` falls back to the
+ * earliest-joined membership, which with one league is the same answer. The
+ * header consequently reads no league data at all, which is why it is a plain
+ * (not `async`) Server Component — it costs nothing and cannot fail.
  *
- * Server Component: it shares the request-memoized `loadLeague()` with the page
- * body and with `LeagueStatusBar`, so all three cost one round-trip between
- * them.
+ * The survivor tally that once stacked underneath is `LeagueStatusBar`, rendered
+ * by each page; it is a *reading* of the league, which is page content.
  */
-export async function AppHeader() {
-  const load = await loadLeague();
-  const league = load.kind === "ok" ? load.data : null;
-
+export function AppHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-shell-line bg-white/85 backdrop-blur-md">
-      {/* 16 + 40 + 12 = 68px, falling out of the 40px mark rather than being
-          hardcoded. `items-start` so the right column hangs from the top edge
-          alongside the mark rather than centring against it. */}
-      <div className="flex items-start justify-between gap-4 px-4 pb-3 pt-4">
+      {/* 8 + 50 + 4 = 62px, falling out of the 50px mark rather than being
+          hardcoded. See HeaderNav for why the pill's neighbours are `flex-1`. */}
+      <div className="flex items-center gap-2 px-4 pb-1 pt-2">
         <Link
           href="/app"
-          className="flex min-w-0 items-center gap-3 rounded-control"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-control"
+          // The visible text is an acronym, so the accessible name spells the
+          // app out. This also stops the mark and the wordmark being announced
+          // as two things.
           aria-label={`${APP_NAME} — home`}
         >
           {/*
@@ -42,34 +42,33 @@ export async function AppHeader() {
             remotePatterns) doesn't apply to a local file, so the honest ones
             are: next/image would put the app's most visible above-the-fold
             element behind the image-optimisation endpoint on every
-            authenticated screen, and the saving on a 40px mark is single-digit
+            authenticated screen, and the saving on a 50px mark is single-digit
             kilobytes.
 
-            bg-shell-line mirrors the design's own `url(.jpg), #D9D9D9`: if the
-            asset is missing the grey square shows, with no broken-image icon
-            (alt is empty, so the image is decorative) and no layout shift (the
-            width/height attributes reserve the box). The visible app name inside
-            this same link already names the destination.
+            bg-shell-line mirrors the design's own `url(.jpg), #D9D9D9`: the
+            committed asset is still a flat grey square (the real photograph has
+            never landed), so today that background IS the mark. When the real
+            file replaces it nothing here changes. alt is empty because the image
+            is decorative, and the width/height attributes reserve the box so
+            swapping the asset can't shift the layout.
           */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/icons/app-mark.jpg"
             alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10 shrink-0 rounded-[4px] bg-shell-line object-cover"
+            width={50}
+            height={50}
+            className="h-[50px] w-[50px] shrink-0 rounded-[4px] bg-shell-line object-cover"
           />
-          <span className="truncate text-lg font-semibold leading-[1.2] text-shell-ink">
-            {APP_NAME}
+          {/* Hidden below 430px: the mark, both chips and the account button
+              already fill a 360px row, and this is the only one of the four that
+              carries no destination of its own. */}
+          <span className="hidden truncate text-lg font-semibold leading-[1.2] text-shell-ink min-[430px]:block">
+            {APP_SHORT_NAME}
           </span>
         </Link>
 
-        {/* No league: the block is omitted entirely rather than showing a
-            "LEAGUE / none" placeholder — the body already renders
-            `NoLeagueState`, which says so in the right place. */}
-        {league ? (
-          <LeagueSwitcher leagues={league.leagues} activeId={league.group.id} />
-        ) : null}
+        <HeaderNav />
       </div>
     </header>
   );

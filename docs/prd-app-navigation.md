@@ -39,9 +39,18 @@ deferred switcher.
   work `c4a50a6` deferred.
 - **Hold the supplied spec exactly** on type, colour, and spacing.
 
+> **Superseded in part.** The Figma `page-header` module (node `3496:23185`)
+> folded the bottom tab bar and the league switcher into a single 62px header
+> row. `TabBar.tsx` and `LeagueSwitcher.tsx` are deleted; `AppHeader` is 62px,
+> reads no league data, and renders the tabs itself via `HeaderNav`. Everything
+> below stands as the record of why the header and the status bar were split —
+> `LeagueStatusBar` is untouched — but read the *Non-goals* and *Anatomy*
+> sections as history.
+
 ## Non-goals (deferred)
 
 - The bottom `TabBar` (`src/components/shell/TabBar.tsx`) — unchanged.
+  *(Superseded: it has since been absorbed into the header and deleted.)*
 - Real branding. The sheep mark and "Sheep with Glasses" are **placeholders**.
 - Per-league avatars: `groups` has no `avatar_url` and this PRD doesn't add one.
 - Any global palette change. The blue-tinted `ink`/`line` tokens keep their values.

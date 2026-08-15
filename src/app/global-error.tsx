@@ -29,7 +29,9 @@ export default function GlobalError({
           display: "grid",
           placeItems: "center",
           padding: "24px",
-          background: "#FBFBFC",
+          // The `bg` token's value, spelled out: this component renders its own
+          // <html>/<body>, so neither Tailwind nor globals.css reaches it.
+          background: "#FDFDFD",
           color: "#1A1C1F",
           fontFamily:
             "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",

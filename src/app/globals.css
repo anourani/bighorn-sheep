@@ -17,9 +17,11 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Consistent, on-brand focus ring for keyboard users. */
+  /* Consistent, on-brand focus ring for keyboard users. The offset is the page
+     colour, not white — the gap is meant to be a hole in the ring, and a pure
+     white one would read as a halo now that the page is #FDFDFD. */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-strong/70 ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-brand-strong/70 ring-offset-2 ring-offset-bg;
   }
 
   ::selection {

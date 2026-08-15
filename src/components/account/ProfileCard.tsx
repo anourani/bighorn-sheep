@@ -90,7 +90,7 @@ function RowValue({ value }: { value: string | null }) {
  * The favorite-animal picker: a native <select> painted to read as the row's
  * value with a chevron, not as a form control. Native keeps the iOS wheel and
  * the platform keyboard behaviour, which no hand-rolled dropdown would — the
- * same disguise `LeagueSwitcher` and `WeekPicker` wear.
+ * same disguise `WeekPicker` wears.
  *
  * Saves on change — there is no Save button on this card — and rolls the
  * displayed value back if the write fails.
@@ -273,7 +273,7 @@ export function ProfileCard({
         is content-driven here instead — a long email wraps, and a fixed height
         would clip it.
       */}
-      <div className="w-full rounded-[20px] border border-shell-line bg-fill-soft px-4 pb-4 pt-10 sm:pt-24">
+      <div className="w-full rounded-[20px] border border-shell-line bg-white px-4 pb-4 pt-10 sm:pt-24">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <ProfileRow label="Name">

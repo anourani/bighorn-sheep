@@ -32,13 +32,16 @@ function MetaRule() {
 /**
  * The viewer's membership: the league's name over their standing in it.
  *
- * Read-only. Switching leagues lives in the header's `LeagueSwitcher`, which is
- * on every /app route — a second switcher here was a duplicate of it, and the
- * product runs one league this season regardless.
+ * Read-only, and nothing else in the app switches leagues either — the header's
+ * `LeagueSwitcher` is gone too. That is deliberate on both sides: the season runs
+ * a single league, so the control disclosed one already-selected option. The
+ * `selectLeague` action survives unused for whenever a second league exists;
+ * until then `resolveActiveGroupId` falls back to the earliest-joined membership,
+ * which with one league is the same answer.
  */
 function LeagueCard({ league }: { league: LeagueSummary }) {
   return (
-    <div className="rounded-control border border-shell-line bg-fill-soft p-4">
+    <div className="rounded-control border border-shell-line bg-white p-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <Label>League name</Label>
@@ -123,7 +126,7 @@ export function AccountClient({ account }: { account: AccountData }) {
         <section className="space-y-3">
           <SectionTitle>Preferences</SectionTitle>
           {/* overflow-hidden so the dividers clip to the corner radius. */}
-          <div className="divide-y divide-shell-line overflow-hidden rounded-control border border-shell-line bg-fill-soft">
+          <div className="divide-y divide-shell-line overflow-hidden rounded-control border border-shell-line bg-white">
             <PreferenceRow label="Notifications">
               <span className="text-sm text-ink-mute">Coming soon</span>
             </PreferenceRow>

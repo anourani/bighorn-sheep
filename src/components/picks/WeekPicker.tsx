@@ -94,7 +94,7 @@ export function WeekPicker({
             )}
           </select>
 
-          <span className="flex items-center gap-1 rounded-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white">
+          <span className="flex items-center gap-1 rounded-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg">
             <span className="text-xl font-bold leading-[1.4] text-black">{title}</span>
             {/* The icon set is drawn on a 24-unit grid, so at 20×20 it scales by
                 20/24 — 2.4 units is what renders as a true 2px stroke. */}
