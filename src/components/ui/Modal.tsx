@@ -46,6 +46,13 @@ export function Modal({
 
   if (!open) return null;
 
+  // A title-only header is shorter than the 36px close button, so `items-start`
+  // visibly parks it above the button's centre. With an eyebrow or a description
+  // the text column is the taller child and top-aligning is right: the close
+  // button belongs beside the first line, not adrift in the middle of a league
+  // name that has wrapped to three.
+  const compact = !eyebrow && !description;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
@@ -68,10 +75,20 @@ export function Modal({
           "animate-reveal-up max-h-[92vh] overflow-y-auto",
         )}
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-line bg-white/95 px-card py-4 backdrop-blur">
+        <div
+          className={cn(
+            "sticky top-0 z-10 flex justify-between gap-3 border-b border-line bg-white/95 px-card py-4 backdrop-blur",
+            compact ? "items-center" : "items-start",
+          )}
+        >
           <div className="min-w-0">
             {eyebrow ? <Label className="text-brand-strong">{eyebrow}</Label> : null}
-            <h2 className="mt-0.5 text-lg font-semibold leading-tight text-ink">{title}</h2>
+            {/* `mt-0.5` spaces the title from the eyebrow and means nothing
+                without one — and left in, it would add 2px to this column and
+                leave a centred title sitting 1px low. */}
+            <h2 className={cn("text-lg font-semibold leading-tight text-ink", eyebrow && "mt-0.5")}>
+              {title}
+            </h2>
             {description ? <p className="mt-1 text-sm text-ink-soft">{description}</p> : null}
           </div>
           <button
