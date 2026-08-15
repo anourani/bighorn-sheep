@@ -41,7 +41,10 @@ export default async function LandingPage() {
   const board = league && league.members.length > 0 ? league : null;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-shell flex-col bg-white">
+    // `bg-bg`, not `bg-white`: this wrapper is opaque and paints over
+    // `AmbientBackground`, so a literal white here would leave the landing page
+    // the one screen that ignores the page colour.
+    <div className="mx-auto flex min-h-dvh max-w-shell flex-col bg-bg">
       <LandingHeader />
 
       <main className="flex-1">

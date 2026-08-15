@@ -12,10 +12,13 @@ import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
  *
  * Two things used to live here and no longer do. The bottom `TabBar` folded into
  * the pill, so the app no longer has navigation in two places. And the
- * `LeagueSwitcher` is gone with it: the league is switched from the account
- * page, and this season there is only one league to switch to. The header
- * consequently reads no league data at all, which is why it is a plain (not
- * `async`) Server Component — it costs nothing and cannot fail.
+ * `LeagueSwitcher` is gone with it: this season there is only one league, so the
+ * control disclosed a single already-selected option. The account page does not
+ * switch leagues either — its league card is a read-only summary — so nothing in
+ * the app calls `selectLeague` today; `resolveActiveGroupId` falls back to the
+ * earliest-joined membership, which with one league is the same answer. The
+ * header consequently reads no league data at all, which is why it is a plain
+ * (not `async`) Server Component — it costs nothing and cannot fail.
  *
  * The survivor tally that once stacked underneath is `LeagueStatusBar`, rendered
  * by each page; it is a *reading* of the league, which is page content.
