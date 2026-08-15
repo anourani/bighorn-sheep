@@ -47,7 +47,7 @@ export function WeekPicker({
         focuses the control. `Label` handles both — passing `htmlFor` is what
         switches it from a <span> to a <label>.
       */}
-      <Label htmlFor={selectId}>Change week</Label>
+      <Label htmlFor={selectId}>Week</Label>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-2">
         <div className="relative flex">
@@ -94,7 +94,7 @@ export function WeekPicker({
             )}
           </select>
 
-          <span className="flex items-center gap-1 rounded-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white">
+          <span className="flex items-center gap-1 rounded-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg">
             <span className="text-xl font-bold leading-[1.4] text-black">{title}</span>
             {/* The icon set is drawn on a 24-unit grid, so at 20×20 it scales by
                 20/24 — 2.4 units is what renders as a true 2px stroke. */}

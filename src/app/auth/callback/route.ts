@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { canonicalNetlifyHost } from "@/lib/deploy-origin";
+import { canonicalNetlifyHost, publicOrigin } from "@/lib/deploy-origin";
 import {
   exchangeFailureReason,
   hasVerifierCookie,
@@ -25,12 +25,13 @@ import {
  * top of GoTrue's actual finding. Read the function logs before theorising.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin, pathname, search, host } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const { searchParams, pathname, search, host } = requestUrl;
 
-  // Netlify fronts the app, so the public host is the forwarded one. Used only
-  // to recognise the host — `origin` above still drives every same-site
-  // redirect, since `x-forwarded-host` carries no protocol to rebuild it with.
-  const publicHost = request.headers.get("x-forwarded-host") ?? host;
+  // NOT requestUrl.origin. Behind Netlify the host a handler sees can be the
+  // running deploy's permalink, and redirecting there drops the visitor on an
+  // origin their session cookies do not cover. See src/lib/deploy-origin.ts.
+  const origin = publicOrigin(requestUrl);
 
   // Read before anything else: a failed exchange clears the verifier cookie, so
   // reading afterwards would erase the evidence used to explain the failure.
@@ -41,10 +42,10 @@ export async function GET(request: Request) {
   // verifier IS here the handshake started here too and completes fine, so
   // leave it alone: the redirect allowlist permits signing in from a permalink,
   // and bouncing would move the code to an origin that has no verifier at all.
-  const canonicalHost = canonicalNetlifyHost(publicHost);
+  const canonicalHost = canonicalNetlifyHost(host);
   if (canonicalHost && !hasVerifierCookie(cookieNames)) {
     console.error(
-      `[auth/callback] link landed on deploy permalink ${publicHost} with no verifier; ` +
+      `[auth/callback] link landed on deploy permalink ${host} with no verifier; ` +
         `forwarding to ${canonicalHost}. Sign-in should not start on a permalink — see ` +
         `src/lib/deploy-origin.ts.`,
     );
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
   const rejected = verifyErrorReason(searchParams);
   if (rejected) {
     console.error(`[auth/callback] verify rejected the token as ${rejected}`, {
-      host: publicHost,
+      host,
       error: searchParams.get("error"),
       error_code: searchParams.get("error_code"),
       error_description: searchParams.get("error_description"),
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
   if (!code) {
     // No code and no error either — the link was truncated, or something
     // fetched this URL directly.
-    console.error(`[auth/callback] no code and no error params (host ${publicHost})`);
+    console.error(`[auth/callback] no code and no error params (host ${host})`);
     return fail("link_missing_code");
   }
 
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     const reason = exchangeFailureReason(error, cookieNames);
-    console.error(`[auth/callback] exchange failed as ${reason} on host ${publicHost}`, {
+    console.error(`[auth/callback] exchange failed as ${reason} on host ${host}`, {
       code: error.code,
       status: error.status,
       message: error.message,

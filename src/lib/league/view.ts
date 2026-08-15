@@ -1,6 +1,7 @@
 import { gameWinner, isKickedOff, type Game, type TeamId } from "../nfl/types";
 import { TEAMS } from "../nfl/teams";
 import { evaluateTeamPick } from "../game/elimination";
+import type { SeasonPhase } from "../game/season";
 import type { GroupRules, Member, PickResult, TeamRecord } from "./types";
 
 /**
@@ -117,6 +118,23 @@ export function statusLine(input: StatusLineInput): StatusLine {
     primary: `${count(input.alive, "survivor")}.`,
     secondary: `${count(input.eliminated, "death")}.`,
   };
+}
+
+/**
+ * One member's standing in plain language, for the account page's league card.
+ *
+ * Elimination outranks the calendar: a knocked-out player reads "Eliminated"
+ * whatever the season is doing. Only then does the phase matter, and only to
+ * distinguish a season that hasn't started from one that has.
+ *
+ * "Still Standing" rather than "In Season" — it says something about *you*,
+ * which is what the surrounding row is for ("Player │ Still Standing │ Buy In").
+ */
+export function statusLabel(input: { status: Member["status"]; phase: SeasonPhase }): string {
+  if (input.status === "eliminated") return "Eliminated";
+  if (input.phase === "preseason") return "Pre-season";
+  if (input.phase === "ended") return "Season over";
+  return "Still Standing";
 }
 
 /** Per-team availability for one member's own grid (available / used / bye). */

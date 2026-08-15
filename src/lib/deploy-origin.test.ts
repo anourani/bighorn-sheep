@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalNetlifyHost, canonicalNetlifyUrl } from "./deploy-origin";
+import { canonicalNetlifyHost, canonicalNetlifyUrl, publicOrigin } from "./deploy-origin";
 
 const SITE = "bighorn-sheep.netlify.app";
 const DEPLOY_ID = "6a7f9b1f91786e00086f40d4";
@@ -43,6 +43,42 @@ describe("canonicalNetlifyHost", () => {
 
   it("keeps a site name that itself contains a double hyphen", () => {
     expect(canonicalNetlifyHost(`${DEPLOY_ID}--my--site.netlify.app`)).toBe("my--site.netlify.app");
+  });
+});
+
+describe("publicOrigin", () => {
+  // The confirmed bug: the browser was on production, the emailed link pointed
+  // at production, and the visitor still landed on the permalink — because the
+  // callback built its redirect from the host the Netlify function saw.
+  it("never hands back a deploy-permalink origin", () => {
+    expect(publicOrigin(new URL(`https://${PERMALINK}/auth/callback?code=abc`))).toBe(
+      `https://${SITE}`,
+    );
+  });
+
+  it("leaves an already-correct origin alone", () => {
+    expect(publicOrigin(new URL(`https://${SITE}/auth/callback?code=abc`))).toBe(`https://${SITE}`);
+  });
+
+  it("keeps localhost usable in development, port and all", () => {
+    expect(publicOrigin(new URL("http://localhost:3000/auth/callback"))).toBe(
+      "http://localhost:3000",
+    );
+  });
+
+  // Previews and branch deploys are real origins holding their own cookies;
+  // rewriting them would break sign-in there rather than repair it.
+  it("leaves previews and branch deploys on their own origin", () => {
+    expect(publicOrigin(new URL(`https://deploy-preview-12--${SITE}/auth/callback`))).toBe(
+      `https://deploy-preview-12--${SITE}`,
+    );
+    expect(publicOrigin(new URL(`https://main--${SITE}/auth/callback`))).toBe(`https://main--${SITE}`);
+  });
+
+  it("ignores the path and query entirely", () => {
+    expect(publicOrigin(new URL(`https://${PERMALINK}/app?next=%2Fapp&invite=WOLF7`))).toBe(
+      `https://${SITE}`,
+    );
   });
 });
 

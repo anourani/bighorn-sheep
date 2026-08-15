@@ -4,7 +4,7 @@ import type { Config } from "tailwindcss";
  * Design tokens transcribed from the "Ecosystem Visualization" direction.
  *
  *   primary  #E48B59   secondary/accent #ED7B46
- *   bg       #FFFFFF   surface (slate panels) #53617A
+ *   bg       #FDFDFD   surface (slate panels) #53617A
  *   text     #111827 / #4B5563   border #D8DADF
  *   type     Inter throughout — display, body, and semibold labels/metrics
  *   radii    card 16 · control 8 · pill 9999
@@ -21,7 +21,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#FFFFFF",
+        // The page itself — a hair off white, so a `bg-white` card or input reads
+        // as a surface lifted off the page rather than merging into it.
+        //
+        // Two places consume this and they are NOT redundant: `body`
+        // (globals.css) paints the overscroll/rubber-band area, while
+        // `AmbientBackground`'s `fixed inset-0` layer paints what you actually
+        // see in the viewport. Changing one without the other seams on overscroll.
+        bg: "#FDFDFD",
         line: "#D8DADF",
         // Warm accent — the single lit element on every panel.
         brand: {
@@ -61,7 +68,9 @@ const config: Config = {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
         },
-        // The app shell's own greys — AppHeader and LeagueStatusBar, nothing else.
+        // The design spec's own greys — the app shell (AppHeader,
+        // LeagueStatusBar), every `Label` in the app, and the account page's
+        // cards and rows.
         //
         // These are the design spec's PURE neutrals, deliberately a separate
         // family from `ink`/`line`: those are blue-tinted (#111827, #6B7280,
@@ -75,7 +84,7 @@ const config: Config = {
         shell: {
           ink: "#1E1E1E", // app name, league name, "Week 6", chevron
           mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
-          soft: "#6A6A6A", // "15 deaths."
+          soft: "#6A6A6A", // unused since "15 deaths." moved to `mute` in the mock-up
           line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
           alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
         },

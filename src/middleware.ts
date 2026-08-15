@@ -24,7 +24,6 @@ export async function middleware(request: NextRequest) {
   if (!url || !key) return NextResponse.next();
 
   const { pathname, searchParams } = request.nextUrl;
-  const publicHost = request.headers.get("x-forwarded-host") ?? request.nextUrl.host;
 
   // Sign-in must not START on a Netlify deploy permalink.
   //
@@ -41,10 +40,10 @@ export async function middleware(request: NextRequest) {
   // canonicalNetlifyHost: they are their own origins by design. The callback is
   // excluded from this matcher and makes the same check itself.
   if (pathname === "/login") {
-    const canonicalHost = canonicalNetlifyHost(publicHost);
+    const canonicalHost = canonicalNetlifyHost(request.nextUrl.host);
     if (canonicalHost) {
       console.warn(
-        `[middleware] /login on deploy permalink ${publicHost} → ${canonicalHost}. ` +
+        `[middleware] /login on deploy permalink ${request.nextUrl.host} → ${canonicalHost}. ` +
           `A sign-in started here would be addressed back to the permalink.`,
       );
       const target = request.nextUrl.clone();
@@ -113,6 +112,13 @@ function redirectPreservingCookies(
   const target = request.nextUrl.clone();
   target.pathname = pathname;
   target.search = "";
+  // Same reason as the callback: never hand back a deploy-permalink URL, or the
+  // cookies carried below arrive at an origin that does not recognise them.
+  const canonicalHost = canonicalNetlifyHost(target.host);
+  if (canonicalHost) {
+    target.protocol = "https:";
+    target.host = canonicalHost;
+  }
   const redirect = NextResponse.redirect(target);
   response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
   return redirect;

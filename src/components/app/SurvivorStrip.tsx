@@ -5,9 +5,9 @@ import type { StatusLineInput } from "@/lib/league/view";
  * One cell per member, eliminated first: grey for the dead, orange for the
  * living, sized proportionally so the ratio is readable at a glance.
  *
- * Its own module rather than an export from `LeagueStatusBar.tsx`, which
- * imports `loadLeague` and is therefore server-only — the landing page has no
- * business pulling that in to draw a row of rectangles.
+ * Its own module rather than an export from whichever section draws it, so a
+ * signed-out landing page never risks pulling server-only league loading in to
+ * draw a row of rectangles.
  */
 export function SurvivorStrip({
   status,
@@ -33,7 +33,10 @@ export function SurvivorStrip({
     above it, which preserves the ratio — the only information left at 1px.
   */
   return (
-    <div className={cn("flex items-center gap-0.5", className)} role="img" aria-label={label}>
+    // 1px between cells on a phone, 2px from `sm` up: at 393px the wider gap
+    // eats enough of the track to visibly distort the alive/dead ratio, which
+    // is the only thing this strip is for.
+    <div className={cn("flex items-center gap-px sm:gap-0.5", className)} role="img" aria-label={label}>
       {Array.from({ length: eliminated }).map((_, i) => (
         <span key={`out-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-line" />
       ))}

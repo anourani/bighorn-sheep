@@ -13,3 +13,34 @@
  * substitution. Import this constant there rather than typing the string.
  */
 export const APP_NAME = "Sheep with Glasses";
+
+/**
+ * The same name, initialised, for the one place that has no room for it: the
+ * app header's identity block, which now shares its row with the tab pill and
+ * the account button.
+ *
+ * Derived rather than typed out, so renaming {@link APP_NAME} can't leave a
+ * stale acronym behind in the chrome. It is only ever read by `AppHeader`; every
+ * other site — metadata, the manifest, the landing page, the login explainer —
+ * wants the full name and should keep importing that.
+ */
+export const APP_SHORT_NAME = APP_NAME.split(" ")
+  .map((word) => word[0]?.toUpperCase() ?? "")
+  .join("");
+
+/**
+ * The league's stake, as the account page prints it.
+ *
+ * A hardcoded literal because there is nowhere to read it from: the schema
+ * tracks only WHETHER a member has paid (`group_members.buy_in_paid`, written
+ * by an admin through the `set_member_buy_in` RPC — migration 0007), never HOW
+ * MUCH. The design calls for an amount, so this is it.
+ *
+ * Two things are wrong with that and are accepted deliberately: the amount goes
+ * stale silently if the stake ever changes, and it is per-league data rendered
+ * as a global constant — correct only while the product runs one league. The
+ * real fix is a `buy_in_amount` column on `groups` plus an admin control, which
+ * needs a numbered migration applied to production by hand. Until then this is
+ * the one line to change.
+ */
+export const BUY_IN_LABEL = "$20";

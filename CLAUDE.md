@@ -80,6 +80,23 @@ silently strands magic links on a page that can't exchange them, and sign-in
 breaks with no error anywhere. `src/middleware.ts` now forwards a stray `?code=`
 to `/auth/callback` as a safety net, but the setting still has to be right.
 
+**`new URL(request.url).origin` is not the host the browser asked for.** Behind
+Netlify, a server handler can see the running deploy's *permalink*
+(`<24-hex-deploy-id>--bighorn-sheep.netlify.app`) instead. Build a redirect from
+it and you send the visitor to a different origin, where the session cookies you
+just wrote do not apply — so a **successful** sign-in lands them signed out, and
+`middleware.ts` then bounces them off `/app` to the landing page. The reported
+symptom is "I clicked the link and ended up on the marketing page at a weird
+URL", which reads as a redirect bug in the callback rather than a host bug.
+
+It also propagates: their browser is now *on* the permalink, so the next sign-in
+they start builds `emailRedirectTo` from it, and the emailed `redirect_to`
+genuinely points there. Do not read that as the cause — it is the previous
+failure's residue. `publicOrigin()` in `src/lib/deploy-origin.ts` is what every
+self-redirect must go through. It derives the origin from the URL alone and
+never from `x-forwarded-host`: a request header used to build a redirect is an
+open redirect, and the header buys nothing here anyway.
+
 **The preview wildcard also matches a deploy permalink, and that lets sign-in
 happen on a frozen copy of the site.** `https://**--bighorn-sheep.netlify.app/**`
 is there for deploy previews, but it equally matches
@@ -126,8 +143,8 @@ link that genuinely is used up. `/auth/callback` is now excluded from the
 worker's fetch handler and the response is `no-store`.
 
 **Deploy previews hit that same fallback, and it looks nothing like a bug.**
-`src/app/login/page.tsx` builds `emailRedirectTo` from `window.location.origin`,
-so a preview correctly asks to come back to
+`src/components/auth/LoginFlow.tsx` builds `emailRedirectTo` from
+`window.location.origin`, so a preview correctly asks to come back to
 `https://deploy-preview-12--bighorn-sheep.netlify.app/auth/callback`. But
 `https://bighorn-sheep.netlify.app/**` does not cover that host: the allowlist is
 globbed with `.` **and** `/` as separators, so the wildcard spans paths, not

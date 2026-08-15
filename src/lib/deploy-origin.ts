@@ -63,3 +63,29 @@ export function canonicalNetlifyUrl(url: URL): URL | null {
   canonical.protocol = "https:";
   return canonical;
 }
+
+/**
+ * The origin to build a redirect back to ourselves from.
+ *
+ * Not the same thing as `new URL(request.url).origin`. Behind Netlify, the host
+ * a server handler sees is not necessarily the host the browser asked for — it
+ * can be the running deploy's permalink. Redirecting to that address sends the
+ * visitor to a *different origin*, where the session cookies just written do not
+ * apply, so they arrive signed out on a frozen copy of the site. Worse, their
+ * browser is now on the permalink, so the next sign-in they start from there
+ * addresses its magic link back to the permalink too. The fault propagates.
+ *
+ * Deliberately derived from the URL alone, never from `x-forwarded-host`. A
+ * request header is attacker-supplied unless a proxy is known to overwrite it,
+ * and one used to build a redirect is an open redirect. The header would buy us
+ * nothing here anyway: if the host is a permalink we already know the canonical
+ * form, and if it is not, it is already right.
+ *
+ * The one case this does not cover is a custom domain — `<id>--site.netlify.app`
+ * would canonicalise to `site.netlify.app` rather than the custom host. Revisit
+ * if this app ever gets one; today it does not.
+ */
+export function publicOrigin(url: URL): string {
+  const canonical = canonicalNetlifyHost(url.host);
+  return canonical ? `https://${canonical}` : url.origin;
+}

@@ -8,9 +8,11 @@ import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta, WhosIn } from "@/components/group/WhosIn";
+import { StatusReport } from "@/components/app/StatusReport";
 import { buildGameIndex } from "@/lib/league/games";
-import { rankMembers } from "@/lib/league/view";
+import { rankMembers, survivorCounts, type StatusLineInput } from "@/lib/league/view";
 import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
+import { countdown } from "@/lib/time";
 import type { LeagueData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
@@ -31,6 +33,26 @@ export function StandingsClient({ data }: { data: LeagueData }) {
     () => (practice ? buildGameIndex(practice.games) : null),
     [practice],
   );
+
+  /**
+   * What the status report reads, in the one shape `statusLine()` takes. The
+   * week is `currentWeek`, so the "Week 6" in that heading follows the season
+   * without anyone editing it.
+   *
+   * `now` is the server's `nowIso`, so the pre-season countdown is stamped at
+   * render and deliberately does not tick — see the note at load.ts:335-337.
+   */
+  const status = useMemo<StatusLineInput>(() => {
+    if (isPreseason) {
+      return {
+        kind: "preseason",
+        joined: data.members.length,
+        startsIn: countdown(new Date(group.entryClosesAt), now).label,
+      };
+    }
+    const { alive, eliminated } = survivorCounts(data.members);
+    return { kind: "season", week: currentWeek, alive, eliminated };
+  }, [isPreseason, data.members, group.entryClosesAt, now, currentWeek]);
 
   /**
    * Practice standing, shaped as `Member[]` so the existing grid and ranking are
@@ -83,14 +105,16 @@ export function StandingsClient({ data }: { data: LeagueData }) {
       <LeagueDetails
         group={group}
         members={data.members}
-        viewerId={data.viewer.id}
         currentWeek={currentWeek}
         phase={phase}
-        practice={practice}
         isAdmin={isAdmin}
         onOpenRules={() => setRulesOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
+
+      {/* py-3 rather than the landing page's py-5: the mockup's 12px, and the
+          shell's `main` already supplies the horizontal inset. */}
+      <StatusReport status={status} className="py-3" />
 
       {isPreseason ? (
         practice && practiceRanked && practiceColumns && practiceIdx ? (

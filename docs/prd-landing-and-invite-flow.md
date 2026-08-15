@@ -52,10 +52,17 @@ It's invite-only, so the stranger's primary path is small and clear.
   the player has typed their email. On success it routes to `/login?invite=CODE`.
 - **How it works:** (01) Get an invite, pick a team · (02) Win to survive, lose and
   you're out · (03) Last one standing takes the season.
-- **Secondary CTA:** "Already have an account? Log in."
+- **Secondary CTA:** "Already have an account? Log in." Shipped as a header
+  **Log In** button that opens the sign-in flow (`src/components/auth/LoginFlow.tsx`)
+  in a modal over the landing page — not a link to `/login`, which would put a
+  second, smaller brand hero directly under this one.
 - Signed-in visitors are redirected to `/app`.
 
 ## Experience 2 — Enrollment flow (`/login`)
+
+`/login` renders the same `LoginFlow` the landing modal does, wrapped in the full
+hero. It stays a route because invite links and the auth callback's `?error=`
+bounces arrive cold, with no page behind them to overlay.
 
 **Path:** Landing → enter code → `/login?invite=CODE` (name + email) → "check your
 inbox" → email link → `/auth/callback` → joined → `/app` (pre-season).
