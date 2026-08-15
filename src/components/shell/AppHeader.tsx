@@ -20,8 +20,8 @@ import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
  * header consequently reads no league data at all, which is why it is a plain
  * (not `async`) Server Component — it costs nothing and cannot fail.
  *
- * The survivor tally that once stacked underneath is `LeagueStatusBar`, rendered
- * by Standings; it is a *reading* of the league, which is page content.
+ * The survivor tally that once stacked underneath is `StatusReport`, rendered by
+ * Standings; it is a *reading* of the league, which is page content.
  */
 export function AppHeader() {
   return (

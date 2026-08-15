@@ -47,7 +47,7 @@ export function WeekPicker({
         focuses the control. `Label` handles both — passing `htmlFor` is what
         switches it from a <span> to a <label>.
       */}
-      <Label htmlFor={selectId}>Change week</Label>
+      <Label htmlFor={selectId}>Week</Label>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-2">
         <div className="relative flex">

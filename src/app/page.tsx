@@ -1,5 +1,5 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
-import { StatusReport } from "@/components/landing/StatusReport";
+import { StatusReport } from "@/components/app/StatusReport";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
 import { loadPublicLeague } from "@/lib/league/load";
@@ -79,7 +79,7 @@ export default async function LandingPage() {
 
         {board ? (
           <>
-            <StatusReport status={board.status} />
+            <StatusReport status={board.status} className="px-4 py-5" />
             <section className="flex flex-col gap-6 px-4 py-6">
               <Label className="text-base">League</Label>
               <PublicStandings data={board} />
