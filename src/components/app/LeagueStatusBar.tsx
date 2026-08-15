@@ -49,7 +49,7 @@ export function LeagueStatusBarView({ status }: { status: StatusLineInput }) {
   const { lead, primary, secondary } = statusLine(status);
 
   /*
-    Full-bleed by negative margin. `main` is `flex-1 px-4 pb-28 pt-5`
+    Full-bleed by negative margin. `main` is `flex-1 px-4 pb-12 pt-5`
     (src/app/app/layout.tsx:15) and this is its first child, so without this it
     would sit 16px in, 20px down, and its border would stop short of the shell's
     edges. -mx-4 puts the edges exactly on the shell's (main's content box is

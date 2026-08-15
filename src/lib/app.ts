@@ -13,3 +13,17 @@
  * substitution. Import this constant there rather than typing the string.
  */
 export const APP_NAME = "Sheep with Glasses";
+
+/**
+ * The same name, initialised, for the one place that has no room for it: the
+ * app header's identity block, which now shares its row with the tab pill and
+ * the account button.
+ *
+ * Derived rather than typed out, so renaming {@link APP_NAME} can't leave a
+ * stale acronym behind in the chrome. It is only ever read by `AppHeader`; every
+ * other site — metadata, the manifest, the landing page, the login explainer —
+ * wants the full name and should keep importing that.
+ */
+export const APP_SHORT_NAME = APP_NAME.split(" ")
+  .map((word) => word[0]?.toUpperCase() ?? "")
+  .join("");
