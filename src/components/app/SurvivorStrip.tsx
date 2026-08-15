@@ -33,7 +33,10 @@ export function SurvivorStrip({
     above it, which preserves the ratio — the only information left at 1px.
   */
   return (
-    <div className={cn("flex items-center gap-0.5", className)} role="img" aria-label={label}>
+    // 1px between cells on a phone, 2px from `sm` up: at 393px the wider gap
+    // eats enough of the track to visibly distort the alive/dead ratio, which
+    // is the only thing this strip is for.
+    <div className={cn("flex items-center gap-px sm:gap-0.5", className)} role="img" aria-label={label}>
       {Array.from({ length: eliminated }).map((_, i) => (
         <span key={`out-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-line" />
       ))}
