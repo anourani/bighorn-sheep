@@ -11,7 +11,8 @@ import { NoLeagueState } from "@/components/app/NoLeagueState";
 export default async function StandingsPage() {
   const load = await loadLeague();
   if (load.kind !== "ok") return <NoLeagueState />;
-  // Sibling of the client root — see the note in src/app/app/page.tsx.
+  // Sibling of the client root, never a child: inside `.stagger` it would shift
+  // every existing delay by 55ms and give the bar an entrance it shouldn't have.
   return (
     <>
       <LeagueStatusBar />

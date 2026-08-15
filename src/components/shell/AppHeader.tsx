@@ -21,7 +21,7 @@ import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
  * (not `async`) Server Component — it costs nothing and cannot fail.
  *
  * The survivor tally that once stacked underneath is `LeagueStatusBar`, rendered
- * by each page; it is a *reading* of the league, which is page content.
+ * by Standings; it is a *reading* of the league, which is page content.
  */
 export function AppHeader() {
   return (

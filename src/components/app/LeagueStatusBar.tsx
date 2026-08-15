@@ -15,10 +15,14 @@ import { countdown } from "@/lib/time";
  * week and countdown held their values until a full page load, whereas a page
  * component re-renders on every tab switch.
  *
+ * Standings renders it; My Picks and the account page deliberately don't. My
+ * Picks opens on its week picker instead — the bar restated the week that screen
+ * is already about, above the one control the screen exists for.
+ *
  * Shape: this async wrapper takes no props and calls the request-memoized
- * `loadLeague()`, so each `page.tsx` is a one-liner and the account page — which
- * has no `LeagueData` to hand down — works identically at zero extra cost
- * (`AppHeader` already calls `loadLeague()` on every /app request).
+ * `loadLeague()`, so a `page.tsx` renders it as a one-liner and any route that
+ * has no `LeagueData` to hand down works identically, at no extra cost on a page
+ * that already called `loadLeague()` for itself.
  * {@link LeagueStatusBarView} beside it takes plain props, which is what makes
  * the whole thing renderable in a fixture harness with no database.
  */
