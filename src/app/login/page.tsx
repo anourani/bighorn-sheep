@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { LoginFlow } from "@/components/auth/LoginFlow";
-import { BrandMark } from "@/components/shell/BrandMark";
-import { Label } from "@/components/ui/Label";
 import { ArrowRightIcon } from "@/components/icons";
 
 /**
@@ -30,22 +28,8 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-app flex-col justify-center px-5 py-10">
-      {/* Hero */}
-      <div className="mb-8 text-center">
-        <div className="mb-5 flex justify-center">
-          <BrandMark size="lg" />
-        </div>
-        <Label className="text-brand-strong">NFL Survival League</Label>
-        <h1 className="mt-2 text-display-md font-medium leading-[1.02] tracking-tight text-ink">
-          Last Man
-          <br />
-          Standing
-        </h1>
-        <p className="mx-auto mt-3 max-w-[32ch] text-sm leading-relaxed text-ink-soft">
-          One team a week. Lose once and you&apos;re out. The last survivor takes the season.
-        </p>
-      </div>
-
+      {/* The hero belongs to `LoginFlow`, not to this page: it changes with the
+          step, and the step is state the page can't see without going client. */}
       <LoginFlow variant="page" invite={invite} errorReason={errorReason} />
 
       {/* Footer */}

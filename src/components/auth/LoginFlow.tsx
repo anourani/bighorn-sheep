@@ -8,6 +8,7 @@ import { formatDisplayName } from "@/lib/league/name";
 import { Panel } from "@/components/ui/Panel";
 import { Label } from "@/components/ui/Label";
 import { Button } from "@/components/ui/Button";
+import { LoginHero, LoginStepHero } from "@/components/auth/LoginHero";
 import { MailIcon, InfoIcon, CheckIcon, UsersIcon } from "@/components/icons";
 
 /** One email field drives everything; the step reflects what we learned about it. */
@@ -55,10 +56,12 @@ type Preview =
     };
 
 /**
- * The whole passwordless sign-in flow, minus any page chrome. Two surfaces
- * render it and they must not drift: the `/login` route (where invite links and
- * the auth callback's `?error=` bounces land) and the landing header's Log In
- * modal.
+ * The whole passwordless sign-in flow. Two surfaces render it and they must not
+ * drift: the `/login` route (where invite links and the auth callback's
+ * `?error=` bounces land) and the landing header's Log In modal.
+ *
+ * On the `/login` route it owns its hero too, because which hero is right
+ * depends on `step` — see `LoginHero.tsx`. The modal gets none.
  *
  * The URL params arrive as **props**, never via `useSearchParams()`. That hook
  * forces a `<Suspense>` boundary onto whatever route contains it, and the modal
@@ -379,8 +382,24 @@ export function LoginFlow({
       </form>
     );
 
+  // The interim steps — link sent, and the new player's name — trade the full
+  // hero for the headline-only one. `name` is only ever reached with a valid
+  // invite (see `handleEmailContinue`); `sent` is not, so a returning player
+  // arriving straight from `/login` gets a headline about their inbox rather
+  // than an invitation they weren't sent.
+  const hero =
+    variant !== "page" ? null : step === "sent" || step === "name" ? (
+      <LoginStepHero
+        headline={invite ? "You're Invited to the League" : "Check Your Inbox"}
+      />
+    ) : (
+      <LoginHero />
+    );
+
   return (
     <>
+      {hero}
+
       {/* Callback error banner */}
       {shownError && ERROR_COPY[shownError] ? (
         <div className="mb-4 flex items-start gap-2.5 rounded-card border border-out/30 bg-out-wash px-4 py-3 text-sm text-[#8A2C2C]">
