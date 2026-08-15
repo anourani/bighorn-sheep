@@ -61,7 +61,9 @@ const config: Config = {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
         },
-        // The app shell's own greys — AppHeader and LeagueStatusBar, nothing else.
+        // The design spec's own greys — the app shell (AppHeader,
+        // LeagueStatusBar), every `Label` in the app, and the account page's
+        // cards and rows.
         //
         // These are the design spec's PURE neutrals, deliberately a separate
         // family from `ink`/`line`: those are blue-tinted (#111827, #6B7280,

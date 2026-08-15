@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
 import type { Member, TeamRecord } from "./types";
-import { orderPickerTeams, statusLine, survivorCounts, type TeamAvailability } from "./view";
+import {
+  orderPickerTeams,
+  statusLabel,
+  statusLine,
+  survivorCounts,
+  type TeamAvailability,
+} from "./view";
 
 function game(kickoff: string, home: TeamId, away: TeamId): Game {
   return {
@@ -79,6 +85,23 @@ describe("orderPickerTeams", () => {
     const out = orderPickerTeams(BASE, states, { sort: "kickoff", availableOnly: false }, accessors);
     // buf/det tie EARLY → alphabetical; kc LATE; dal NIGHT; then used sf (EARLY), bye cin (no game).
     expect(out).toEqual(["buf", "det", "kc", "dal", "sf", "cin"]);
+  });
+});
+
+describe("statusLabel", () => {
+  it("reads Still Standing for a living player mid-season", () => {
+    expect(statusLabel({ status: "alive", phase: "regular" })).toBe("Still Standing");
+  });
+
+  it("names the phase for a living player outside the regular season", () => {
+    expect(statusLabel({ status: "alive", phase: "preseason" })).toBe("Pre-season");
+    expect(statusLabel({ status: "alive", phase: "ended" })).toBe("Season over");
+  });
+
+  it("lets elimination outrank every phase", () => {
+    for (const phase of ["preseason", "regular", "ended"] as const) {
+      expect(statusLabel({ status: "eliminated", phase })).toBe("Eliminated");
+    }
   });
 });
 

@@ -21,11 +21,13 @@ const INPUT_CLASS =
   "w-full rounded-control border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-ink-mute/60 focus-visible:border-brand-strong";
 
 /**
- * Name and phone in one sheet, opened from either the NAME or NUMBER tile.
+ * Name and phone in one sheet, opened by the profile card's Edit button.
  *
- * A sheet rather than editing in place: the account page lays those tiles out in
- * an auto-fill grid that collapses to one column on a phone, and swapping a tile
- * for an input reflows the whole row underneath the thumb that just tapped it.
+ * A sheet rather than editing in place, and one button rather than a control per
+ * row: the card is a read-out — four label/value rows over a hairline each — and
+ * swapping one of them for an input would reflow every row beneath it, under the
+ * thumb that just tapped. The Edit button owns the whole card instead, which is
+ * also what the design draws.
  */
 export function EditProfileModal({
   open,
