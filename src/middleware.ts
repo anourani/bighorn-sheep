@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
+import { canonicalNetlifyHost } from "@/lib/deploy-origin";
 
 /**
  * Auth boundary for the app.
@@ -23,6 +24,34 @@ export async function middleware(request: NextRequest) {
   if (!url || !key) return NextResponse.next();
 
   const { pathname, searchParams } = request.nextUrl;
+
+  // Sign-in must not START on a Netlify deploy permalink.
+  //
+  // `login/page.tsx` builds emailRedirectTo from window.location.origin, so a
+  // visitor who reaches /login on `<deploy-id>--<site>.netlify.app` gets a magic
+  // link addressed back to that host — and Supabase accepts it, because the
+  // `https://**--<site>.netlify.app/**` allowlist entry (there for deploy
+  // previews) matches a permalink too. Nothing errors; the sign-in just happens
+  // on a frozen copy of the site, on an origin whose cookies are its own.
+  //
+  // Correcting it here, before any verifier cookie exists, is the only place the
+  // fix is free. Scoped to /login so a permalink stays usable for what it is for
+  // — looking at one specific deploy. Previews and branch deploys are exempt in
+  // canonicalNetlifyHost: they are their own origins by design. The callback is
+  // excluded from this matcher and makes the same check itself.
+  if (pathname === "/login") {
+    const canonicalHost = canonicalNetlifyHost(request.nextUrl.host);
+    if (canonicalHost) {
+      console.warn(
+        `[middleware] /login on deploy permalink ${request.nextUrl.host} → ${canonicalHost}. ` +
+          `A sign-in started here would be addressed back to the permalink.`,
+      );
+      const target = request.nextUrl.clone();
+      target.protocol = "https:";
+      target.host = canonicalHost;
+      return NextResponse.redirect(target);
+    }
+  }
 
   // A magic link that landed anywhere but the callback. This happens when the
   // Supabase project's Site URL / redirect allowlist doesn't cover the origin we
@@ -83,6 +112,13 @@ function redirectPreservingCookies(
   const target = request.nextUrl.clone();
   target.pathname = pathname;
   target.search = "";
+  // Same reason as the callback: never hand back a deploy-permalink URL, or the
+  // cookies carried below arrive at an origin that does not recognise them.
+  const canonicalHost = canonicalNetlifyHost(target.host);
+  if (canonicalHost) {
+    target.protocol = "https:";
+    target.host = canonicalHost;
+  }
   const redirect = NextResponse.redirect(target);
   response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
   return redirect;

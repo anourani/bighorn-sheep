@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/errors";
+import { verifyErrorReason } from "@/lib/auth-callback";
 import { formatDisplayName } from "@/lib/league/name";
 import { Panel } from "@/components/ui/Panel";
 import { Label } from "@/components/ui/Label";
@@ -22,9 +23,23 @@ type SendResult = { ok: true } | { ok: false; reason: "signup_disabled" | "other
 const ENTRY_CLOSED_COPY =
   "Entry for this league has closed — it locks at the first Week 1 kickoff.";
 
-/** Human copy for the `?error=` reasons the auth callback can bounce back with. */
+/**
+ * Human copy for the `?error=` reasons the auth callback can bounce back with.
+ *
+ * `verifier_missing` is deliberately separate from `link_expired`. Sign-in is a
+ * handshake: requesting the link leaves half of it in the browser that asked.
+ * Open the link somewhere else — another device, another browser, or an origin
+ * something redirected it to — and the halves never meet. That used to report
+ * itself as "expired or already used", which sent everyone hunting for a stale
+ * link that was never the problem.
+ */
 const ERROR_COPY: Record<string, string> = {
   link_expired: "That sign-in link expired or was already used. Request a fresh one below.",
+  link_missing_code: "That sign-in link arrived incomplete. Request a fresh one below.",
+  link_rejected: "That sign-in link couldn't be verified. Request a fresh one below.",
+  access_denied: "That sign-in link is no longer valid. Request a fresh one below.",
+  verifier_missing:
+    "A sign-in link only works in the browser that asked for it. Request a fresh one below and open it on this device.",
   entry_closed: "Entry for that league has closed — it locks at the first Week 1 kickoff.",
   invalid_code: "That invite code didn't match a league. Double-check it and try again.",
   join_failed: "Something went wrong joining that league. Give it another try.",
@@ -76,6 +91,30 @@ export function LoginFlow({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview>({ status: invite ? "loading" : "idle" });
+
+  // GoTrue can report a rejected token in the URL *fragment* instead of the
+  // query, and a fragment never reaches the server — so `errorReason`, which is
+  // read server-side from searchParams, cannot see this case at all. Without
+  // this the whole class of failure is invisible on both sides.
+  const [hashError, setHashError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!window.location.hash) return;
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const reason = verifyErrorReason(hash);
+    if (reason) {
+      console.error("[login] sign-in link rejected, reported in the URL fragment", {
+        error: hash.get("error"),
+        error_code: hash.get("error_code"),
+        error_description: hash.get("error_description"),
+      });
+      setHashError(reason);
+    }
+    // Clear it either way: a stale fragment would otherwise survive every
+    // subsequent attempt on this page.
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
+
+  const shownError = errorReason ?? hashError;
 
   // Validate the invite code up front so we can show "You're joining {League}"
   // (and catch a bad code) before we ever send an email.
@@ -343,10 +382,10 @@ export function LoginFlow({
   return (
     <>
       {/* Callback error banner */}
-      {errorReason && ERROR_COPY[errorReason] ? (
+      {shownError && ERROR_COPY[shownError] ? (
         <div className="mb-4 flex items-start gap-2.5 rounded-card border border-out/30 bg-out-wash px-4 py-3 text-sm text-[#8A2C2C]">
           <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{ERROR_COPY[errorReason]}</span>
+          <span>{ERROR_COPY[shownError]}</span>
         </div>
       ) : null}
 
