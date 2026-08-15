@@ -35,16 +35,19 @@ export function StatusReport({
           {lead} Status Report
         </span>
         <div className="flex gap-1.5 whitespace-nowrap text-sm font-medium leading-[1.2]">
-          {/* The design gives this #000000 while the line beside it is #1E1E1E —
-              two near-identical blacks, almost certainly unintentional.
-              Transcribed as given and flagged, per this repo's habit of noting
-              spec oddities rather than silently normalising them. */}
-          <span className="text-black">{primary}</span>
-          <span className="text-shell-soft">{secondary}</span>
+          {/* This line used to be #000000 against #1E1E1E beside it, flagged
+              here as probably unintentional. The design has since settled both
+              on #1E1E1E and the muted half on #757575, in the desktop and
+              mobile variants alike, so they now use the shell tokens. */}
+          <span className="text-shell-ink">{primary}</span>
+          <span className="text-shell-mute">{secondary}</span>
         </div>
       </div>
 
-      <div className="border-y border-shell-line py-2">
+      {/* 6px of breathing room inside the rules on a phone, 8px above it — the
+          only measurement the two variants of this tile disagree on, besides
+          the strip's own gap. */}
+      <div className="border-y border-shell-line py-1.5 sm:py-2">
         <SurvivorStrip status={status} />
       </div>
     </section>

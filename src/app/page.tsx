@@ -48,38 +48,54 @@ export default async function LandingPage() {
       <LandingHeader />
 
       <main className="flex-1">
-        {/* The design gives the title block no horizontal padding, so the
-            heading hangs left of the brand name above it. Transcribed as given;
-            `px-4` here and on the description is the fix if it reads as a slip
-            in the browser rather than intent. */}
-        <section className="pb-5 pt-[60px]">
+        {/* Both mock-ups now inset the title block by 16px, so the heading
+            lines up with the brand name above it and the sections below rather
+            than hanging left of everything. The top step is the mobile/desktop
+            difference: 40px on a phone, 60px once there's room. There is no gap
+            between eyebrow and heading in either — both are set `leading-none`,
+            and the design stacks them flush. */}
+        <section className="px-4 pb-5 pt-10 sm:pt-[60px]">
           <Label className="text-base">Welcome to</Label>
           {/*
-            88px at full width. An arbitrary clamp rather than a new
-            `display-*` fontSize token on purpose: tailwind-merge classifies
-            `text-display-*` as a colour and silently drops it whenever a
-            `cn()` call also passes one — the bug documented in Label.tsx. With
-            one call site a token buys nothing and carries that risk.
-            5.5rem = 88px, reached at ~978px; −2px ÷ 88px = −0.023em, so the
-            tracking scales with the size instead of crushing the mobile step.
+            64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
+            Desktop). An arbitrary clamp rather than a new `display-*` fontSize
+            token on purpose: tailwind-merge classifies `text-display-*` as a
+            colour and silently drops it whenever a `cn()` call also passes one
+            — the bug documented in Label.tsx. With one call site a token buys
+            nothing and carries that risk.
+
+            The ramp is anchored on the two mock widths: 3rem + 4vw is 63.7px at
+            393px and exactly 88px at 1000px, where `max-w-shell` caps the
+            column and the size should stop growing. The 3.5rem floor only
+            engages below ~360px, so narrow phones shed a little rather than
+            overflowing "Standing".
+
+            Tracking is a flat −2px, not the −0.023em it used to be: the design
+            specifies −2px at both 64px and 88px, so it does not scale.
           */}
-          <h1 className="mt-2 text-[clamp(2.5rem,9vw,5.5rem)] font-semibold leading-none tracking-[-0.023em] text-black">
+          <h1 className="text-[clamp(3.5rem,3rem_+_4vw,5.5rem)] font-semibold leading-none tracking-[-2px] text-black">
             Last Man Standing
           </h1>
         </section>
 
         {/* `align-items: flex-end` in the spec positions the block, not the text
-            inside it — the paragraph stays left-aligned within its 436px. */}
-        <section className="flex justify-end pb-4">
-          <p className="max-w-[436px] text-base leading-[1.25] text-shell-mute">
-            A private NFL survivor pool with friends. Pick one team a week. Win to survive, lose
-            or tie and you&apos;re out. The last one standing takes the season.
-          </p>
+            inside it — the copy stays left-aligned within its 339px, and takes
+            the full width on a phone, where the design drops the right-hand
+            offset entirely. Two paragraphs because the design colours the first
+            sentence as primary ink and the rest as secondary. */}
+        <section className="flex justify-end px-4 pb-4 sm:pt-4">
+          <div className="w-full text-base leading-[1.35] sm:w-[339px]">
+            <p className="text-shell-ink">A private NFL survivor pool with friends.</p>
+            <p className="text-shell-mute">
+              Pick one team a week. Win to survive, lose or tie and you&apos;re out. The last one
+              standing takes the season.
+            </p>
+          </div>
         </section>
 
         {board ? (
           <>
-            <StatusReport status={board.status} className="px-4 py-5" />
+            <StatusReport status={board.status} className="px-4 py-3" />
             <section className="flex flex-col gap-6 px-4 py-6">
               <Label className="text-base">League</Label>
               <PublicStandings data={board} />

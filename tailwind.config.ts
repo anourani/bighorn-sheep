@@ -84,7 +84,7 @@ const config: Config = {
         shell: {
           ink: "#1E1E1E", // app name, league name, "Week 6", chevron
           mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
-          soft: "#6A6A6A", // "15 deaths."
+          soft: "#6A6A6A", // unused since "15 deaths." moved to `mute` in the mock-up
           line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
           alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
         },
