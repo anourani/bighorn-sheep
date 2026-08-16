@@ -124,6 +124,10 @@ export function StandingsGrid({
               {ranked.map(({ member, rank }) => {
                 const isYou = member.id === viewerId;
                 const eliminated = member.status === "eliminated";
+                // Same token the row uses, so the sticky cell and the cells
+                // scrolling past it are one flat colour. It has to be opaque
+                // either way — a translucent sticky fill lets scrolled week
+                // cells show through.
                 const stickyBg = isYou ? "bg-brand-wash" : "bg-white";
                 return (
                   <tr
@@ -133,7 +137,10 @@ export function StandingsGrid({
                       // states the intent so a future cell change can't quietly
                       // drop below it.
                       "h-[54px] border-b border-line/70 last:border-b-0",
-                      isYou && "bg-brand-wash/50",
+                      // Opaque, not `/50`. At 50% this composited to #FDF6F1 over
+                      // the white panel while the sticky cell stayed #FCEDE3, and
+                      // the mismatch read as a seam at the sticky edge.
+                      isYou && "bg-brand-wash",
                     )}
                   >
                     {/* Rank + name + status — one sticky cell, deliberately.
