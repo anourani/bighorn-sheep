@@ -86,7 +86,21 @@ export function StandingsGrid({
 
   return (
     <div className="space-y-2">
-      <Panel tone="light" className="overflow-hidden p-0">
+      {/* Full-bleed below `lg`: the table is the widest thing on the page and
+          the design gives it the whole viewport on phones and tablets, square
+          corners and all, rather than a 16px-inset rounded card. The inset and
+          the radius both come back at `lg`.
+
+          The bleed sits on the Panel rather than this wrapper so the `Legend`
+          below it — and the landing page's padlock note, which is a sibling of
+          this whole component — stay lined up with the rest of the page.
+
+          `-mx-4` assumes a `px-4` host, same as `StatusReport` above it: true of
+          the app shell's `main` and of the landing page's own section. */}
+      <Panel
+        tone="light"
+        className="-mx-4 overflow-hidden rounded-none p-0 lg:mx-0 lg:rounded-card"
+      >
         <div className="overflow-x-auto scroll-none">
           {/* min-w-full so the table is never narrower than the panel; w-max so
               it still grows past it and scrolls once the columns need the room. */}
