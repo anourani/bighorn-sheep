@@ -112,7 +112,7 @@ describe("survivorCounts", () => {
       name: id,
       firstName: id,
       lastName: "",
-      avatarUrl: null,
+      favoriteAnimal: null,
       phone: null,
       role: "player",
       status,

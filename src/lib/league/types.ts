@@ -58,7 +58,11 @@ export interface Member {
   name: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string | null;
+  /**
+   * The animal this player picked, or null when unset or no longer on the list.
+   * Drives their avatar everywhere — there is no other avatar source.
+   */
+  favoriteAnimal: string | null;
   /**
    * Phone number, or null. Null means EITHER unset OR withheld: RLS on
    * profile_private returns rows only to the owner and to admins of the

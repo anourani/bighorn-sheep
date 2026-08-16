@@ -33,7 +33,12 @@ export function WhosIn({ members, preseason }: { members: Member[]; preseason: b
       <Panel tone="light" className="mt-4 divide-y divide-line p-0">
         {members.map((m) => (
           <div key={m.id} className="flex items-center gap-3 px-card py-3.5">
-            <Avatar firstName={m.firstName} lastName={m.lastName} avatarUrl={m.avatarUrl} size={36} />
+            <Avatar
+              firstName={m.firstName}
+              lastName={m.lastName}
+              favoriteAnimal={m.favoriteAnimal}
+              size={36}
+            />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-ink">{m.name}</div>
               {m.role === "admin" ? <Label>Commissioner</Label> : null}
