@@ -96,10 +96,24 @@ export function StandingsGrid({
           this whole component — stay lined up with the rest of the page.
 
           `-mx-4` assumes a `px-4` host, same as `StatusReport` above it: true of
-          the app shell's `main` and of the landing page's own section. */}
+          the app shell's `main` and of the landing page's own section.
+
+          The side borders go with the inset, for the same reason the radius
+          does: a border separates the card from the page, and at the screen edge
+          there is no page left to separate it from. The horizontal rules stay
+          and run the full width. Both halves of that key off `lg` too, so there
+          is no width where the table is inset but missing its sides.
+
+          Do not "simplify" `border-x-0 … lg:border-x` into one class. It works
+          by CSS source order, not by merging: `tailwind-merge` keeps `border`
+          (from Panel's tone) *and* `border-x-0`, because only the all-sides
+          group evicts the per-axis one and never the reverse. It resolves
+          correctly because Tailwind emits the all-sides group ahead of
+          `border-x`/`border-y`, and the `lg:` variant after every unprefixed
+          utility. Rewrite it order-independently and it silently does nothing. */}
       <Panel
         tone="light"
-        className="-mx-4 overflow-hidden rounded-none p-0 lg:mx-0 lg:rounded-card"
+        className="-mx-4 overflow-hidden rounded-none border-x-0 p-0 lg:mx-0 lg:rounded-card lg:border-x"
       >
         <div className="overflow-x-auto scroll-none">
           {/* min-w-full so the table is never narrower than the panel; w-max so
