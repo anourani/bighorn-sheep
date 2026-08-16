@@ -34,9 +34,12 @@ export interface Viewer {
   name: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string | null;
   email: string | null;
-  /** One of FAVORITE_ANIMALS, or null when unset or no longer on the list. */
+  /**
+   * One of FAVORITE_ANIMALS, or null when unset or no longer on the list. Also
+   * the viewer's avatar: `profiles.avatar_url` still exists on the table but
+   * nothing reads it since photo uploads were removed.
+   */
   favoriteAnimal: string | null;
 }
 
@@ -44,7 +47,8 @@ export interface Viewer {
 interface ProfileName {
   firstName: string;
   lastName: string;
-  avatarUrl: string | null;
+  /** Drives the member's avatar. See {@link Member.favoriteAnimal}. */
+  favoriteAnimal: string | null;
   /** From profile_private — present only for rows RLS let the viewer read. */
   phone: string | null;
 }
@@ -138,7 +142,7 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
     name: formatDisplayName(firstName, lastName),
     firstName,
     lastName,
-    avatarUrl: profile?.avatarUrl ?? null,
+    favoriteAnimal: profile?.favoriteAnimal ?? null,
     phone: profile?.phone ?? null,
     role: row.role,
     status: row.status,
@@ -177,7 +181,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, avatar_url, favorite_animal")
+    .select("first_name, last_name, favorite_animal")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -190,7 +194,6 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     ),
     firstName: profile?.first_name ?? "",
     lastName: profile?.last_name ?? "",
-    avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
     favoriteAnimal: profile?.favorite_animal ?? null,
   };
@@ -253,7 +256,10 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     // their own row, plus every member's row when they admin a shared league.
     // Anyone else's phone is simply absent — no app-side gate exists or could.
     const [{ data: profiles }, { data: privateRows }] = await Promise.all([
-      supabase.from("profiles").select("id, first_name, last_name, avatar_url").in("id", memberIds),
+      supabase
+        .from("profiles")
+        .select("id, first_name, last_name, favorite_animal")
+        .in("id", memberIds),
       supabase.from("profile_private").select("id, phone").in("id", memberIds),
     ]);
     const phoneById = new Map((privateRows ?? []).map((r) => [r.id, r.phone]));
@@ -261,7 +267,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       profileById.set(pr.id, {
         firstName: pr.first_name,
         lastName: pr.last_name,
-        avatarUrl: pr.avatar_url,
+        favoriteAnimal: pr.favorite_animal,
         phone: phoneById.get(pr.id) ?? null,
       });
   }
@@ -390,7 +396,7 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
   const [{ data: profile }, { data: privateRow }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("first_name, last_name, avatar_url, favorite_animal, created_at")
+      .select("first_name, last_name, favorite_animal, created_at")
       .eq("id", user.id)
       .maybeSingle(),
     supabase.from("profile_private").select("phone").eq("id", user.id).maybeSingle(),
@@ -405,7 +411,6 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
     ),
     firstName: profile?.first_name ?? "",
     lastName: profile?.last_name ?? "",
-    avatarUrl: profile?.avatar_url ?? null,
     email: user.email ?? null,
     favoriteAnimal: profile?.favorite_animal ?? null,
   };

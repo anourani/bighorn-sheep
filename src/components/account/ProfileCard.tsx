@@ -6,14 +6,10 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { ChevronDownIcon, InfoIcon } from "@/components/icons";
-import { createClient } from "@/lib/supabase/client";
-import { updateAvatar, updateFavoriteAnimal } from "@/app/app/actions";
+import { updateFavoriteAnimal } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import { FAVORITE_ANIMALS, isFavoriteAnimal } from "@/lib/profile/animals";
 import type { Viewer } from "@/lib/league/load";
-
-const ACCEPT = "image/png,image/jpeg,image/webp";
-const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
  * The design's white-on-white control: 40px tall, 16px semibold, a `#D9D9D9`
@@ -92,15 +88,21 @@ function RowValue({ value }: { value: string | null }) {
  * the platform keyboard behaviour, which no hand-rolled dropdown would — the
  * same disguise `WeekPicker` wears.
  *
+ * This is also the app's avatar picker — the selection is what the portrait
+ * above and every avatar elsewhere render — so the value is owned by
+ * {@link ProfileCard} and shared with the portrait rather than kept local.
+ *
  * Saves on change — there is no Save button on this card — and rolls the
- * displayed value back if the write fails.
+ * displayed value back if the write fails, which rolls the portrait back too.
  */
-function FavoriteAnimalValue({ value }: { value: string | null }) {
+function FavoriteAnimalValue({
+  animal,
+  setAnimal,
+}: {
+  animal: string;
+  setAnimal: (next: string) => void;
+}) {
   const router = useRouter();
-  // An unrecognised stored value (list changed, or edited by hand in SQL) reads
-  // as unset rather than rendering an option that isn't there.
-  const initial = isFavoriteAnimal(value) ? value : "";
-  const [animal, setAnimal] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -164,14 +166,14 @@ function FavoriteAnimalValue({ value }: { value: string | null }) {
  * The account's identity surface: the player's portrait overlapping a card of
  * their details.
  *
- * The portrait is the avatar upload — tapping it opens the file picker, with no
- * separate edit mode to enter first. Bytes go straight to Supabase Storage from
- * the browser; only the resulting URL is persisted through a server action, so
- * the caches revalidate and the header picks the new image up.
+ * The portrait is not editable in itself — it renders whatever the Favorite
+ * animal row below is showing, which is the only way to change an avatar. This
+ * component therefore owns the selected animal and hands it to both, so the
+ * portrait turns over the instant the row does instead of waiting on the server
+ * round-trip, and reverts with it when a write fails.
  *
  * Everything else on the card is read-only here: `onEdit` opens the name/phone
- * sheet, and the favorite animal saves itself. That is why this component owns
- * the upload state but not the modal's.
+ * sheet, and the favorite animal saves itself.
  */
 export function ProfileCard({
   viewer,
@@ -183,87 +185,32 @@ export function ProfileCard({
   phone: string | null;
   onEdit: () => void;
 }) {
-  const router = useRouter();
-  const [avatarUrl, setAvatarUrl] = useState(viewer.avatarUrl);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file after an error
-    if (!file) return;
-    setError(null);
-    if (!ACCEPT.split(",").includes(file.type)) {
-      setError("Use a PNG, JPEG, or WebP image.");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("Image must be under 2 MB.");
-      return;
-    }
-    setUploading(true);
-    try {
-      const supabase = createClient();
-      const path = `${viewer.id}/avatar`; // one avatar per user; upsert overwrites
-      const { error: upErr } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, { upsert: true, cacheControl: "3600", contentType: file.type });
-      if (upErr) {
-        setError("Upload failed. Try again.");
-        return;
-      }
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      // Fixed path + upsert means an identical URL each time — bust the CDN cache.
-      const url = `${data.publicUrl}?v=${Date.now()}`;
-      const res = await updateAvatar(url);
-      if (!res.ok) {
-        setError("Couldn't save your photo.");
-        return;
-      }
-      setAvatarUrl(url);
-      router.refresh();
-    } catch (err) {
-      // A deploy landed while this tab was open — reload onto the new build.
-      if (isStaleDeploymentError(err) && reloadOnce()) return;
-      setError("Photo uploads aren't available in this environment.");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // An unrecognised stored value (list changed, or edited by hand in SQL) reads
+  // as unset rather than rendering an option that isn't there.
+  const [animal, setAnimal] = useState(
+    isFavoriteAnimal(viewer.favoriteAnimal) ? viewer.favoriteAnimal : "",
+  );
 
   const hasName = viewer.firstName.trim().length > 0;
 
   return (
     <section className="isolate flex flex-col items-center">
-      <label
-        className="group relative z-10 -mb-6 cursor-pointer rounded-full focus-within:ring-2 focus-within:ring-brand-strong/70 focus-within:ring-offset-2 sm:-mb-20"
-        title="Change your photo"
-      >
-        {/* `ring-1 ring-black` is applied after Avatar's own `ring-2
-            ring-white/20` and lands in the same tailwind-merge groups, so it
-            wins — the design's hairline, with no change to the primitive. The
-            initials fallback stays: the mock's blank white disc is a placeholder
-            for this slot, not a better empty state than "AN" on the brand fill. */}
+      {/* `ring-1 ring-black` is applied after Avatar's own `ring-2
+          ring-white/20` and lands in the same tailwind-merge groups, so it
+          wins — the design's hairline, with no change to the primitive. The
+          initials fallback stays: the mock's blank white disc is a placeholder
+          for this slot, not a better empty state than "AN" on the brand fill,
+          and it is what a player without an animal still sees. */}
+      <div className="relative z-10 -mb-6 sm:-mb-20">
         <Avatar
           firstName={viewer.firstName}
           lastName={viewer.lastName}
-          avatarUrl={avatarUrl}
+          favoriteAnimal={animal || null}
           size={160}
           shape="circle"
           className="ring-1 ring-black"
         />
-        <span className="absolute inset-0 grid place-items-center rounded-full bg-ink/45 text-xs font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {uploading ? "…" : "Edit"}
-        </span>
-        <input
-          type="file"
-          accept={ACCEPT}
-          onChange={handleFile}
-          disabled={uploading}
-          className="sr-only"
-          aria-label="Upload a profile photo"
-        />
-      </label>
+      </div>
 
       {/*
         The top padding clears the portrait, which hangs 24px into the card on a
@@ -286,7 +233,7 @@ export function ProfileCard({
               <RowValue value={phone} />
             </ProfileRow>
             <ProfileRow label="Favorite animal">
-              <FavoriteAnimalValue value={viewer.favoriteAnimal} />
+              <FavoriteAnimalValue animal={animal} setAnimal={setAnimal} />
             </ProfileRow>
           </div>
 
@@ -297,13 +244,6 @@ export function ProfileCard({
               Edit
             </Button>
           </div>
-
-          {/* The upload's errors belong to the portrait, which has nowhere of
-              its own to put them — on desktop its bottom half is inside this
-              card. The two edit affordances share a footer. */}
-          {error ? <div className="px-1">
-            <ErrorLine>{error}</ErrorLine>
-          </div> : null}
         </div>
       </div>
     </section>

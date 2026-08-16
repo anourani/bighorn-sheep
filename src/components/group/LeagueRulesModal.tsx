@@ -64,7 +64,7 @@ export function LeagueRulesModal({
               <Avatar
                 firstName={commissioner.firstName}
                 lastName={commissioner.lastName}
-                avatarUrl={commissioner.avatarUrl}
+                favoriteAnimal={commissioner.favoriteAnimal}
                 size={40}
               />
               <div className="min-w-0">

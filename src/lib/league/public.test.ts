@@ -183,7 +183,7 @@ describe("mapPublicSnapshot", () => {
     expect(m.name).toBe("Ali B."); // already abbreviated in SQL
     expect(m.firstName).toBe("");
     expect(m.lastName).toBe("");
-    expect(m.avatarUrl).toBeNull();
+    expect(m.favoriteAnimal).toBeNull();
     expect(m.phone).toBeNull();
     expect(m.buyInPaid).toBe(false);
   });

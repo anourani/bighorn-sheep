@@ -140,9 +140,11 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
       // the database. Do NOT run formatDisplayName over it again.
       name: typeof m.name === "string" ? m.name : "Player",
       // The public payload carries no name parts, avatar, phone or buy-in.
+      // A null animal is what drives the avatar, so signed-out visitors get the
+      // initials mark — and the SQL never selects favorite_animal either way.
       firstName: "",
       lastName: "",
-      avatarUrl: null,
+      favoriteAnimal: null,
       phone: null,
       buyInPaid: false,
       role: m.role === "admin" ? "admin" : "player",

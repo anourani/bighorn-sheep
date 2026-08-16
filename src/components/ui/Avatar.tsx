@@ -3,25 +3,35 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { initials } from "@/lib/league/name";
+import { animalAvatarSrc } from "@/lib/profile/animals";
 
 /**
- * A player's avatar. Shows their uploaded sticker when set, otherwise the
- * initials mark ("AN") in the brand circle — the app's identity fallback. If the
- * image fails to load (offline, deleted) it degrades to the same initials, so a
- * player is never rendered as a blank circle. Mirrors {@link TeamLogo}: a plain
- * <img> avoids next/image remotePatterns config for the Supabase storage domain.
+ * A player's avatar — the animal they picked on the account page, otherwise the
+ * initials mark ("AN") in the brand circle.
+ *
+ * The animal is the *only* source of an avatar: there is no photo upload, so a
+ * player changes how they appear here, in Who's In, and in the standings grid by
+ * changing one <select>. Animals still waiting on artwork resolve to null and
+ * render the initials mark, which is also what happens if the PNG fails to load —
+ * a player is never rendered as a blank circle.
+ *
+ * The art sits on a neutral fill rather than the brand gradient: the PNGs are
+ * transparent character art and several of them are warm-toned, which would
+ * disappear into orange. Mirrors {@link TeamLogo}: a plain <img> and
+ * `object-contain`, so nothing is cropped and next/image config stays unnecessary.
  */
 export function Avatar({
   firstName,
   lastName,
-  avatarUrl,
+  favoriteAnimal,
   size = 40,
   shape = "circle",
   className,
 }: {
   firstName: string;
   lastName: string;
-  avatarUrl: string | null;
+  /** One of FAVORITE_ANIMALS, or null when unset or no longer on the list. */
+  favoriteAnimal: string | null;
   size?: number;
   /**
    * "square" is the account page's header portrait. The white ring is dropped
@@ -34,8 +44,9 @@ export function Avatar({
   const [failed, setFailed] = useState(false);
   const label = initials(firstName, lastName);
   const round = shape === "circle" ? "rounded-full ring-2 ring-white/20" : "rounded-control";
+  const src = animalAvatarSrc(favoriteAnimal);
 
-  if (!avatarUrl || failed) {
+  if (!src || failed) {
     return (
       <span
         role="img"
@@ -53,16 +64,23 @@ export function Avatar({
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- Supabase storage URL; a plain img avoids next/image remotePatterns config
-    <img
-      src={avatarUrl}
-      alt={label}
-      width={size}
-      height={size}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className={cn("shrink-0 object-cover", round, className)}
+    <span
+      className={cn("inline-block shrink-0 overflow-hidden bg-fill-soft", round, className)}
       style={{ width: size, height: size }}
-    />
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- bundled /public asset; a plain img keeps next/image out of the picture entirely */}
+      <img
+        src={src}
+        alt={`${label}, ${favoriteAnimal}`}
+        width={size}
+        height={size}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-contain"
+        // Keeps the art clear of the ring without a percentage padding class,
+        // which would resolve against the element's width and not its box.
+        style={{ padding: Math.round(size * 0.06) }}
+      />
+    </span>
   );
 }

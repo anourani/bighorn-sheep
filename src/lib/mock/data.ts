@@ -234,7 +234,7 @@ export const GROUP: Group = {
 };
 
 /** Full-name seed rows; first/last/avatar are derived below so this stays terse. */
-type SeedMember = Omit<Member, "firstName" | "lastName" | "avatarUrl" | "buyInPaid" | "phone">;
+type SeedMember = Omit<Member, "firstName" | "lastName" | "favoriteAnimal" | "buyInPaid" | "phone">;
 
 const SEED_MEMBERS: SeedMember[] = [
   {
@@ -330,6 +330,19 @@ const SEED_MEMBERS: SeedMember[] = [
   },
 ];
 
+/**
+ * Which animal each demo player picked — their avatar. Deliberately partial:
+ * only Bear and Cat have artwork so far, and the players left out render the
+ * initials mark, so the mock league shows both states side by side. That is the
+ * quickest way to check the standings and Who's In layouts hold either way.
+ */
+const SEED_ANIMALS: Record<string, string> = {
+  [YOU_ID]: "Bear",
+  u_mark: "Cat",
+  u_sarah: "Bear",
+  u_priya: "Giraffe", // on the list, art not drawn yet — falls back to initials
+};
+
 /** Derive first/last from the seed's full name and render as "First L.". */
 export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
   const [firstName = "", ...rest] = m.name.split(" ");
@@ -338,7 +351,7 @@ export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
     ...m,
     firstName,
     lastName,
-    avatarUrl: null,
+    favoriteAnimal: SEED_ANIMALS[m.id] ?? null,
     // Null as it would be for a non-admin viewer: RLS withholds other members'
     // numbers, so the realistic mock is no numbers at all.
     phone: null,

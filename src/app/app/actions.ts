@@ -259,7 +259,9 @@ export async function updateProfile(input: {
 }
 
 /**
- * Persist the viewer's favorite animal, or null to clear it.
+ * Persist the viewer's favorite animal, or null to clear it. This is also the
+ * app's avatar setter — the animal is what every Avatar renders — so it
+ * revalidates every route a player appears on, not just the account page.
  *
  * Validated against FAVORITE_ANIMALS here rather than by a check constraint: the
  * column is plain text so the list can grow without a migration run by hand
@@ -281,29 +283,6 @@ export async function updateFavoriteAnimal(animal: string | null): Promise<Actio
       .eq("id", user.id);
     if (error) {
       console.error("[updateFavoriteAnimal] update failed", error);
-      return { ok: false, error: "unexpected_error" };
-    }
-
-    revalidatePath("/app/account");
-    return { ok: true };
-  });
-}
-
-/** Persist the viewer's uploaded avatar URL (bytes already in storage). */
-export async function updateAvatar(url: string): Promise<ActionResult> {
-  return attempt(async () => {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { ok: false, error: "not_authenticated" };
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({ avatar_url: url })
-      .eq("id", user.id);
-    if (error) {
-      console.error("[updateAvatar] update failed", error);
       return { ok: false, error: "unexpected_error" };
     }
 
