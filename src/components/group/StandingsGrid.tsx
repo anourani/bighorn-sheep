@@ -3,13 +3,11 @@
 import { cn } from "@/lib/cn";
 import { Panel } from "@/components/ui/Panel";
 import { Label } from "@/components/ui/Label";
-import { StrikePips } from "@/components/ui/Badge";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LockIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import type { Game } from "@/lib/nfl/types";
 import type { GroupRules, Member } from "@/lib/league/types";
-import { strikeAllowance } from "@/lib/league/types";
 import { viewCurrentPick } from "@/lib/league/view";
 
 export interface RankedMember {
@@ -82,7 +80,6 @@ export function StandingsGrid({
    */
   hiddenPickUserIds?: string[];
 }) {
-  const allowance = strikeAllowance(rules.eliminationType);
   const weeks: WeekColumn[] =
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
   const hiddenSet = new Set(hiddenPickUserIds);
@@ -90,15 +87,18 @@ export function StandingsGrid({
   return (
     <div className="space-y-2">
       <Panel tone="light" className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scroll-none">
           {/* min-w-full so the table is never narrower than the panel; w-max so
               it still grows past it and scrolls once the columns need the room. */}
           <table className="w-max min-w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-line">
-                <HeadCell className="left-0 w-9 text-center">#</HeadCell>
-                <HeadCell className="left-9 min-w-[8.75rem] border-r border-line text-left">
-                  Name
+                {/* Rank and name share one cell — see the note on the body cell. */}
+                <HeadCell className="left-0 min-w-[11rem] border-r border-line text-left">
+                  <span className="flex items-center gap-2">
+                    <span className="w-5 text-center">#</span>
+                    <span>Name</span>
+                  </span>
                 </HeadCell>
                 {weeks.map((col) => (
                   <th
@@ -129,36 +129,42 @@ export function StandingsGrid({
                   <tr
                     key={member.id}
                     className={cn(
-                      "border-b border-line/70 last:border-b-0",
+                      // The 44px pick cells already make the row 56px; the floor
+                      // states the intent so a future cell change can't quietly
+                      // drop below it.
+                      "h-[54px] border-b border-line/70 last:border-b-0",
                       isYou && "bg-brand-wash/50",
                     )}
                   >
-                    {/* Rank — sticky */}
+                    {/* Rank + name + status — one sticky cell, deliberately.
+                        Two sticky cells means hardcoding the second one's `left`
+                        to the first one's rendered width, and that width is not
+                        under our control: the trailing `Spacer` is `width: 100%`,
+                        which in auto table layout squeezes every other column
+                        toward its min-content size — measured: a `width: 36px`
+                        column renders at 15.8px beside such a spacer, and at
+                        exactly 36px without one. So the rank column rendered
+                        narrower than the 36px the name column was pinned at,
+                        leaving a transparent strip that scrolled cells showed
+                        through. One cell has no offset to get wrong.
+                        (Don't name the offending utility here — Tailwind scans
+                        comments too and would emit it as dead CSS.) */}
                     <td
                       className={cn(
-                        "sticky left-0 z-10 w-9 px-1 py-2 text-center align-middle",
+                        "sticky left-0 z-10 min-w-[11rem] border-r border-line px-2.5 py-2 align-middle",
                         stickyBg,
                         isYou && "border-l-2 border-brand-strong",
                       )}
                     >
-                      <span
-                        className={cn(
-                          "text-xs font-semibold tabular-nums",
-                          eliminated ? "text-ink-mute" : "text-ink-soft",
-                        )}
-                      >
-                        {rank}
-                      </span>
-                    </td>
-
-                    {/* Name + status — sticky */}
-                    <td
-                      className={cn(
-                        "sticky left-9 z-10 min-w-[8.75rem] border-r border-line px-2.5 py-2 align-middle",
-                        stickyBg,
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "w-5 shrink-0 text-center text-xs font-semibold tabular-nums",
+                            eliminated ? "text-ink-mute" : "text-ink-soft",
+                          )}
+                        >
+                          {rank}
+                        </span>
                         <span
                           className={cn(
                             "truncate text-sm font-semibold",
@@ -167,34 +173,19 @@ export function StandingsGrid({
                         >
                           {member.name}
                         </span>
-                        {/* Beside the name, as a pill matching Admin's, rather
-                            than on its own line below — and without the week it
-                            happened, which the row's own washed cells already
-                            show. The ink is darkened from `text-out`, which only
-                            reaches 3.5:1 on this wash; #8A2C2C clears AA at 6.9
-                            and is the same pair used for pick errors. */}
+                        {/* Beside the name rather than on its own line below, and
+                            without the week it happened, which the row's own
+                            washed cells already show. The ink is darkened from
+                            `text-out`, which only reaches 3.5:1 on this wash;
+                            #8A2C2C clears AA at 6.9 and is the same pair used for
+                            pick errors. No Admin chip here — Who's In carries the
+                            commissioner label. */}
                         {eliminated ? (
                           <Label className="shrink-0 rounded bg-out-wash px-1 text-[#8A2C2C]">
                             Out
                           </Label>
                         ) : null}
-                        {!isYou && member.role === "admin" ? (
-                          <Label className="shrink-0 rounded bg-ink/10 px-1 text-ink-mute">
-                            Admin
-                          </Label>
-                        ) : null}
                       </div>
-                      {/* Strikes only while they can still accumulate. The row
-                          keeps its height regardless — the 40px pick cells set
-                          it, not this column. */}
-                      {eliminated ? null : (
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <StrikePips strikes={member.strikes} allowance={allowance} tone="light" />
-                          <span className="text-[10px] font-semibold tabular-nums text-ink-mute">
-                            {member.strikes}/{allowance}
-                          </span>
-                        </div>
-                      )}
                     </td>
 
                     {/* Weekly picks */}
@@ -288,7 +279,7 @@ function cellFor(
 function WeekCell({ cell }: { cell: WeekCell }) {
   if (cell.kind === "empty") {
     return (
-      <span className="mx-auto grid h-10 w-10 place-items-center" aria-hidden>
+      <span className="mx-auto grid h-11 w-11 place-items-center" aria-hidden>
         <span className="h-3 w-3 rounded-full border border-line/80" />
         <span className="sr-only">No pick</span>
       </span>
@@ -298,7 +289,7 @@ function WeekCell({ cell }: { cell: WeekCell }) {
   if (cell.kind === "hidden") {
     return (
       <span
-        className="mx-auto grid h-10 w-10 place-items-center rounded-lg bg-[#EEF1F6] text-ink-mute"
+        className="mx-auto grid h-11 w-11 place-items-center rounded-lg bg-[#EEF1F6] text-ink-mute"
         title="Hidden until kickoff"
       >
         <LockIcon className="h-4 w-4" />
@@ -320,10 +311,13 @@ function WeekCell({ cell }: { cell: WeekCell }) {
 
   return (
     <span
-      className={cn("relative mx-auto grid h-10 w-10 place-items-center rounded-lg", wash)}
+      className={cn("relative mx-auto grid h-11 w-11 place-items-center rounded-lg", wash)}
       title={team ? `${team.location} ${team.name}${resultLabel ? ` · ${resultLabel}` : ""}` : cell.teamId}
     >
-      <TeamLogo teamId={cell.teamId} size={32} />
+      {/* Sized by prop, not class — TeamLogo writes an inline width/height that
+          a Tailwind sizing utility would lose to. 36 in a 44px tile keeps the
+          4px gutter the loss/push/live wash needs to read as a tile. */}
+      <TeamLogo teamId={cell.teamId} size={36} />
       {cell.live ? (
         <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-pulse-live rounded-full bg-live" />

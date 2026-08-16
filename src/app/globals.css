@@ -56,6 +56,18 @@
     min-width: 44px;
   }
 
+  /* Panels that scroll sideways without advertising it. The columns cut off at
+     the panel edge are the affordance; the bar itself read as chrome under the
+     standings table. Swipe, trackpad and shift-wheel are unaffected.
+     Distinct from `.scroll-slim` above, which styles a bar for slate panels. */
+  .scroll-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge */
+  }
+  .scroll-none::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Staggered entrance helper — delays applied by child position. */
   .stagger > * {
     animation: reveal-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
