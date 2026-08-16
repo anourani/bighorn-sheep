@@ -28,6 +28,23 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  *     `shrink-0`, but their CONTAINER was shrinkable, so flex handed it less
  *     room than its contents and the contents spilled out of it. `shrink-0` on
  *     that container is what forces the shrinking onto the truncatable half.
+ *
+ * Re-checked value by value against the design's signed-out variants when the
+ * signed-in header was restyled, and it is exact — padding, rule, 50px mark,
+ * 12px title gap, 18px wordmark, 8px button gap and the whole button string.
+ * (The design's 1000px cap is already supplied upstream by `page.tsx`'s
+ * `max-w-shell` wrapper, and its `py-[4px]` on the buttons is inert under `h-9`
+ * plus `items-center`.) So the *signed-out* header intentionally has no diff.
+ *
+ * One thing is deliberately not transcribed: the design puts a 4px backdrop blur
+ * on this header too. `AppHeader` takes it because it is sticky and page content
+ * genuinely passes behind it. Nothing passes behind this one — it does not move —
+ * so the only thing it could blur is `AmbientBackground`'s grid, which sits at
+ * full opacity exactly here, at the top of the viewport, before its mask fades
+ * downward. The result would be a 62px band of soft grid inside a page of sharp
+ * grid, plus a vertical seam at each shell edge above 1000px, bought with a
+ * compositing layer. If that call is ever reversed it is one class:
+ * `backdrop-blur-sm`.
  */
 
 /*
