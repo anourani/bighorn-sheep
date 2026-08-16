@@ -63,7 +63,15 @@ export function LoginStepHero({ headline }: { headline: string }) {
           the component's `text-xs` through tailwind-merge instead of being
           dropped the way a `text-label-*` token would be. */}
       <Label className="text-base leading-[1.1]">NFL Survival League</Label>
-      <h1 className="text-[clamp(2.25rem,12vw,3rem)] font-semibold leading-[1.2] tracking-[-2px] text-ink md:text-[4rem]">
+      {/* The two max-widths are the mock-up's own headline measures, and they
+          are what fixes the line break: at 333px "You're Invited to the League"
+          breaks after "Invited", the same place the 460px desktop measure
+          breaks it. Left to the column's full width it would instead carry
+          "to" up onto the first line on a phone and read differently at each
+          size. Capping the text rather than padding the block keeps the card
+          below on the page's own gutter, which the mock-up also insets less
+          than the header. */}
+      <h1 className="max-w-[333px] text-[clamp(2.25rem,12vw,3rem)] font-semibold leading-[1.2] tracking-[-2px] text-ink md:max-w-[460px] md:text-[4rem]">
         {headline}
       </h1>
     </div>
