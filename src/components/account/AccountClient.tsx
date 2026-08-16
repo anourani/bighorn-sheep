@@ -19,10 +19,10 @@ import type { AccountData, LeagueSummary } from "@/lib/league/load";
  * Your League is read-only and restates what Standings and My Picks already show
  * for the single inaugural-season league.
  *
- * Note that this also takes away the account page's `JoinByCode` fallback for a
- * player who belongs to no league. That path is still reachable — `/app` and
- * `/app/standings` render `NoLeagueState`, which wraps the same component — so it
- * is not dead code, just unreachable from here.
+ * This deliberately does NOT gate the way into a league. "Join an Existing
+ * League" below renders whenever the viewer belongs to none, flag or no flag —
+ * the two are mutually exclusive states of the same slot, so hiding the card
+ * never hides the invite field.
  */
 const SHOW_LEAGUE_AND_PREFERENCES = false;
 
@@ -114,26 +114,29 @@ export function AccountClient({ account }: { account: AccountData }) {
 
         <ProfileCard viewer={viewer} phone={account.phone} onEdit={() => setEditOpen(true)} />
 
-        {SHOW_LEAGUE_AND_PREFERENCES && (
+        {SHOW_LEAGUE_AND_PREFERENCES && activeLeague && (
           <section className="space-y-3">
             <SectionTitle>Your League</SectionTitle>
-            {activeLeague ? (
-              <>
-                <LeagueCard league={activeLeague} />
-                <p className="px-1 text-xs leading-relaxed text-ink-mute">
-                  Buy-in is set by your admin —{" "}
-                  {activeLeague.buyInPaid
-                    ? "you're marked as paid."
-                    : "you're not marked as paid yet."}
-                </p>
-              </>
-            ) : (
-              /* No league: the invite code is the only way in, and this page —
-                 unlike My Picks and Standings — has no `NoLeagueState` behind it,
-                 so without this a player would be stranded here. The design has
-                 no empty state; it only draws the populated one. */
+            <LeagueCard league={activeLeague} />
+            <p className="px-1 text-xs leading-relaxed text-ink-mute">
+              Buy-in is set by your admin —{" "}
+              {activeLeague.buyInPaid ? "you're marked as paid." : "you're not marked as paid yet."}
+            </p>
+          </section>
+        )}
+
+        {/* The way in for someone who signed in before anyone invited them — no
+            league yet, and the invite code is the only path. `joinGroup` already
+            revalidates this route, and `JoinByCode` pushes to Standings on
+            success, so this disappears the moment it does its job. */}
+        {!activeLeague && (
+          <section className="space-y-3">
+            <SectionTitle>Join an Existing League</SectionTitle>
+            {/* Same surface as `LeagueCard` — every section on this page is a
+                title over a white card, and a bare input row was the outlier. */}
+            <div className="rounded-control border border-shell-line bg-white p-4">
               <JoinByCode />
-            )}
+            </div>
           </section>
         )}
 
