@@ -7,7 +7,7 @@ import { loadPublicLeague } from "@/lib/league/load";
 export const metadata = {
   title: "Last Man Standing — NFL Survival League",
   description:
-    "A private, invite-only NFL survivor pool. Pick one team a week, win to survive, last one standing takes the season.",
+    "A private, invite-only NFL survivor league. Pick one team a week, win to advance, and the last man standing wins.",
 };
 
 /**
@@ -52,12 +52,18 @@ export default async function LandingPage() {
       <main className="flex-1">
         {/* Both mock-ups now inset the title block by 16px, so the heading
             lines up with the brand name above it and the sections below rather
-            than hanging left of everything. The top step is the mobile/desktop
-            difference: 40px on a phone, 60px once there's room. There is no gap
-            between eyebrow and heading in either — both are set `leading-none`,
-            and the design stacks them flush. */}
-        <section className="px-4 pb-5 pt-10 sm:pt-[60px]">
-          <Label className="text-base">Welcome to</Label>
+            than hanging left of everything. Both steps are mobile/desktop
+            differences: 40/60px above, 24/32px below. There is no gap between
+            eyebrow and heading in either — the design stacks them flush, and
+            the only thing separating them is the eyebrow's own line box. */}
+        <section className="px-4 pb-6 pt-10 sm:pb-8 sm:pt-[60px]">
+          {/* `block` is load-bearing, not decoration: `Label` renders a bare
+              `span`, and an inline box takes its height from the parent's strut
+              — 16px x the inherited 1.5 = 24px — so its own `leading` is simply
+              ignored and the title block sits 8px taller than the design. As a
+              block it sets its own line box, which is the other half of this:
+              1.1 on a phone (18px), `leading-none` on desktop (16px). */}
+          <Label className="block text-base leading-[1.1] sm:leading-none">Welcome to</Label>
           {/*
             64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
             Desktop). An arbitrary clamp rather than a new `display-*` fontSize
@@ -84,22 +90,38 @@ export default async function LandingPage() {
             inside it — the copy stays left-aligned within its 339px, and takes
             the full width on a phone, where the design drops the right-hand
             offset entirely. Two paragraphs because the design colours the first
-            sentence as primary ink and the rest as secondary. */}
-        <section className="flex justify-end px-4 pb-4 sm:pt-4">
-          <div className="w-full text-base leading-[1.35] sm:w-[339px]">
-            <p className="text-shell-ink">A private NFL survivor pool with friends.</p>
+            sentence as primary ink and the rest as secondary — with "last man
+            standing" lifted back to primary inside the second, which is the
+            phrase the league is named for. The desktop mock splits the sentence
+            on the same three spans but leaves them all grey; taking the mobile
+            treatment at both sizes was the call. */}
+        <section className="flex justify-end px-4 pb-14 sm:pb-10 sm:pt-4">
+          {/* 18px on a phone, 16px once the block is offset to the right — the
+              design sizes this copy up when it is the widest thing on screen.
+
+              The `/[1.35]` shorthand rather than a separate `leading-[1.35]`:
+              `text-*` sets a line-height of its own, and a `sm:`-prefixed one is
+              emitted after any unprefixed `leading-*`, so the pair silently
+              reverts to 1.5 from `sm` up. Binding both to one utility per
+              breakpoint is the only form that cannot come apart. */}
+          <div className="w-full text-lg/[1.35] sm:w-[339px] sm:text-base/[1.35]">
+            <p className="text-shell-ink">A private NFL survivor league with friends.</p>
             <p className="text-shell-mute">
-              Pick one team a week. Win to survive, lose or tie and you&apos;re out. The last one
-              standing takes the season.
+              Pick one team a week. Win to advance to the next week. Lose or tie and you&apos;re
+              out. The <span className="text-shell-ink">last man standing</span> wins.
             </p>
           </div>
         </section>
 
         {board ? (
           <>
-            <StatusReport status={board.status} className="px-4 py-3" />
-            <section className="flex flex-col gap-6 px-4 py-6">
-              <Label className="text-base">League</Label>
+            {/* Still `px-4` at every width. The strip inside goes edge to edge
+                below `lg` on its own, by cancelling this inset — the label above
+                it stays put, which is the whole point of the mobile variant. */}
+            <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
+            {/* The design drops the "League" eyebrow that used to sit here: the
+                table follows the status report directly in both mock-ups. */}
+            <section className="px-4 pb-10 sm:pt-5">
               <PublicStandings data={board} />
             </section>
           </>
