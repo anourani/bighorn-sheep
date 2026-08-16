@@ -288,9 +288,12 @@ export function LoginFlow({
     ) : step === "name" ? (
       <form onSubmit={handleCreateAccount}>
         <Label className="mb-1 block text-ink-mute">Almost in</Label>
+        {/* The quoted name is a live preview, not the literal string "First L."
+            — it re-renders as they type, and only falls back to that placeholder
+            while both fields are empty. */}
         <p className="mb-4 text-sm text-ink-soft">
-          New here — tell us your name so teammates know who&apos;s on the board. You&apos;ll show as
-          &quot;{formatDisplayName(firstName, lastName, "First L.")}&quot;
+          Enter your name. You&apos;ll show up as &quot;
+          {formatDisplayName(firstName, lastName, "First L.")}&quot; in the standings.
         </p>
 
         <div className="flex gap-2">
@@ -332,7 +335,6 @@ export function LoginFlow({
         ) : null}
 
         <Button type="submit" variant="primary" block size="lg" className="mt-4" disabled={!firstValid || submitting}>
-          <MailIcon />
           {submitting ? "Sending…" : "Create my account"}
         </Button>
 
