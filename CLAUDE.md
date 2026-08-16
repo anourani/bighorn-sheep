@@ -326,3 +326,21 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     key.
   - **The function takes no arguments.** A group id or invite code parameter
     would make it a universal standings reader for every league in the project.
+- **The account page's "Your League" and "Preferences" sections are hidden.**
+  `/app/account` is now title → `ProfileCard` → Log out. Both sections are gated
+  behind `SHOW_LEAGUE_AND_PREFERENCES` in
+  `src/components/account/AccountClient.tsx` — the markup is intact and flipping
+  the constant to `true` restores them exactly as they were, so don't read the
+  `LeagueCard` / `PreferenceRow` helpers, or the `statusLabel` and
+  `BUY_IN_LABEL` imports (this is their only call site in `src/`), as dead code.
+  Two consequences worth knowing:
+  - **It also hides the account page's `JoinByCode` fallback**, which was what
+    a player belonging to no league saw there. Joining is still reachable —
+    `/app` and `/app/standings` render `NoLeagueState`, which wraps the same
+    component — but not from this page.
+  - **`loadAccount` still fetches the league data** the hidden card wanted
+    (`src/lib/league/load.ts`, the `group_members` and `groups` queries). That
+    is deliberate: trimming it would change the shared `AccountData` shape and
+    make un-hiding a multi-file job. `SPEC_BUTTON`'s docblock in
+    `ProfileCard.tsx` likewise still describes sharing its style with the
+    Preferences card's "Install App" — true of the code, not of the screen.

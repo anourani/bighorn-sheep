@@ -13,6 +13,20 @@ import { BUY_IN_LABEL } from "@/lib/app";
 import type { AccountData, LeagueSummary } from "@/lib/league/load";
 
 /**
+ * Both the "Your League" and "Preferences" sections are hidden for now — the
+ * markup below is intact, so flipping this to `true` brings them back exactly as
+ * they were. Preferences was never wired up (all three rows are placeholders);
+ * Your League is read-only and restates what Standings and My Picks already show
+ * for the single inaugural-season league.
+ *
+ * Note that this also takes away the account page's `JoinByCode` fallback for a
+ * player who belongs to no league. That path is still reachable — `/app` and
+ * `/app/standings` render `NoLeagueState`, which wraps the same component — so it
+ * is not dead code, just unreachable from here.
+ */
+const SHOW_LEAGUE_AND_PREFERENCES = false;
+
+/**
  * A section title on the white page.
  *
  * Deliberately not `SectionHeader`: that component's hairline *is* the
@@ -100,51 +114,55 @@ export function AccountClient({ account }: { account: AccountData }) {
 
         <ProfileCard viewer={viewer} phone={account.phone} onEdit={() => setEditOpen(true)} />
 
-        <section className="space-y-3">
-          <SectionTitle>Your League</SectionTitle>
-          {activeLeague ? (
-            <>
-              <LeagueCard league={activeLeague} />
-              <p className="px-1 text-xs leading-relaxed text-ink-mute">
-                Buy-in is set by your admin —{" "}
-                {activeLeague.buyInPaid
-                  ? "you're marked as paid."
-                  : "you're not marked as paid yet."}
-              </p>
-            </>
-          ) : (
-            /* No league: the invite code is the only way in, and this page —
-               unlike My Picks and Standings — has no `NoLeagueState` behind it,
-               so without this a player would be stranded here. The design has
-               no empty state; it only draws the populated one. */
-            <JoinByCode />
-          )}
-        </section>
+        {SHOW_LEAGUE_AND_PREFERENCES && (
+          <section className="space-y-3">
+            <SectionTitle>Your League</SectionTitle>
+            {activeLeague ? (
+              <>
+                <LeagueCard league={activeLeague} />
+                <p className="px-1 text-xs leading-relaxed text-ink-mute">
+                  Buy-in is set by your admin —{" "}
+                  {activeLeague.buyInPaid
+                    ? "you're marked as paid."
+                    : "you're not marked as paid yet."}
+                </p>
+              </>
+            ) : (
+              /* No league: the invite code is the only way in, and this page —
+                 unlike My Picks and Standings — has no `NoLeagueState` behind it,
+                 so without this a player would be stranded here. The design has
+                 no empty state; it only draws the populated one. */
+              <JoinByCode />
+            )}
+          </section>
+        )}
 
         {/* Preferences — placeholder surface. Nothing here is wired up yet; the
             rows exist so the shape of the settings is visible and reviewable. */}
-        <section className="space-y-3">
-          <SectionTitle>Preferences</SectionTitle>
-          {/* overflow-hidden so the dividers clip to the corner radius. */}
-          <div className="divide-y divide-shell-line overflow-hidden rounded-control border border-shell-line bg-white">
-            <PreferenceRow label="Notifications">
-              <span className="text-sm text-ink-mute">Coming soon</span>
-            </PreferenceRow>
-            <PreferenceRow label="Timezone">
-              <span className="text-sm text-ink-mute">Coming soon</span>
-            </PreferenceRow>
-            <PreferenceRow label="Add to Home Screen">
-              <Button variant="outline" size="sm" className={SPEC_BUTTON} disabled>
-                Install App
-              </Button>
-            </PreferenceRow>
-          </div>
-          <p className="px-1 text-xs leading-relaxed text-ink-mute">
-            Times are shown in your device timezone. To install, use{" "}
-            <b className="font-semibold text-ink-soft">Add to Home Screen</b> in your browser&apos;s
-            share menu — the in-app button is coming soon.
-          </p>
-        </section>
+        {SHOW_LEAGUE_AND_PREFERENCES && (
+          <section className="space-y-3">
+            <SectionTitle>Preferences</SectionTitle>
+            {/* overflow-hidden so the dividers clip to the corner radius. */}
+            <div className="divide-y divide-shell-line overflow-hidden rounded-control border border-shell-line bg-white">
+              <PreferenceRow label="Notifications">
+                <span className="text-sm text-ink-mute">Coming soon</span>
+              </PreferenceRow>
+              <PreferenceRow label="Timezone">
+                <span className="text-sm text-ink-mute">Coming soon</span>
+              </PreferenceRow>
+              <PreferenceRow label="Add to Home Screen">
+                <Button variant="outline" size="sm" className={SPEC_BUTTON} disabled>
+                  Install App
+                </Button>
+              </PreferenceRow>
+            </div>
+            <p className="px-1 text-xs leading-relaxed text-ink-mute">
+              Times are shown in your device timezone. To install, use{" "}
+              <b className="font-semibold text-ink-soft">Add to Home Screen</b> in your
+              browser&apos;s share menu — the in-app button is coming soon.
+            </p>
+          </section>
+        )}
 
         <Button variant="outline" block onClick={handleLogout}>
           <LogOutIcon />
