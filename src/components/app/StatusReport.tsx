@@ -33,13 +33,23 @@ export function StatusReport({
   status: StatusLineInput;
   className?: string;
 }) {
-  const { lead, primary, secondary } = statusLine(status);
+  const { lead, leadShort, primary, secondary } = statusLine(status);
 
   return (
     <section className={cn("flex flex-col gap-1", className)}>
       <div className="flex flex-wrap items-center gap-4">
         <span className="text-sm font-semibold leading-[1.2] text-shell-ink">
-          {lead} Status Report
+          {/* "W6 Status Report" on a phone, "Week 6 Status Report" from `sm`.
+              Two spans because no CSS swaps the text inside one, and this pair
+              is the form that doesn't cost anything in the accessibility tree:
+              the abbreviation is `aria-hidden`, and the full string is only ever
+              *visually* hidden (`sr-only`), so a screen reader reads "Week 6"
+              once at every width. Reversing that — `hidden` on the long form —
+              would drop it from the tree entirely below `sm`. */}
+          <span className="sm:hidden" aria-hidden>
+            {leadShort}
+          </span>
+          <span className="max-sm:sr-only">{lead}</span> Status Report
         </span>
         {/* 1.35 rather than the heading's 1.2: this is the taller of the two
             line boxes, so it alone sets the label row's height — 19px, which is

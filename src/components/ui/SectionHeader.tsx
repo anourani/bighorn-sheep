@@ -1,11 +1,16 @@
 import { cn } from "@/lib/cn";
 
 /**
- * A flat section heading on the white page — a title over a hairline, with an
- * optional right slot for a control (the standings gear lives there).
+ * A flat section heading on the white page — a title, with an optional right
+ * slot for a control.
  *
- * Deliberately not a `Panel`: these sections carry no surface of their own, so
- * the rule under the title is the only thing separating them.
+ * Deliberately not a `Panel`: these sections carry no surface of their own.
+ *
+ * It carries no padding and no rule. It used to have both — `pt-3 pb-1.5` under
+ * a `border-b` hairline — and the redesign drops the hairline everywhere, which
+ * leaves the padding with nothing to space away from. Vertical rhythm is the
+ * call site's now: every caller sets its own gap to the content beneath (12px
+ * today, `mt-3`) and to the block above.
  *
  * The design spec carries `font-variant: small-caps`, which is not applied here:
  * Figma exports the property whether or not the rendered text uses it, and the
@@ -25,8 +30,8 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line pb-1.5 pt-3", className)}>
-      <h2 className="flex-1 text-xl font-bold leading-[1.4] text-black">{title}</h2>
+    <div className={cn("flex flex-wrap items-center gap-x-6 gap-y-2", className)}>
+      <h2 className="flex-1 text-xl font-semibold leading-[1.2] text-black">{title}</h2>
       {right ? <div className="shrink-0">{right}</div> : null}
     </div>
   );

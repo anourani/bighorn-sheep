@@ -149,6 +149,7 @@ describe("statusLine", () => {
   it("reads the week and the tally in season", () => {
     expect(statusLine({ kind: "season", week: 6, alive: 29, eliminated: 15 })).toEqual({
       lead: "Week 6",
+      leadShort: "W6",
       primary: "29 survivors.",
       secondary: "15 deaths.",
     });
@@ -157,9 +158,21 @@ describe("statusLine", () => {
   it("counts down to kickoff in pre-season", () => {
     expect(statusLine({ kind: "preseason", joined: 12, startsIn: "3d 4h" })).toEqual({
       lead: "Pre-season",
+      // No shorter form to give: "Pre-season" already names the whole stretch,
+      // so the phone renders the same string the desktop does.
+      leadShort: "Pre-season",
       primary: "Starts in 3d 4h.",
       secondary: "12 joined.",
     });
+  });
+
+  it("abbreviates the week for the phone label", () => {
+    for (const week of [1, 6, 18]) {
+      expect(statusLine({ kind: "season", week, alive: 1, eliminated: 0 })).toMatchObject({
+        lead: `Week ${week}`,
+        leadShort: `W${week}`,
+      });
+    }
   });
 
   it("singularises both nouns at one", () => {

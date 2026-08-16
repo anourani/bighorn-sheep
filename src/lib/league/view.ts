@@ -87,6 +87,14 @@ export type StatusLineInput =
 export interface StatusLine {
   /** Top line: the week's name, or "Pre-season". */
   lead: string;
+  /**
+   * `lead` abbreviated for narrow screens — "W6" for "Week 6". The mobile mockup
+   * uses it so the label and the tally fit one line at 393px.
+   *
+   * Equal to `lead` in the pre-season, which has no shorter form: "Pre-season"
+   * is already the short name for a stretch of weeks, not a week number.
+   */
+  leadShort: string;
   /** The emphasised half of the second line, in near-black. */
   primary: string;
   /** The muted half of the second line. */
@@ -109,12 +117,14 @@ export function statusLine(input: StatusLineInput): StatusLine {
   if (input.kind === "preseason") {
     return {
       lead: "Pre-season",
+      leadShort: "Pre-season",
       primary: `Starts in ${input.startsIn}.`,
       secondary: `${input.joined} joined.`,
     };
   }
   return {
     lead: `Week ${input.week}`,
+    leadShort: `W${input.week}`,
     primary: `${count(input.alive, "survivor")}.`,
     secondary: `${count(input.eliminated, "death")}.`,
   };

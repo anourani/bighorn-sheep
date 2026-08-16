@@ -101,7 +101,13 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   }, [finalWeek, practice]);
 
   return (
-    <div className="stagger space-y-6">
+    /* No `space-y-*` here any more. The redesign gives the first three blocks a
+       rhythm of their own (tiles → 20px → status report → 28/60px → table) that
+       a single uniform gap can't express, and `space-y-6`'s `> * + *` selector
+       outranks a child's own `mt-*` on specificity, so it can't be overridden
+       per child either. `stagger` stays: it keys the entrance animation off
+       direct children, and the count below is unchanged. */
+    <div className="stagger">
       <LeagueDetails
         group={group}
         members={data.members}
@@ -112,13 +118,19 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
-      {/* py-3 rather than the landing page's py-5: the mockup's 12px, and the
-          shell's `main` already supplies the horizontal inset. */}
-      <StatusReport status={status} className="py-3" />
+      {/* The two mockups space this differently and both are reproduced here.
+          Phone: 20px below the tiles, no padding of its own. Desktop: 8px below
+          them plus 12px of padding, which is the same 20px to the label — the
+          padding earns its keep underneath, where it becomes 12 of the 60px
+          down to the "Standings" heading.
+
+          Only the vertical is ours. The shell's `main` supplies the horizontal
+          inset that the survivor strip inside cancels with `-mx-4`. */}
+      <StatusReport status={status} className="mt-5 lg:mt-2 lg:py-3" />
 
       {isPreseason ? (
         practice && practiceRanked && practiceColumns && practiceIdx ? (
-          <section>
+          <section className="mt-7 lg:mt-12">
             <SectionHeader title="Practice Standings" />
             <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
               A real run-through — a wrong pick strikes you here too. None of it carries over: this
@@ -138,9 +150,9 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           </section>
         ) : null
       ) : (
-        <section>
+        <section className="mt-7 lg:mt-12">
           <SectionHeader title="Standings" />
-          <div className="mt-4">
+          <div className="mt-3">
             <StandingsGrid
               ranked={ranked}
               viewerId={data.viewer.id}
@@ -160,9 +172,16 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         </section>
       )}
 
-      <WhosIn members={data.members} preseason={isPreseason} />
+      {/* Wrapped rather than given a `className` prop: the mockups stop at the
+          table and say nothing about what follows, so these two keep the 24px
+          the old `space-y-6` gave them. */}
+      <div className="mt-6">
+        <WhosIn members={data.members} preseason={isPreseason} />
+      </div>
 
-      <InviteCta group={group} appUrl={appUrl} now={now} />
+      <div className="mt-6">
+        <InviteCta group={group} appUrl={appUrl} now={now} />
+      </div>
 
       <LeagueRulesModal
         open={rulesOpen}

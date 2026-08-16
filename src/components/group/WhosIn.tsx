@@ -30,7 +30,7 @@ export function WhosIn({ members, preseason }: { members: Member[]; preseason: b
           </Label>
         }
       />
-      <Panel tone="light" className="mt-4 divide-y divide-line p-0">
+      <Panel tone="light" className="mt-3 divide-y divide-line p-0">
         {members.map((m) => (
           <div key={m.id} className="flex items-center gap-3 px-card py-3.5">
             <Avatar
@@ -83,7 +83,7 @@ export function InviteCta({ group, appUrl, now }: { group: Group; appUrl: string
   return (
     <section>
       <SectionHeader title="Grow the Pool" />
-      <Panel tone="light" className="mt-4 p-card">
+      <Panel tone="light" className="mt-3 p-card">
         <p className="text-sm text-ink-soft">
           Bigger pools are more fun — and last longer. Share the invite before entry closes.
         </p>
