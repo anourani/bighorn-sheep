@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatLong } from "./time";
+import { formatClockZone, formatDate, formatFull, formatLong } from "./time";
 
 /**
  * en-US separates the clock from AM/PM with U+202F (narrow no-break space), and
@@ -7,6 +7,44 @@ import { formatLong } from "./time";
  * assertions about the *format* rather than about the runtime's whitespace.
  */
 const norm = (s: string) => s.replace(/[  ]/g, " ");
+
+// The kickoff the picks hero splits across two lines: Sunday 13 September 2026,
+// 4:00 PM in New York (September, so the zone is EDT — the mock-up's "EST" is
+// filler text, not a case to reproduce).
+const KICKOFF = "2026-09-13T20:00:00Z";
+const NY = { timeZone: "America/New_York" };
+
+describe("formatDate", () => {
+  it("gives the date with no time attached", () => {
+    expect(formatDate(KICKOFF, NY)).toBe("Sun, Sep 13");
+  });
+
+  // Same instant, and the calendar day itself differs — the weekday and day
+  // number have to be resolved in the target zone, not in UTC.
+  it("resolves the day in the viewer's zone", () => {
+    expect(formatDate(KICKOFF, { timeZone: "Asia/Tokyo" })).toBe("Mon, Sep 14");
+  });
+});
+
+describe("formatClockZone", () => {
+  it("names the zone, which formatClock leaves off", () => {
+    expect(norm(formatClockZone(KICKOFF, NY))).toBe("4:00 PM EDT");
+  });
+
+  // As with formatLong: the abbreviation is the one in force at kickoff, so a
+  // January game read mid-season does not pick up summer's offset.
+  it("uses the zone abbreviation in force at kickoff", () => {
+    expect(norm(formatClockZone("2026-01-04T18:00:00Z", NY))).toBe("1:00 PM EST");
+  });
+});
+
+// formatFull is now composed from formatDate; it must still read exactly as it
+// did before the split, since every other kickoff line in the app is this one.
+describe("formatFull", () => {
+  it("joins the date and the bare clock with a middot", () => {
+    expect(norm(formatFull(KICKOFF, NY))).toBe("Sun, Sep 13 · 4:00 PM");
+  });
+});
 
 describe("formatLong", () => {
   it("spells out the weekday, month, ordinal day, time and zone", () => {

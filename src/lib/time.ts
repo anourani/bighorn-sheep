@@ -21,15 +21,34 @@ export function formatDayClock(iso: string, opts: FmtOpts = {}): string {
   return `${day} ${formatClock(iso, opts)}`;
 }
 
-export function formatFull(iso: string, opts: FmtOpts = {}): string {
-  const d = new Date(iso);
-  const date = d.toLocaleDateString(undefined, {
+/** The date half of a kickoff on its own — "Sun, Sep 13". */
+export function formatDate(iso: string, opts: FmtOpts = {}): string {
+  return new Date(iso).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
     timeZone: opts.timeZone,
   });
-  return `${date} · ${formatClock(iso, opts)}`;
+}
+
+/**
+ * The clock with its zone — "4:00 PM EST".
+ *
+ * Separate from `formatClock` rather than an option on it: the zone is only
+ * worth the width where the line stands alone as the whole kickoff (the picks
+ * hero), and every other caller sits next to a date that already establishes it.
+ */
+export function formatClockZone(iso: string, opts: FmtOpts = {}): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone: opts.timeZone,
+  });
+}
+
+export function formatFull(iso: string, opts: FmtOpts = {}): string {
+  return `${formatDate(iso, opts)} · ${formatClock(iso, opts)}`;
 }
 
 /**

@@ -1,13 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatClock, formatDayClock, formatFull, formatLong } from "@/lib/time";
+import {
+  formatClock,
+  formatClockZone,
+  formatDate,
+  formatDayClock,
+  formatFull,
+  formatLong,
+} from "@/lib/time";
 
-type Mode = "clock" | "dayclock" | "full" | "long";
+type Mode = "clock" | "clockzone" | "date" | "dayclock" | "full" | "long";
 
 function format(iso: string, mode: Mode, timeZone?: string): string {
   const opts = { timeZone };
   if (mode === "clock") return formatClock(iso, opts);
+  if (mode === "clockzone") return formatClockZone(iso, opts);
+  if (mode === "date") return formatDate(iso, opts);
   if (mode === "full") return formatFull(iso, opts);
   if (mode === "long") return formatLong(iso, opts);
   return formatDayClock(iso, opts);
