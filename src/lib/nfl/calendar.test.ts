@@ -3,12 +3,12 @@ import {
   FINAL_WEEK,
   PRE_WEEK,
   REGULAR_WEEK,
-  groupedWeekOptions,
   parseWeekKey,
   sameWeek,
   weekKey,
   weekLabel,
   weekShortLabel,
+  weekStripOptions,
 } from "./calendar";
 
 describe("weekKey", () => {
@@ -81,62 +81,103 @@ describe("weekShortLabel", () => {
   });
 });
 
-describe("groupedWeekOptions", () => {
-  it("offers preseason then regular season while practice is live", () => {
-    const groups = groupedWeekOptions({
+describe("weekStripOptions", () => {
+  it("offers preseason then the regular season while practice is live", () => {
+    const options = weekStripOptions({
       currentWeek: 1,
       practice: { weeks: [1, 2, 3], currentWeek: 2 },
     });
 
-    expect(groups.map((g) => g.label)).toEqual(["Preseason", "Regular Season"]);
-    expect(groups[0]!.options.map((o) => o.label)).toEqual([
+    expect(options).toHaveLength(3 + FINAL_WEEK);
+    expect(options.slice(0, 3).map((o) => o.label)).toEqual([
       "Preseason 1",
       "Preseason 2",
       "Preseason 3",
     ]);
-    expect(groups[0]!.options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([2]);
-    expect(groups[1]!.options).toHaveLength(FINAL_WEEK);
+    expect(options[3]!.ref).toEqual({ seasonType: "regular", week: 1 });
+    expect(options.filter((o) => o.isCurrent).map((o) => o.ref)).toEqual([
+      { seasonType: "pre", week: 2 },
+    ]);
   });
 
-  // Two "· current" options at once read as a contradiction, not as a phase
-  // distinction: the dropdown said Preseason 2 and Week 1 were both current.
-  // While practice is live the preseason owns the marker outright.
-  it("marks exactly one week current across both groups", () => {
-    const groups = groupedWeekOptions({
-      currentWeek: 1,
-      practice: { weeks: [1, 2, 3], currentWeek: 2 },
-    });
-
-    const current = groups.flatMap((g) => g.options).filter((o) => o.isCurrent);
-    expect(current.map((o) => o.ref)).toEqual([{ seasonType: "pre", week: 2 }]);
+  // The rule this replaced: "regular weeks stay forward-only — a member cannot
+  // browse to a week they have already played". Dropped deliberately. The strip
+  // draws a played week as the team you spent there, and that state cannot exist
+  // in a list that starts at the current week.
+  it("includes every regular week, the ones already played included", () => {
+    const options = weekStripOptions({ currentWeek: 16 });
+    expect(options.map((o) => o.ref.week)).toEqual(
+      Array.from({ length: FINAL_WEEK }, (_, i) => i + 1),
+    );
+    expect(options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([16]);
   });
 
-  // This is the Week 1 reset, seen from the UI: practice goes null and the whole
-  // group vanishes. Nothing is deleted and no migration runs.
-  it("drops the preseason group entirely once practice is over", () => {
-    const groups = groupedWeekOptions({ currentWeek: 4, practice: null });
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.label).toBeNull();
-    expect(groups[0]!.options[0]!.ref).toEqual({ seasonType: "regular", week: 4 });
-    // And the marker comes back to the regular season with the group gone.
-    expect(groups[0]!.options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([4]);
+  // Two current options at once read as a contradiction rather than as a phase
+  // distinction: the dropdown once said Preseason 2 and Week 1 were both
+  // current. It is an invariant, so it is tested as one — including at the edges
+  // that the old forward-only clamp got wrong (see the case below).
+  it("marks exactly one week current, whatever the input", () => {
+    const inputs = [
+      { currentWeek: 1, practice: { weeks: [1, 2, 3], currentWeek: 2 } },
+      { currentWeek: 4, practice: null },
+      { currentWeek: 1, practice: { weeks: [], currentWeek: 1 } },
+      { currentWeek: 0 },
+      { currentWeek: 99 },
+    ];
+    for (const input of inputs) {
+      expect(weekStripOptions(input).filter((o) => o.isCurrent)).toHaveLength(1);
+    }
   });
 
-  it("keeps regular weeks forward-only from the current week", () => {
-    const groups = groupedWeekOptions({ currentWeek: 16 });
-    expect(groups[0]!.options.map((o) => o.ref.week)).toEqual([16, 17, 18]);
+  // Regression: the list this replaced clamped the loop's START to the season
+  // but compared the marker against the RAW currentWeek, so an out-of-range
+  // week produced a list with nothing marked at all. The strip does not clamp a
+  // range any more — only the marker — which is what makes the invariant above
+  // hold for the first time.
+  it("clamps the current marker into the season", () => {
+    const low = weekStripOptions({ currentWeek: 0 }).find((o) => o.isCurrent);
+    expect(low!.ref).toEqual({ seasonType: "regular", week: 1 });
+    const high = weekStripOptions({ currentWeek: 99 }).find((o) => o.isCurrent);
+    expect(high!.ref).toEqual({ seasonType: "regular", week: FINAL_WEEK });
+  });
+
+  // This is the Week 1 reset, seen from the UI: practice goes null and the
+  // preseason chips vanish. Nothing is deleted and no migration runs.
+  it("drops the preseason chips entirely once practice is over", () => {
+    const options = weekStripOptions({ currentWeek: 4, practice: null });
+    expect(options).toHaveLength(FINAL_WEEK);
+    expect(options[0]!.ref).toEqual({ seasonType: "regular", week: 1 });
+    // And the marker comes back to the regular season with the chips gone.
+    expect(options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([4]);
   });
 
   it("ignores an empty practice slate", () => {
-    const groups = groupedWeekOptions({ currentWeek: 1, practice: { weeks: [], currentWeek: 1 } });
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.label).toBeNull();
-    // No group on screen means nothing else can hold the marker.
-    expect(groups[0]!.options.filter((o) => o.isCurrent).map((o) => o.ref.week)).toEqual([1]);
+    const options = weekStripOptions({ currentWeek: 1, practice: { weeks: [], currentWeek: 1 } });
+    expect(options).toHaveLength(FINAL_WEEK);
+    expect(options[0]!.ref).toEqual({ seasonType: "regular", week: 1 });
   });
 
-  it("clamps a current week outside the season", () => {
-    expect(groupedWeekOptions({ currentWeek: 0 })[0]!.options[0]!.ref.week).toBe(1);
-    expect(groupedWeekOptions({ currentWeek: 99 })[0]!.options.map((o) => o.ref.week)).toEqual([18]);
+  // What a 50px square actually prints. Zero-padded so a row of fixed-width
+  // chips doesn't read ragged, and short-form for the preseason, which is the
+  // only thing distinguishing the two phases now that they share one flat list.
+  it("pads regular chip labels and shortens preseason ones", () => {
+    const options = weekStripOptions({
+      currentWeek: 1,
+      practice: { weeks: [1, 2, 3, 4], currentWeek: 1 },
+    });
+    expect(options.slice(0, 4).map((o) => o.chipLabel)).toEqual(["HOF", "P1", "P2", "P3"]);
+    expect(options[4]!.chipLabel).toBe("01");
+    expect(options.at(-1)!.chipLabel).toBe("18");
+  });
+
+  // Mattered less when the two phases lived in separate groups; now they are one
+  // array feeding one Map and one React key list, so the pre:1 / regular:1
+  // collision that WeekRef exists to prevent deserves a guard at this level too.
+  it("keys every option uniquely across both phases", () => {
+    const options = weekStripOptions({
+      currentWeek: 1,
+      practice: { weeks: [1, 2, 3], currentWeek: 1 },
+    });
+    expect(new Set(options.map((o) => o.key)).size).toBe(options.length);
   });
 });

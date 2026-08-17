@@ -126,8 +126,21 @@ earliest-joined on a stale cookie. Wrap the call in
 `isStaleDeploymentError`/`reloadOnce` per CLAUDE.md, as every other call site does.
 
 **Mechanism: a transparent native `<select>` laid over the trigger markup** — the
-pattern `WeekPicker.tsx:7-25` argues for and commit `44ba98d` verified in a
-browser. The decisive reason applies with more force here than it did there: a
+pattern `WeekPicker.tsx:7-25` argued for and commit `44ba98d` verified in a
+browser.
+
+> **`WeekPicker.tsx` no longer exists.** The week selector is a horizontally
+> scrolling strip of chips now (`WeekStrip.tsx`), so this file is the argument's
+> home; read it here rather than chasing the citation. Two points carried it: a
+> `<select>` can only ever display its *selected option's own text*, so anything
+> the open list needs to add (there, a "· current" marker) cannot appear on the
+> trigger; and it sizes itself to its *widest* option, so `appearance-none`
+> leaves dead space wherever the trigger is narrower than the longest entry. The
+> deleted file's docblock is still in git if you want it verbatim. Its
+> `ProfileCard.tsx` sibling — the favorite-animal picker — is now the app's only
+> live example.
+
+The decisive reason applies with more force here than it did there: a
 `<select>` sizes itself to its *widest* option, so with `appearance-none` a single
 long league name would set the control's width permanently and shove the name and
 chevron away from the right edge the spec pins them to.
@@ -146,8 +159,8 @@ against the header, not the viewport.
 **Overlay geometry needs care, because the header is only 68px.** The right column
 measures 12 + 4 + 19.2 = 35.2px. Lay the select over the whole column with
 **`-inset-y-1`**: 35.2 + 16 = 43.2px, meeting the `tap-target` intent while
-staying inside the header's own padding. Do **not** use WeekPicker's `-inset-y-2`
-— it would spill past the header's bottom border and put an invisible interactive
+staying inside the header's own padding. Do **not** use `-inset-y-2`, the value
+the week picker used — it would spill past the header's bottom border and put an invisible interactive
 surface over the top of the status bar, silently swallowing clicks there.
 
 **State must not be local `useState`.** The header is in the layout and the layout
