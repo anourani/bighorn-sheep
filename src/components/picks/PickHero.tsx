@@ -85,16 +85,33 @@ export function PickHero({
           <Strip gradient={stripGradient(team.color, "up")} />
           <Strip gradient={stripGradient(team.color, "down")} />
 
-          {/* Centred over the strips on a phone, offset right of them from `lg`
-              — where it is big enough to overhang into the gap before the name.
-              `aria-hidden` because the <h1> already names the team, and the two
-              sizes are separate elements because TeamLogo sets width/height
-              inline, which no responsive class can reach. */}
+          {/* Centred over the strips below `lg`; from `lg` offset right of them,
+              where it overhangs into the gap before the name.
+
+              `w-max` is load-bearing and its absence is a silent bug. This span
+              is absolutely positioned with a `left` and no width, so without it
+              the span shrink-to-fits into the space between that offset and the
+              strip group's right edge — 65px at `lg` — and Tailwind preflight's
+              `img { max-width: 100% }` then quietly overrides TeamLogo's inline
+              width and letterboxes the logo into it. An 80px logo rendered at
+              50px wide, at every breakpoint, and looked merely "a bit small"
+              rather than broken. `w-max` makes the width `max-content`, which is
+              a definite width, so shrink-to-fit never applies.
+
+              Sizes are the Figma's own (50 / 80) with a middle step between.
+              `lg:left-[18px]` is the Figma's number too, and holds the mark's
+              centre 58px from the strip group's left edge (18 + 80/2); change
+              the size and that offset has to move with it.
+
+              Three elements rather than one because TeamLogo writes width/height
+              as an inline style, which no responsive class can reach.
+              `aria-hidden` because the <h1> already names the team. */}
           <span
             aria-hidden
-            className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 lg:left-[18px] lg:translate-x-0"
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 w-max -translate-x-1/2 -translate-y-1/2 lg:left-[18px] lg:translate-x-0"
           >
-            <TeamLogo teamId={teamId} size={50} className="lg:hidden" />
+            <TeamLogo teamId={teamId} size={50} className="md:hidden" />
+            <TeamLogo teamId={teamId} size={64} className="hidden md:block lg:hidden" />
             <TeamLogo teamId={teamId} size={80} className="hidden lg:block" />
           </span>
         </Strips>
@@ -213,7 +230,7 @@ function Shell({ weekName, children }: { weekName: string; children: React.React
 /** Strips, logo and text. Its fixed height is what sizes the strips. */
 function PickRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-[92px] items-center gap-2 lg:h-[132px] lg:gap-[50px]">{children}</div>
+    <div className="flex h-[92px] items-center gap-2 md:h-[112px] md:gap-4 lg:h-[132px] lg:gap-[50px]">{children}</div>
   );
 }
 
@@ -227,7 +244,7 @@ function Strips({ children }: { children: React.ReactNode }) {
 function Strip({ gradient }: { gradient?: string }) {
   return (
     <span
-      className={cn("h-full w-4 rounded-[4px] lg:w-5", !gradient && "bg-shell-dark")}
+      className={cn("h-full w-4 rounded-[4px] md:w-[18px] lg:w-5", !gradient && "bg-shell-dark")}
       style={gradient ? { backgroundImage: gradient } : undefined}
     />
   );
@@ -262,7 +279,7 @@ function Name({ city, children }: { city?: string; children: React.ReactNode }) 
         // team name does.
         <Label className="invisible">&nbsp;</Label>
       )}
-      <h1 className="max-w-full font-semibold leading-none tracking-[-0.04em] text-shell-ink text-[clamp(1.5rem,calc((100vw_-_96px)/6.75),2.75rem)] lg:tracking-[-0.025em] lg:text-[5rem]">
+      <h1 className="max-w-full font-semibold leading-none tracking-[-0.04em] text-shell-ink text-[clamp(1.5rem,calc((100vw_-_96px)/6.75),2.75rem)] md:tracking-[-0.03em] md:text-[3.5rem] lg:tracking-[-0.025em] lg:text-[5rem]">
         {children}
       </h1>
     </div>
