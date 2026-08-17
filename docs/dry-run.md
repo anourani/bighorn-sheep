@@ -1,8 +1,8 @@
 # Testing eliminations on demand
 
 > **Just want to rehearse with friends? Use the preseason practice round instead.**
-> Once the real schedule is loaded (`docs/go-live.md`), the week dropdown carries a
-> **Preseason** group that runs the whole loop — pick → lock → reveal → result →
+> Once the real schedule is loaded (`docs/go-live.md`), the week strip leads with
+> **preseason** chips that run the whole loop — pick → lock → reveal → result →
 > elimination — against real NFL games, with everything resetting at Week 1. That is
 > the better rehearsal, and it needs no scripts.
 >
@@ -85,8 +85,8 @@ The returned row includes your **invite code**. You land in the league as admin;
 
 > **If the real schedule is already loaded, skip this section.** Once
 > `load-schedule` has run there is nothing left to rehearse against fake data —
-> use the **preseason practice round** instead (the Preseason entries in the week
-> dropdown), which is exactly this loop against real games.
+> use the **preseason practice round** instead (the HOF/P1–P3 chips at the start of
+> the week strip), which is exactly this loop against real games.
 >
 > The seeder writes into the same `games` table as the real schedule, and the app
 > resolves a team's game for a week by taking the *first* match, so a fake game
@@ -113,7 +113,7 @@ member. Watch them appear on **Standings** (roster) and in the header tally.
 
 ## 4. Everyone makes a pick
 
-On **My Picks**, switch the week dropdown to the week you seeded, then each player
+On **My Picks**, tap the week you seeded in the week strip, then each player
 selects a team from the schedule. The pick saves
 immediately and is editable until that team's game kicks off. On **Standings**,
 each rival's current pick shows as a **padlock** — locked in, team hidden — until

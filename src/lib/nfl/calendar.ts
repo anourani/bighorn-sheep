@@ -113,9 +113,20 @@ export function weekShortLabel(ref: WeekRef, opts: WeekLabelOptions = {}): strin
 
 export interface WeekOption {
   ref: WeekRef;
-  /** `weekKey(ref)` — the `<option value>`. */
+  /** `weekKey(ref)` — the selected value, and a stable React key. */
   key: string;
+  /** Full name — "Week 5", "Preseason 2". The chip's accessible name. */
   label: string;
+  /**
+   * What a 50px chip prints: "01".."18" for the regular season, and
+   * `weekShortLabel`'s "HOF"/"P1" for the preseason.
+   *
+   * Zero-padded because the strip is a row of fixed-width squares and a
+   * single-digit "1" sits visibly narrower than "10" beside it. Derived here
+   * rather than in the component so it unit-tests without a component-test
+   * stack — the same reason `label` lives here.
+   */
+  chipLabel: string;
   /**
    * True for the one live week in the whole list — the week the NFL is actually
    * in. Deliberately not per-phase: marking each group's own live week put
@@ -129,75 +140,78 @@ export interface WeekOption {
   isCurrent: boolean;
 }
 
-export interface WeekOptionGroup {
-  /** `<optgroup label>`; null for an ungrouped list. */
-  label: string | null;
-  options: WeekOption[];
-}
-
-export interface GroupedWeekOptionsInput {
-  /** Live regular-season week. Regular options run from here to `finalWeek`. */
+export interface WeekStripOptionsInput {
+  /** Live regular-season week — the one option that carries `isCurrent`. */
   currentWeek: number;
   finalWeek?: number;
   /**
    * Preseason weeks to offer, and which of them is live. Omit once practice is
-   * over — the whole "Preseason" group then disappears, which is how preseason
-   * leaves the UI at Week 1 without anything being deleted.
+   * over — the preseason chips then disappear, which is how preseason leaves the
+   * UI at Week 1 without anything being deleted.
    */
   practice?: { weeks: number[]; currentWeek: number } | null;
 }
 
 /**
- * The dropdown model: an optional "Preseason" group followed by "Regular
- * Season". Regular weeks stay forward-only (current → final), matching the
- * existing behaviour — a member cannot browse to a week they have already played.
+ * The week strip's model: preseason chips (while practice is live) followed by
+ * the WHOLE regular season, 1 → finalWeek.
  *
- * Exactly one option across both groups carries `isCurrent`, and while the
- * preseason group exists it is one of that group's.
+ * The list this replaced was deliberately forward-only, on the grounds that a
+ * member cannot browse to a week they have already played. The strip drops that
+ * rule, because it draws a played week as the team you spent there — a state
+ * that could never appear in a list starting at the current week, since a pick
+ * only ever exists for the current week or earlier. Past weeks are previews:
+ * `MyPicksClient` already refuses to write to any week that isn't live, and the
+ * server re-derives the week regardless of what the client sends.
+ *
+ * Flat rather than grouped, because a row of equal squares has nowhere to put an
+ * `<optgroup>` heading. The phase distinction survives in `chipLabel` instead —
+ * preseason chips read "HOF"/"P1", regular ones "01".
+ *
+ * Exactly one option in the list carries `isCurrent`, and while practice is live
+ * it is one of the preseason's.
  */
-export function groupedWeekOptions(input: GroupedWeekOptionsInput): WeekOptionGroup[] {
+export function weekStripOptions(input: WeekStripOptionsInput): WeekOption[] {
   const finalWeek = input.finalWeek ?? FINAL_WEEK;
-  const groups: WeekOptionGroup[] = [];
+  const options: WeekOption[] = [];
 
-  // Whether the preseason group is actually being offered, which is the same
-  // thing as "the preseason is the phase being played" — it is the presence of a
-  // practice slate that puts the group on screen, and its absence that retires
-  // it at Week 1. So it also decides which group owns the "current" marker.
+  // Whether the preseason is actually being offered, which is the same thing as
+  // "the preseason is the phase being played" — it is the presence of a practice
+  // slate that puts those chips on screen, and its absence that retires them at
+  // Week 1. So it also decides which phase owns the "current" marker.
   const practice = input.practice;
   const practising = practice != null && practice.weeks.length > 0;
 
   if (practising) {
     const maxPreWeek = Math.max(...practice.weeks);
-    groups.push({
-      label: "Preseason",
-      options: [...practice.weeks]
-        .sort((a, b) => a - b)
-        .map((week) => {
-          const ref = PRE_WEEK(week);
-          return {
-            ref,
-            key: weekKey(ref),
-            label: weekLabel(ref, { maxPreWeek }),
-            isCurrent: week === practice.currentWeek,
-          };
-        }),
-    });
+    for (const week of [...practice.weeks].sort((a, b) => a - b)) {
+      const ref = PRE_WEEK(week);
+      options.push({
+        ref,
+        key: weekKey(ref),
+        label: weekLabel(ref, { maxPreWeek }),
+        chipLabel: weekShortLabel(ref, { maxPreWeek }),
+        isCurrent: week === practice.currentWeek,
+      });
+    }
   }
 
-  const from = Math.min(Math.max(input.currentWeek, 1), finalWeek);
-  const regular: WeekOption[] = [];
-  for (let week = from; week <= finalWeek; week += 1) {
+  // Clamped for the marker only, never for the range: the strip always offers
+  // the full season, but a `currentWeek` outside it must still leave exactly one
+  // chip marked rather than none.
+  const liveWeek = Math.min(Math.max(input.currentWeek, 1), finalWeek);
+  for (let week = 1; week <= finalWeek; week += 1) {
     const ref = REGULAR_WEEK(week);
-    regular.push({
+    options.push({
       ref,
       key: weekKey(ref),
       label: weekLabel(ref),
+      chipLabel: String(week).padStart(2, "0"),
       // Not marked while practice is live: the regular season hasn't started, so
       // Week 1 is the next week, not the current one.
-      isCurrent: !practising && week === input.currentWeek,
+      isCurrent: !practising && week === liveWeek,
     });
   }
-  groups.push({ label: groups.length > 0 ? "Regular Season" : null, options: regular });
 
-  return groups;
+  return options;
 }

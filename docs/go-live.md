@@ -271,8 +271,8 @@ Open the app, sign in, go to **My Picks**:
       like "Starts in 6d", the entry deadline is still the stale seven-day default — see
       the note at the end of Step 3. This is the check worth doing first: a wrong deadline
       locks new members out of the league entirely.
-- [ ] The **Change week** dropdown has two labelled groups — *Preseason* (Hall of Fame,
-      Preseason 1–3) and *Regular Season* (Week 1–18).
+- [ ] The **Select a week** strip scrolls sideways and leads with the preseason chips
+      (*HOF*, *P1*–*P3*) before the regular season (*01*–*18*).
 - [ ] Any week shows real matchups with sensible kickoff times in your timezone.
 - [ ] A Preseason week accepts a pick without error.
 - [ ] Switching to Week 1, **that same team is still available** — preseason practice

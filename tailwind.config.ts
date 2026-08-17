@@ -88,6 +88,14 @@ const config: Config = {
           line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
           alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
         },
+        // The week strip's selected chip, straight from the spec.
+        //
+        // Deliberately NOT the `alive` hue below, despite both being green: that
+        // family is desaturated on purpose so it reads as instrumentation, and
+        // this is the opposite job — the one saturated, decorative fill in the
+        // app, marking where you are on the week axis. Folding the two together
+        // would either dull this chip or brighten every status dot with it.
+        selected: "#0F9400",
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },

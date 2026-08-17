@@ -9,8 +9,14 @@ import { cn } from "@/lib/cn";
  * name becomes the exact string on screen and cannot drift from it (as an
  * `aria-label` silently can), and clicking the label focuses the control.
  * `w-fit` then stops a block-level label from claiming the rest of the line as
- * an invisible hit area. `WeekPicker` and the header's league switcher both use
- * this form; before it existed they copied these classes by hand.
+ * an invisible hit area.
+ *
+ * Nothing passes `htmlFor` at the moment. `WeekPicker` did, and it was the last
+ * one — the week selector is a `role="tablist"` now (`WeekStrip`), and a tablist
+ * is not a labelable element, so it takes `aria-labelledby`/`aria-label`
+ * instead. The branch stays because the argument above is the reason to reach
+ * for it the next time a real form control needs a grey label, and because
+ * rediscovering it costs more than keeping it.
  *
  * The size is spelled `text-xs`, NOT the `label-md` token from
  * `tailwind.config.ts` that happens to specify the same 0.75rem, and that is

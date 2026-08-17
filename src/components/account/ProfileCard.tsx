@@ -85,8 +85,11 @@ function RowValue({ value }: { value: string | null }) {
 /**
  * The favorite-animal picker: a native <select> painted to read as the row's
  * value with a chevron, not as a form control. Native keeps the iOS wheel and
- * the platform keyboard behaviour, which no hand-rolled dropdown would — the
- * same disguise `WeekPicker` wears.
+ * the platform keyboard behaviour, which no hand-rolled dropdown would.
+ *
+ * This is the app's only remaining select-in-disguise. `WeekPicker` wore the
+ * same one until the week selector became a scrolling strip; the argument for
+ * the technique is written out in `docs/prd-app-navigation.md`.
  *
  * This is also the app's avatar picker — the selection is what the portrait
  * above and every avatar elsewhere render — so the value is owned by
