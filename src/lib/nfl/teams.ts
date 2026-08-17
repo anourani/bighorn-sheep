@@ -5,9 +5,15 @@ export type { TeamId } from "./types";
 /**
  * All 32 NFL franchises. `id` is the lowercase ESPN abbreviation so the ESPN
  * adapter can map its `team.abbreviation` straight onto our ids with a
- * `.toLowerCase()`. Colors are the primary brand hex, used only as a small
- * accent dot next to the team code (never as a large fill — the app palette
- * stays anchored in the Ecosystem Visualization tokens).
+ * `.toLowerCase()`.
+ *
+ * `color` is the primary brand hex. It used to be an accent dot and nothing
+ * more; it is now also the one large fill in the app — the three gradient strips
+ * behind the logo on My Picks, via `stripGradient` in
+ * `src/components/picks/pick-hero.ts`. That is deliberate and deliberately
+ * singular: everywhere else the palette stays anchored in the Ecosystem
+ * Visualization tokens, and no text is ever set on a team colour, which is what
+ * lets the strips skip a contrast calculation entirely.
  */
 export const TEAMS: Team[] = [
   { id: "ari", abbr: "ARI", location: "Arizona", name: "Cardinals", conference: "NFC", division: "West", color: "#97233F" },

@@ -77,7 +77,12 @@ export function TeamLogo({
       height={px}
       loading="lazy"
       onError={() => setFailed(true)}
-      className={cn("shrink-0 object-contain", className)}
+      // `max-w-none` is not decoration. Tailwind preflight caps every image at
+      // `max-width: 100%`, and that beats the inline width below — so any call
+      // site whose container is narrower than `size` silently gets a letterboxed
+      // logo instead of the size it asked for. This component's whole contract
+      // is "this logo is `size` px"; without it, the contract is a suggestion.
+      className={cn("shrink-0 object-contain max-w-none", className)}
       style={{ width: px, height: px }}
     />
   );

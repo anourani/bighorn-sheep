@@ -274,8 +274,14 @@ would be a lighter shared `loadLeagueChrome()`; noted below.
 
 The spec's greys are pure neutrals; the app's are blue-tinted, and the two are
 visibly different where they meet at a 1px border. Add the spec's values as their
-own family and use it only in the shell — `ink` `#111827`, `ink-mute` `#6B7280`
-and `line` `#D8DADF` keep their values and every other screen is untouched.
+own family — `ink` `#111827`, `ink-mute` `#6B7280` and `line` `#D8DADF` keep
+their values and every screen not built to the spec is untouched.
+
+This started life as "use it only in the shell", and that is no longer true: the
+pick module on My Picks is built to the spec's greys and uses `shell-ink`,
+`shell-mute`, `shell-line` and `shell-dark` throughout. The rule the family
+actually encodes is *the spec's pure neutrals, wherever a screen is drawn to the
+spec* — not *the app shell only*.
 
 ```ts
 shell: {
@@ -283,6 +289,7 @@ shell: {
   mute:  "#757575",  // the LEAGUE eyebrow, all Labels
   soft:  "#6A6A6A",  // "15 deaths."
   line:  "#D9D9D9",  // hairlines, eliminated cells, the mark placeholder
+  dark:  "#A5ACAF",  // the spec's "border-dark" — the pick module's inert strips
   alive: "#FC855C",  // living cells — not `brand`, and not the green `alive` hue
 },
 ```

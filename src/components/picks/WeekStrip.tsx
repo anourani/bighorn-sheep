@@ -19,7 +19,7 @@ import { nextIndex, scrollLeftFor } from "./week-strip";
  * longer forward-only (see `weekStripOptions`).
  *
  * The week's *name* is not repeated here. A 50px square only fits "04", and
- * `PickHero` directly below already reads "Your Pick · Week 4", so the full name
+ * `PickHero` directly below already reads "Your Week 4 Pick", so the full name
  * stays on screen without this component competing for it. Every chip still
  * carries its name as its accessible name — see `chipName` below.
  *

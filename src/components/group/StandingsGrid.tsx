@@ -351,7 +351,12 @@ function WeekCell({ cell }: { cell: WeekCell }) {
     >
       {/* Sized by prop, not class — TeamLogo writes an inline width/height that
           a Tailwind sizing utility would lose to. 36 in a 44px tile keeps the
-          4px gutter the loss/push/live wash needs to read as a tile. */}
+          4px gutter the loss/push/live wash needs to read as a tile.
+
+          The tile being WIDER than the logo is what keeps this safe: preflight's
+          `img { max-width: 100% }` outranks that inline width, so a container
+          narrower than the logo silently shrinks it. TeamLogo carries
+          `max-w-none` for exactly that reason — see the trap in CLAUDE.md. */}
       <TeamLogo teamId={cell.teamId} size={36} />
       {cell.live ? (
         <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">

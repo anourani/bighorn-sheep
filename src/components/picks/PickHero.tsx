@@ -29,7 +29,9 @@ import { stripGradient } from "./pick-hero";
  *    rather than a thing to remember.
  *  - **Nothing in the tree may take `overflow-hidden`.** From `lg` the logo is
  *    pinned left-of-centre inside the strips and deliberately overhangs them to
- *    the right, into the gap before the team name.
+ *    the right, into the gap before the team name. Below `lg` it is centred on
+ *    the strips instead and overhangs nothing — the two placements are the
+ *    design, not a breakpoint that was left half-finished.
  */
 export function PickHero({
   teamId,

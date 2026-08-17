@@ -209,6 +209,36 @@ recover users' browsers en masse.
 
 ---
 
+## Styling traps that have already bitten
+
+**Tailwind's preflight caps every image at `max-width: 100%`, and that outranks
+an inline width.** `TeamLogo` sets `style={{ width, height }}` from its `size`
+prop, which beats any Tailwind sizing class — but not the reset. Put the image in
+an absolutely-positioned wrapper carrying a `left` and no width, and the wrapper
+shrink-to-fits into the space between that offset and its containing block's
+right edge; `max-width: 100%` of *that* then silently letterboxes the image.
+
+`PickHero`'s logo was the case. The wrapper sat at `left-[18px]` inside a 68px
+strip group, so the available width was 50px — and an 80px logo drew 80px tall
+and **50px wide**, the 50px one 28px. Nothing errors, nothing overflows, and the
+only symptom is that the logo looks a little small, which reads as a design
+opinion rather than a bug. It shipped, went through review, and the first
+diagnosis blamed transparent padding inside the ESPN artwork and nearly scaled
+every box 1.37x **on top of** the clamp.
+
+Two fixes, both wanted: `w-max` on the wrapper (`max-content` is a definite
+width, so shrink-to-fit never applies, and the wrapper stops mispositioning a
+centred logo as well as mis-sizing it), and `max-w-none` in `TeamLogo` so no
+future call site can hit it.
+
+The general rule is the debugging protocol's, in a new place: **measure the
+rendered box before theorising about why an image looks wrong.**
+`getBoundingClientRect()` on the `<img>` returned 50x80 where the inline style
+said 80x80, and that single number was the entire answer — after a paragraph of
+plausible reasoning about CDN artwork that was not.
+
+---
+
 ## Error-handling conventions
 
 **Never render a raw `error.message` from a Supabase client.** `auth-js`
@@ -302,6 +332,33 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The My Picks pick module is no longer a team-coloured card.** The team's
+  colour is three vertical gradient strips behind the logo — `stripGradient` in
+  `src/components/picks/pick-hero.ts`, a fixed .25 -> .80 alpha ramp, alternating
+  direction per strip. Everything else (eyebrow, city, name, matchup, lock copy)
+  is ordinary page text on the page background. Because nothing is set *on* the
+  colour any more, the ~90 lines that computed per-team gradient endpoints and
+  flipped `PickHero`'s text between ink and white to clear WCAG AA went with the
+  wash. (That is about the hero only — `readableOn()` in `TeamLogo.tsx` survives
+  for the logo's failure tile, and is a weighted-average brightness test, not a
+  WCAG ratio.) Four things are load-bearing:
+  - **The row height is fixed** — 92 / 112 / 132px at base / `md` / `lg` — and the
+    team name is size-clamped rather than wrapped, so the module is the same
+    height for every team. An earlier version's height varied with the pick, so
+    the page grew and shrank as you moved along the week strip. It is now
+    structural rather than a thing to remember.
+  - **Nothing in the tree may take `overflow-hidden`.** From `lg` the logo is
+    pinned `left-[18px]` inside a 68px strip group and deliberately overhangs it
+    to the right, into the 50px gap before the name. Below `lg` it is centred on
+    the strips instead. Both placements are the design.
+  - **The layout switches at `lg`, not `md`** — the desktop row needs ~986px for
+    an 80px headline beside a 168px lock column, and it is where `WeekStrip` and
+    `StandingsGrid` change shape too, so the page turns over at one width. `md`
+    steps the *scale* only.
+  - **The strips take the same ramp for all 32 teams**, so a dark team (LV
+    `#000000`, CLE `#311D00`) reads as a grey-to-black bar. That is accepted, not
+    an oversight.
 
 - **There is no create-a-league path.** One standalone league for the inaugural
   season, so every player arrives via an invite code. `CreateGroupModal` and the

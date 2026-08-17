@@ -6,9 +6,9 @@ import type { TeamId } from "../nfl/types";
  *
  * The pick screen has two different weeks in play at once: the week that is
  * LIVE (the only one you may pick for — the server derives it and never trusts
- * the client) and the week you have SELECTED in the week strip. The
- * hero banner used to be wired to the live week while the schedule below it
- * followed the selection, so switching weeks left the banner showing a team from
+ * the client) and the week you have SELECTED in the week strip. The pick module
+ * used to be wired to the live week while the schedule below it
+ * followed the selection, so switching weeks left it showing a team from
  * a week that was no longer on screen — and re-derived its opponent and kickoff
  * from the live week's fixture, rendering a game the member never picked.
  *

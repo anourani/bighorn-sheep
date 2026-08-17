@@ -267,7 +267,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       ) : null}
 
       <div>
-        {/* Replaces the visible "Schedule" heading the week picker absorbed, so
+        {/* Replaces the visible "Schedule" heading the week strip absorbed, so
             heading-jump navigation still reaches the grid. */}
         <h2 className="sr-only">Schedule</h2>
 
