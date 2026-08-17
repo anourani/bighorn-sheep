@@ -1,24 +1,35 @@
+import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
+import { TeamLogo } from "@/components/ui/TeamLogo";
+import { cn } from "@/lib/cn";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import { isKickedOff, type Game } from "@/lib/nfl/types";
 import { countdown } from "@/lib/time";
 import { isHome, opponentOf } from "@/lib/league/view";
+import { stripGradient } from "./pick-hero";
 
 /**
- * The My Picks hero: an unapologetically fan-first banner for the team you
- * picked. The card is washed in the team's primary color with the team logo
- * ghosted behind the name — so opening the app *feels* like the team you ride
- * with.
+ * The My Picks hero: who you are riding with this week.
  *
- * Text color is chosen per team so it always clears WCAG AA (4.5:1), and every
- * bit of text *on the card* stays on one side of light/dark (never a mix):
- *  - Bright teams keep dark text on a light→saturated gradient; the gradient's
- *    bottom is capped at the darkest tint where dark text still passes.
- *  - Dark teams flip to white text on a deep team-color card; the top is
- *    darkened until white passes.
+ * The team's colour lives in three vertical strips behind its logo, and nothing
+ * else on the module is coloured — eyebrow, name, matchup and lock copy are all
+ * ordinary page text. That is the whole design, and it is why this file is no
+ * longer 250 lines: the predecessor washed the entire module in the team colour,
+ * so every string sat *on* that wash and the component had to compute per-team
+ * gradient endpoints and flip its text between ink and white to clear WCAG AA at
+ * the card's worst point. Decoration nothing has to be legible on top of needs
+ * none of that.
  *
- * The lock line underneath is page text, not card text, and stays put in both
- * cases — see the comment at its render site for why it is not a branch.
+ * Two invariants worth keeping:
+ *
+ *  - **The module is the same height for every team.** The row is a fixed
+ *    height, the strips are `h-full` of it, and the name is size-clamped rather
+ *    than wrapped. A previous version's height varied with the pick, so the page
+ *    grew and shrank as you moved along the week strip; here that is structural
+ *    rather than a thing to remember.
+ *  - **Nothing in the tree may take `overflow-hidden`.** From `lg` the logo is
+ *    pinned left-of-centre inside the strips and deliberately overhangs them to
+ *    the right, into the gap before the team name.
  */
 export function PickHero({
   teamId,
@@ -63,68 +74,73 @@ export function PickHero({
   const home = isHome(game, teamId);
   const kicked = isKickedOff(game, now);
   const cd = countdown(new Date(game.kickoff), now);
-  const theme = heroTheme(team.color);
-
-  const lockLine = kicked
-    ? [<span key="k">This game has kicked off — your pick is now visible to the group.</span>]
-    : [
-        <span key="l">Locks in {cd.label}</span>,
-        <span key="p">Only you can see this pick until the game kicks off.</span>,
-      ];
-  if (practice) {
-    lockLine.push(<span key="pr">Practice only — everyone resets for Week 1.</span>);
-  }
 
   return (
-    <section className="border-b border-line pb-4">
-      <div
-        className="relative isolate flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-center"
-        style={{ backgroundColor: "#fff", backgroundImage: theme.gradient }}
-      >
-        {/* Team logo, ghosted into the background. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 bg-contain bg-center bg-no-repeat opacity-20 md:left-[72px] md:translate-x-0"
-          style={{ backgroundImage: `url(https://a.espncdn.com/i/teamlogos/nfl/500/${teamId}.png)` }}
-        />
+    <Shell weekName={weekName}>
+      <PickRow>
+        <Strips>
+          {/* The one place the team's colour appears. `down`/`up`/`down` so the
+              three read as one object catching light, not three copies of a bar. */}
+          <Strip gradient={stripGradient(team.color, "down")} />
+          <Strip gradient={stripGradient(team.color, "up")} />
+          <Strip gradient={stripGradient(team.color, "down")} />
 
-        <span
-          className="relative z-10 font-sans text-[15px] font-bold uppercase leading-[1.4] tracking-[0.04em] sm:text-base"
-          style={{ color: theme.label }}
-        >
-          {practice ? "Practice Pick" : "Your Pick"} · {weekName}
-        </span>
+          {/* Centred over the strips on a phone, offset right of them from `lg`
+              — where it is big enough to overhang into the gap before the name.
+              `aria-hidden` because the <h1> already names the team, and the two
+              sizes are separate elements because TeamLogo sets width/height
+              inline, which no responsive class can reach. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 lg:left-[18px] lg:translate-x-0"
+          >
+            <TeamLogo teamId={teamId} size={50} className="lg:hidden" />
+            <TeamLogo teamId={teamId} size={80} className="hidden lg:block" />
+          </span>
+        </Strips>
 
-        <h1
-          className="relative z-10 mt-2 max-w-full break-words px-2 font-sans font-bold leading-[0.9] tracking-tight text-[clamp(2.5rem,12vw,5rem)]"
-          style={{ color: theme.text }}
-        >
-          {team.name}
-        </h1>
+        <Identity>
+          <Name city={team.location}>{team.name}</Name>
+          <Rule />
+          <Meta>
+            <span>
+              {home ? "vs." : "@"} {opp?.name ?? "TBD"}
+            </span>
+            <MetaDivider />
+            <LocalTime iso={game.kickoff} mode="date" />
+            <MetaDivider />
+            <LocalTime iso={game.kickoff} mode="clockzone" />
+          </Meta>
+        </Identity>
+      </PickRow>
 
-        <div className="relative z-10 mt-4 flex flex-col items-center gap-1" style={{ color: theme.text }}>
-          <p className="text-[15px] font-semibold leading-[1.2] sm:text-base">
-            {home ? "Home Game" : "Away Game"} · {home ? "vs" : "@"} {opp?.name ?? "TBD"}
+      <LockColumn>
+        {kicked ? (
+          <p className="text-shell-ink">
+            This game has kicked off — your pick is now visible to the group.
           </p>
-          <LocalTime iso={game.kickoff} mode="full" className="text-xs font-medium" />
-        </div>
-      </div>
-
-      {/* Below the card always, whatever the team's colors — and deliberately
-          not a branch. Placement used to follow the theme: dark cards pulled the
-          line inside so it could be white, bright ones left it out here. That
-          made the colored block's height a function of which team you picked, so
-          it grew and shrank as you moved down the schedule. A card that holds
-          still is worth more than a lock line that is uniformly white.
-
-          It matches NoPickHero, which has always kept the line outside. */}
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
-        {lockLine}
-      </div>
-    </section>
+        ) : (
+          <>
+            <p className="text-shell-ink">Locks in {cd.label}</p>
+            <p className="text-shell-mute">
+              Only you can see this pick until the game kicks off
+            </p>
+          </>
+        )}
+        {practice ? (
+          <p className="text-shell-mute">Practice only — everyone resets for Week 1.</p>
+        ) : null}
+      </LockColumn>
+    </Shell>
   );
 }
 
+/**
+ * The same module with nothing picked. It keeps the filled state's skeleton
+ * exactly — including invisible stand-ins for the city and matchup lines — so
+ * the headline's baseline does not move as you step between a picked week and an
+ * unpicked one.
+ */
 function NoPickHero({
   weekName,
   practice,
@@ -137,121 +153,151 @@ function NoPickHero({
   weekFinalKickoff: Date | null;
 }) {
   const cd = weekFinalKickoff ? countdown(weekFinalKickoff, now) : null;
+
   return (
-    <section className="border-b border-line pb-4">
-      <div
-        className="relative flex min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-center"
-        style={{
-          backgroundColor: "#fff",
-          backgroundImage: "linear-gradient(180deg, rgba(83,97,122,0.05) 0%, rgba(83,97,122,0.3) 100%)",
-        }}
-      >
-        <span className="font-sans text-[15px] font-bold uppercase tracking-[0.04em] text-[#4B5563] sm:text-base">
-          {practice ? "Practice Pick" : "Your Pick"} · {weekName}
-        </span>
-        <h1 className="mt-2 font-sans font-bold leading-[0.9] tracking-tight text-[#1E1E1E] text-[clamp(2rem,9vw,3.5rem)]">
-          No pick yet
-        </h1>
-        <p className="mt-4 text-sm font-medium text-[#1E1E1E]">
-          Choose your team from the schedule below.
-        </p>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-center text-xs font-medium text-ink-mute">
-        {cd ? <span>Week locks in {cd.label}</span> : null}
-        <span>Miss the final kickoff and it counts as a loss.</span>
-        {practice ? <span>Practice only — everyone resets for Week 1.</span> : null}
+    <Shell weekName={weekName}>
+      <PickRow>
+        <Strips>
+          {/* Inert: no gradient, no logo. The strips are still here because
+              their absence would move the headline. */}
+          <Strip />
+          <Strip />
+          <Strip />
+        </Strips>
+
+        <Identity>
+          <Name>No Pick Made</Name>
+          {/* No <Rule/> here: from `lg` it would be a hairline dividing the
+              headline from empty space. The matchup below is `invisible` rather
+              than absent because it holds that line's height, and so the
+              headline lands where a team name's does — but the rule has nothing
+              to separate, and a rule with nothing beside it reads as a mistake. */}
+          <Meta className="invisible">&nbsp;</Meta>
+        </Identity>
+      </PickRow>
+
+      <LockColumn>
+        {cd ? <p className="text-shell-ink">Week locks in {cd.label}</p> : null}
+        <p className="text-shell-mute">Miss the final kickoff and it counts as a loss.</p>
+        {practice ? (
+          <p className="text-shell-mute">Practice only — everyone resets for Week 1.</p>
+        ) : null}
+      </LockColumn>
+    </Shell>
+  );
+}
+
+// ── Layout ───────────────────────────────────────────────────────────────────
+//
+// Split into named pieces because the two states share every one of them, and a
+// second copy of this markup is exactly how the empty state drifts out of
+// alignment with the filled one.
+//
+// The breakpoint throughout is `lg`, not `md`: the desktop row needs ~986px to
+// hold an 80px headline beside a 168px lock column, and the shell is
+// `max-w-shell` (1000px) inside a `px-4` gutter. It is also where WeekStrip and
+// StandingsGrid change shape, so the page turns over at one width.
+
+/** Outer frame: the eyebrow, and the row/lock split below it. */
+function Shell({ weekName, children }: { weekName: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2 py-8 lg:border-b lg:border-shell-line">
+      <Label className="lg:text-base lg:leading-[1.1]">Your {weekName} Pick</Label>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        {children}
       </div>
     </section>
   );
 }
 
-// ── Team-colored, AA-safe theming ────────────────────────────────────────────
+/** Strips, logo and text. Its fixed height is what sizes the strips. */
+function PickRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-[92px] items-center gap-2 lg:h-[132px] lg:gap-[50px]">{children}</div>
+  );
+}
 
-const INK = "#1E1E1E";
-const WHITE = "#FFFFFF";
-const LABEL_DARK = "#4B5563"; // muted eyebrow that still clears AA on the near-white top
-const INK_LUM = relLuminance(30, 30, 30);
+function Strips({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative isolate flex h-full shrink-0 items-center gap-1">{children}</div>
+  );
+}
 
-// No `light` flag here any more. It said "the card is dark and the text is
-// white" — inverted enough to misread on sight — and its only consumer was the
-// lock line's placement, which no longer branches. The gradient and the two
-// colors already carry the outcome of the choice below.
-interface HeroTheme {
-  gradient: string;
-  text: string;
-  label: string;
+/** One strip. No gradient means the empty state's inert grey. */
+function Strip({ gradient }: { gradient?: string }) {
+  return (
+    <span
+      className={cn("h-full w-4 rounded-[4px] lg:w-5", !gradient && "bg-shell-dark")}
+      style={gradient ? { backgroundImage: gradient } : undefined}
+    />
+  );
+}
+
+/** City + name, the rule, and the matchup — stacked on a phone, a row from `lg`. */
+function Identity({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col justify-center lg:h-full lg:flex-row lg:items-center lg:gap-4">
+      {children}
+    </div>
+  );
 }
 
 /**
- * Pick a text treatment that clears AA (4.5:1) across the whole card. Capping
- * one gradient endpoint guarantees the chosen color passes at the worst point
- * (and therefore everywhere), independent of where each line of text sits.
+ * The headline, sized to stay on one line at every width.
+ *
+ * `(100vw - 96px)` is the room the name actually has: the page's 32px gutter,
+ * the 56px strip group and the 8px beside it. Dividing by `6.75` — a
+ * deliberately generous em-width for the longest names in the league
+ * ("Commanders", "Buccaneers") in Inter SemiBold — lands on exactly the design's
+ * 44px at a 393px phone and shrinks below that rather than overflowing. Tracking
+ * is in `em` so it stays proportional as the clamp bites.
  */
-function heroTheme(hex: string): HeroTheme {
-  const rgb = hexToRgb(hex);
-
-  // Darkest tint (≤ 0.80) at which dark ink still clears AA against white base.
-  let darkBottom = 0;
-  for (let a = 80; a >= 30; a--) {
-    if (contrast(INK_LUM, tintLuminance(rgb, a / 100)) >= 4.5) {
-      darkBottom = a / 100;
-      break;
-    }
-  }
-
-  // A team bright enough to carry a punchy dark-text wash keeps the light look.
-  if (darkBottom >= 0.6) {
-    return {
-      gradient: gradient(rgb, 0.05, darkBottom),
-      text: INK,
-      label: LABEL_DARK,
-    };
-  }
-
-  // Otherwise go dark: deepen the top until white clears AA, so white passes
-  // across the whole card (the bottom is darker still).
-  let lightTop = 1;
-  for (let a = 72; a <= 100; a++) {
-    if (contrast(1, tintLuminance(rgb, a / 100)) >= 4.5) {
-      lightTop = a / 100;
-      break;
-    }
-  }
-  return {
-    gradient: gradient(rgb, lightTop, 1),
-    text: WHITE,
-    label: WHITE,
-  };
+function Name({ city, children }: { city?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col justify-center pt-2 lg:py-5">
+      {city ? (
+        <Label>{city}</Label>
+      ) : (
+        // Holds the line the city would occupy, so "No Pick Made" sits where a
+        // team name does.
+        <Label className="invisible">&nbsp;</Label>
+      )}
+      <h1 className="max-w-full font-semibold leading-none tracking-[-0.04em] text-shell-ink text-[clamp(1.5rem,calc((100vw_-_96px)/6.75),2.75rem)] lg:tracking-[-0.025em] lg:text-[5rem]">
+        {children}
+      </h1>
+    </div>
+  );
 }
 
-function gradient([r, g, b]: [number, number, number], top: number, bottom: number): string {
-  return `linear-gradient(180deg, rgba(${r},${g},${b},${top}) 0%, rgba(${r},${g},${b},${bottom}) 100%)`;
+/** The vertical hairline between the name and the matchup. Desktop only. */
+function Rule() {
+  return <div className="hidden h-full w-px shrink-0 bg-shell-line lg:block" />;
 }
 
-/** "#RRGGBB" (or "#RGB") → [r, g, b]. */
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const n = parseInt(full, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+/** Matchup, date and kickoff — one line on a phone, three from `lg`. */
+function Meta({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 py-1 text-xs font-medium leading-[1.4] text-shell-ink lg:h-full lg:flex-col lg:items-start lg:justify-center lg:gap-0.5",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
-/** Relative luminance of the team color at `alpha` composited over white. */
-function tintLuminance([r, g, b]: [number, number, number], alpha: number): number {
-  const mix = (c: number) => alpha * c + (1 - alpha) * 255;
-  return relLuminance(mix(r), mix(g), mix(b));
+/** Separates the matchup's three parts on a phone; from `lg` they stack instead. */
+function MetaDivider() {
+  return <span className="h-5 w-px shrink-0 bg-shell-line lg:hidden" />;
 }
 
-function relLuminance(r: number, g: number, b: number): number {
-  const lin = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-function contrast(l1: number, l2: number): number {
-  const hi = Math.max(l1, l2);
-  const lo = Math.min(l1, l2);
-  return (hi + 0.05) / (lo + 0.05);
+/** Lock and privacy copy: under a rule on a phone, a right-hand column from `lg`. */
+function LockColumn({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-t border-shell-line pt-2 text-xs font-medium leading-[1.4] lg:w-[168px] lg:shrink-0 lg:border-t-0 lg:pt-0">
+      {children}
+    </div>
+  );
 }
