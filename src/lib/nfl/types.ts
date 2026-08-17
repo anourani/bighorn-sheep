@@ -21,7 +21,7 @@ export interface Team {
   name: string;
   conference: Conference;
   division: Division;
-  /** Primary brand color (hex) — used sparingly as an accent dot. */
+  /** Primary brand color (hex) — an accent dot, and the My Picks strips. */
   color: string;
 }
 

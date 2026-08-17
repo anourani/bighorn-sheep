@@ -68,8 +68,8 @@ describe("viewerPicksByWeek", () => {
 
 describe("pickForWeek", () => {
   // THE BUG THIS MODULE EXISTS FOR. With practice picks in weeks 1 and 2, the
-  // hero used to render whichever team belonged to the LIVE week no matter
-  // which week the dropdown named — so selecting Preseason 2 still showed the
+  // pick module used to render whichever team belonged to the LIVE week no
+  // matter which week the strip named — so selecting Preseason 2 still showed the
   // Preseason 1 team, with Preseason 1's opponent and kickoff.
   it("answers for the week asked about, not the live one", () => {
     const picks = viewerPicksByWeek({

@@ -92,8 +92,8 @@ making the Week 1 pick early — not an empty waiting room.
 
 - **Header:** "Season starts in {countdown} · {N} joined" (in place of the survivor tally).
 - **My Picks:** a pre-season banner ("the season kicks off {kickoff}; make your Week 1
-  pick now — it locks when your team plays, change it until then"), a "No pick yet"
-  hero, and the full, pickable Week 1 slate. A fresh entrant has no history, so no
+  pick now — it locks when your team plays, change it until then"), the pick
+  module in its "No Pick Made" state, and the full, pickable Week 1 slate. A fresh entrant has no history, so no
   teams are greyed out.
 - **Standings:** no results yet, so a countdown-to-kickoff panel, a **"Who's in"
   roster** (everyone alive at the gun), the league's rules, and an invite CTA to grow
