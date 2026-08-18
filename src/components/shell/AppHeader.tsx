@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HeaderNav } from "./HeaderNav";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
+import { viewerBuyInUnpaid } from "@/lib/league/load";
 
 /**
  * The app shell header — 62px of chrome carrying all of the app's navigation.
@@ -16,14 +17,23 @@ import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
  * control disclosed a single already-selected option. The account page does not
  * switch leagues either — its league card is a read-only summary — so nothing in
  * the app calls `selectLeague` today; `resolveActiveGroupId` falls back to the
- * earliest-joined membership, which with one league is the same answer. The
- * header consequently reads no league data at all, which is why it is a plain
- * (not `async`) Server Component — it costs nothing and cannot fail.
+ * earliest-joined membership, which with one league is the same answer.
  *
  * The survivor tally that once stacked underneath is `StatusReport`, rendered by
  * Standings; it is a *reading* of the league, which is page content.
+ *
+ * The header reads **one** thing about the league, and is `async` for it: whether
+ * the viewer owes the buy-in, which is what puts the red dot on the account
+ * button. It was a plain synchronous component that read nothing until then, and
+ * giving that up was weighed rather than waved through — `viewerBuyInUnpaid()` is
+ * one indexed read of the viewer's own membership rows, `cache()`d per request,
+ * and it fails closed. The alternative, threading the flag down from each page,
+ * would have put the header's own state in three page components and left the
+ * fourth free to forget it.
  */
-export function AppHeader() {
+export async function AppHeader() {
+  const buyInUnpaid = await viewerBuyInUnpaid();
+
   return (
     /*
       Transcribed from the design's logged-in variant, which drops the bottom
@@ -117,7 +127,7 @@ export function AppHeader() {
           </span>
         </Link>
 
-        <HeaderNav />
+        <HeaderNav buyInUnpaid={buyInUnpaid} />
       </div>
     </header>
   );

@@ -432,6 +432,54 @@ export const accountClosed = cache(async (): Promise<boolean> => {
   return data !== null;
 });
 
+/**
+ * Whether the viewer owes their active league's buy-in — the header's red dot.
+ *
+ * Its own loader rather than a field on `loadAccount()`, because the header
+ * renders on every `/app` screen and `loadAccount` is five queries deep (profile,
+ * private row, memberships, groups, peer counts) for the one boolean the dot
+ * wants. This is one indexed read of the viewer's own membership rows. `cache()`d
+ * like its neighbours, so the account page — which loads the full picture anyway
+ * — pays for it once and gets the same answer in both places.
+ *
+ * The **active** league, resolved exactly as `loadAccount` resolves it, so the
+ * dot and the buy-in card it points at can never disagree. With one league that
+ * is the earliest-joined membership either way.
+ *
+ * **Fails closed**, the opposite of {@link accountClosed} and for the same kind
+ * of reason: this one is a claim about a person's money. A false dot tells
+ * someone they owe a commissioner who has already ticked them off, which is worse
+ * than a missing one — the account page states the real status either way, and
+ * the dot is only ever an invitation to go and look.
+ */
+export const viewerBuyInUnpaid = cache(async (): Promise<boolean> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("group_id, buy_in_paid")
+    .eq("user_id", user.id)
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    console.error("[viewerBuyInUnpaid] lookup failed — hiding the dot", error);
+    return false;
+  }
+
+  const rows = data ?? [];
+  const activeGroupId = resolveActiveGroupId(
+    rows.map((r) => r.group_id),
+    await preferredGroupId(),
+  );
+  if (!activeGroupId) return false;
+
+  return rows.find((r) => r.group_id === activeGroupId)?.buy_in_paid === false;
+});
+
 export const loadAccount = cache(async (): Promise<AccountData | null> => {
   const supabase = await createClient();
   const {

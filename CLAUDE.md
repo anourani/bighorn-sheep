@@ -500,6 +500,28 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     instead, on `!activeLeague` alone. `/app` and `/app/standings` offer the same
     `JoinByCode` through `NoLeagueState`; three entry points is intentional.
 
+- **The header's account button wears a red dot while the viewer's buy-in is
+  unpaid**, and `AppHeader` is `async` for it. That is the one piece of league
+  data the header reads — it was a plain synchronous component that read none,
+  and the docblock saying so has been corrected rather than left to rot. Three
+  things are load-bearing:
+  - **`viewerBuyInUnpaid()` (src/lib/league/load.ts) is its own loader**, not a
+    field on `loadAccount()`: the header renders on every `/app` screen and
+    `loadAccount` is five queries deep for the one boolean the dot wants. This is
+    one indexed read of the viewer's own membership rows, `cache()`d, resolving
+    the active league exactly as `loadAccount` does so the dot and the buy-in card
+    it points at cannot disagree.
+  - **It fails CLOSED, where `accountClosed()` fails open.** The asymmetry is
+    deliberate. A false lockout takes the league off the app; a false dot only
+    tells someone they owe money they have already paid — bad, and worse than no
+    dot, so an error hides it.
+  - **The dot needs `-0.5` (2px) to sit the design's 1px proud of the ring**,
+    because an absolutely positioned child resolves its insets against the
+    *padding* box — 38px inside this `border-box` 40px circle with its 1px border.
+    `-top-px` measured flush. Same arithmetic as the `after:` tap ring beside it,
+    and the first version of the comment there asserted the opposite before anyone
+    measured it. Nothing in that subtree may take `overflow-hidden`.
+
 - **Deleting an account closes it. It does not delete anything.** "Delete
   Account" in the Danger Zone opens a confirm sheet and then writes one row to
   `account_closures` (0010) through `close_own_account()`. The player's profile,
