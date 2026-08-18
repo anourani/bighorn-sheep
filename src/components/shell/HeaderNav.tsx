@@ -42,9 +42,10 @@ import { ACCOUNT_HREF, TABS, isActive } from "./nav";
  * arithmetic is written out there.
  *
  * Client Component, and the only one in the header — `usePathname` is the whole
- * reason. Nothing here reads league data.
+ * reason. It still reads no league data itself: `buyInUnpaid` arrives as a prop
+ * from `AppHeader`, which is where the one query lives.
  */
-export function HeaderNav() {
+export function HeaderNav({ buyInUnpaid = false }: { buyInUnpaid?: boolean }) {
   const pathname = usePathname();
   const onAccount = isActive(ACCOUNT_HREF, pathname);
 
@@ -112,9 +113,11 @@ export function HeaderNav() {
           href={ACCOUNT_HREF}
           // `UserIcon` is `aria-hidden`, so without this the link has no
           // accessible name at all and a screen reader falls back to reading the
-          // href. The name is unchanged from when this was a text chip — only the
-          // rendering moved from visible text to a label.
-          aria-label="Account"
+          // href. The name was unchanged from when this was a text chip — only
+          // the rendering had moved from visible text to a label — until the dot
+          // arrived: a purely visual badge says nothing to a screen reader, so the
+          // one piece of information it carries is spelled into the name instead.
+          aria-label={buyInUnpaid ? "Account — buy-in unpaid" : "Account"}
           aria-current={onAccount ? "page" : undefined}
           className={cn(
             // `grid place-items-center` is this repo's idiom for a glyph in a
@@ -144,6 +147,34 @@ export function HeaderNav() {
           )}
         >
           <UserIcon className="h-5 w-5" />
+          {/*
+            The unpaid dot: 12px, sitting 1px proud of the ring on both axes, so
+            a corner of it overhangs. That overhang is the design, and it is why
+            nothing in this subtree may take `overflow-hidden`.
+
+            **2px, for the 1px the design asks for**, and for the same reason the
+            tap ring above needs 3px to reach 44: an absolutely positioned child
+            resolves its insets against its ancestor's PADDING box, which on this
+            `border-box` 40px circle with a 1px border is 38px. `-top-px` measured
+            the dot flush with the drawn edge — 0px proud, not 1 — so the offset
+            is `-0.5` (2px). Measured in the browser, after the first version of
+            this comment confidently asserted the opposite. Anything that changes
+            the border width has to revisit this number too.
+
+            `border-2 border-bg` is beyond the design, which draws the dot on
+            white. This header is a near-transparent bar: at rest the ring is
+            invisible, and scrolled it stops the dot dissolving into a standings
+            row passing behind it.
+
+            aria-hidden, because the state is already in the link's accessible
+            name above and announcing it twice is noise.
+          */}
+          {buyInUnpaid ? (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-bg bg-badge-due"
+            />
+          ) : null}
         </Link>
       </div>
     </>

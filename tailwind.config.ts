@@ -97,6 +97,21 @@ const config: Config = {
         // app, marking where you are on the week axis. Folding the two together
         // would either dull this chip or brighten every status dot with it.
         selected: "#0F9400",
+        /**
+         * The account page's buy-in badge, from the mock-ups' semantic ramp.
+         * Each pair is a fill and the hairline that sits on it.
+         *
+         * Not folded into `alive` / `out` below: those are the standings
+         * palette's softer, wash-backed status hues, and this badge is a
+         * saturated solid with white text. Two things that mean different things
+         * on different screens, kept apart on purpose.
+         */
+        badge: {
+          paid: "#0F9900",
+          "paid-line": "#0C6F28",
+          due: "#CD1411",
+          "due-line": "#A71930",
+        },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },

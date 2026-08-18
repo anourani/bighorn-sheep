@@ -109,6 +109,8 @@ function rowToGroup(r: GroupRow): Group {
     inviteCode: r.invite_code,
     entryClosesAt: r.entry_closes_at,
     settingsLockedAt: r.settings_locked_at,
+    buyInCents: r.buy_in_cents,
+    siteFeeCents: r.site_fee_cents,
   };
 }
 
@@ -360,6 +362,15 @@ export interface LeagueSummary {
   /** Admin-controlled, read-only to the member. See migration 0007. */
   buyInPaid: boolean;
   /**
+   * When an admin last moved {@link buyInPaid}, either way — 0010 widened
+   * 0007's "when did they pay" to "when did this last change", because the
+   * account page prints the date beside an UNPAID badge too.
+   *
+   * Null for a membership nobody has toggled since 0010 was applied, which the
+   * card renders by omitting the "Updated" line rather than by inventing a date.
+   */
+  buyInPaidAt: string | null;
+  /**
    * Resolved here rather than in the client so the account page needs no clock
    * of its own — a `new Date()` during render is a hydration mismatch waiting
    * for someone to load the page across a kickoff.
@@ -385,6 +396,89 @@ export interface AccountData {
    */
   activeGroupId: string | null;
 }
+
+/**
+ * Whether the signed-in viewer has closed their own account (migration 0010).
+ *
+ * The `/app` layout is the single choke point that reads this, so one small
+ * primary-key lookup gates every authenticated route. `cache()`d like its
+ * neighbours, so a page that also calls `loadAccount()` pays for it once.
+ *
+ * **Fails OPEN, deliberately.** Any error — the table absent because 0010 has
+ * not been applied by hand yet, a dropped connection, RLS returning nothing —
+ * resolves to `false` and the viewer keeps their access. Failing closed would
+ * turn one unapplied migration into every player being locked out of the app at
+ * once, which is a far worse outcome than a closed account briefly still
+ * working. The error is logged so the cause is visible in the Netlify function
+ * log rather than being inferred from the symptom.
+ */
+export const accountClosed = cache(async (): Promise<boolean> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("account_closures")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[accountClosed] lookup failed — treating the account as open", error);
+    return false;
+  }
+  return data !== null;
+});
+
+/**
+ * Whether the viewer owes their active league's buy-in — the header's red dot.
+ *
+ * Its own loader rather than a field on `loadAccount()`, because the header
+ * renders on every `/app` screen and `loadAccount` is five queries deep (profile,
+ * private row, memberships, groups, peer counts) for the one boolean the dot
+ * wants. This is one indexed read of the viewer's own membership rows. `cache()`d
+ * like its neighbours, so the account page — which loads the full picture anyway
+ * — pays for it once and gets the same answer in both places.
+ *
+ * The **active** league, resolved exactly as `loadAccount` resolves it, so the
+ * dot and the buy-in card it points at can never disagree. With one league that
+ * is the earliest-joined membership either way.
+ *
+ * **Fails closed**, the opposite of {@link accountClosed} and for the same kind
+ * of reason: this one is a claim about a person's money. A false dot tells
+ * someone they owe a commissioner who has already ticked them off, which is worse
+ * than a missing one — the account page states the real status either way, and
+ * the dot is only ever an invitation to go and look.
+ */
+export const viewerBuyInUnpaid = cache(async (): Promise<boolean> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("group_id, buy_in_paid")
+    .eq("user_id", user.id)
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    console.error("[viewerBuyInUnpaid] lookup failed — hiding the dot", error);
+    return false;
+  }
+
+  const rows = data ?? [];
+  const activeGroupId = resolveActiveGroupId(
+    rows.map((r) => r.group_id),
+    await preferredGroupId(),
+  );
+  if (!activeGroupId) return false;
+
+  return rows.find((r) => r.group_id === activeGroupId)?.buy_in_paid === false;
+});
 
 export const loadAccount = cache(async (): Promise<AccountData | null> => {
   const supabase = await createClient();
@@ -417,7 +511,7 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
 
   const { data: myMemberships } = await supabase
     .from("group_members")
-    .select("group_id, role, status, strikes, buy_in_paid, joined_at")
+    .select("group_id, role, status, strikes, buy_in_paid, buy_in_paid_at, joined_at")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
 
@@ -455,6 +549,7 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
       status: m.status,
       strikes: m.strikes,
       buyInPaid: m.buy_in_paid,
+      buyInPaidAt: m.buy_in_paid_at,
       phase: seasonPhase(new Date(group.entryClosesAt), now),
       aliveCount: c.alive,
       memberCount: c.total,

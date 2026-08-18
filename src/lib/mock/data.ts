@@ -231,6 +231,8 @@ export const GROUP: Group = {
   inviteCode: "BIGHORN-7F3K",
   entryClosesAt: "2025-09-05T00:20:00.000Z", // Week 1 kickoff
   settingsLockedAt: "2025-09-05T00:20:00.000Z",
+  buyInCents: 2000,
+  siteFeeCents: 100,
 };
 
 /** Full-name seed rows; first/last/avatar are derived below so this stays terse. */

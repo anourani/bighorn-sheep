@@ -29,18 +29,29 @@ export const APP_SHORT_NAME = APP_NAME.split(" ")
   .join("");
 
 /**
- * The league's stake, as the account page prints it.
+ * Where "Please venmo …" on the account page's buy-in card points, and the
+ * handle it prints.
  *
- * A hardcoded literal because there is nowhere to read it from: the schema
- * tracks only WHETHER a member has paid (`group_members.buy_in_paid`, written
- * by an admin through the `set_member_buy_in` RPC — migration 0007), never HOW
- * MUCH. The design calls for an amount, so this is it.
+ * Two constants rather than deriving the label from the URL: Venmo's own
+ * profile slug is capitalised (`Alex-Nourani-1`) and the mock-up prints it in
+ * lower case, so a `split("/").pop()` would quietly change the design.
  *
- * Two things are wrong with that and are accepted deliberately: the amount goes
- * stale silently if the stake ever changes, and it is per-league data rendered
- * as a global constant — correct only while the product runs one league. The
- * real fix is a `buy_in_amount` column on `groups` plus an admin control, which
- * needs a numbered migration applied to production by hand. Until then this is
- * the one line to change.
+ * League-specific data living in code, like the buy-in amount used to be. It is
+ * a smaller problem than that was — the payee is the commissioner, and the app
+ * runs one league — but it is the same problem, and this is the one line to
+ * change if the pot ever moves.
  */
-export const BUY_IN_LABEL = "$20";
+export const VENMO_URL = "https://www.venmo.com/u/Alex-Nourani-1";
+export const VENMO_HANDLE = "alex-nourani-1";
+
+/**
+ * Where "Leave Feedback" goes.
+ *
+ * ⚠️ PLACEHOLDER. This is meant to be a form (Google Forms, Tally, Typeform) and
+ * is a `mailto:` until that URL exists — the tile is in the design and shipping
+ * it pointed at nothing would be worse than shipping it pointed at an inbox.
+ * Swapping in an `https://` URL here is the whole change; the link opens in a
+ * new tab either way, which a `mailto:` handles fine.
+ */
+export const FEEDBACK_URL =
+  "mailto:nourani1alex@gmail.com?subject=Sheep%20with%20Glasses%20feedback";
