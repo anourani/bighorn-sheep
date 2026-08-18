@@ -2,8 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { PickHero } from "@/components/picks/PickHero";
+import { PickFilters } from "@/components/picks/PickFilters";
+import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
+import { GRID_LAYOUTS, GRID_SORTS } from "@/components/picks/team-grid";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { InfoIcon } from "@/components/icons";
@@ -20,9 +23,12 @@ import {
 } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "@/lib/league/games";
 import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "@/lib/league/picks";
+import { recordsThroughWeek } from "@/lib/league/records";
 import type { LeagueData } from "@/lib/league/load";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
+import { PICKS_LAYOUT_KEY, PICKS_SORT_KEY } from "@/lib/prefs";
+import { useStoredChoice } from "@/lib/use-stored-choice";
 
 /** Friendly copy for a rejected pick (mirrors the canPick reason codes). */
 const PICK_ERROR: Record<string, string> = {
@@ -100,6 +106,13 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const [pickError, setPickError] = useState<string | null>(null);
   const [saving, startTransition] = useTransition();
 
+  // How this browser likes to look at the week. Deliberately not part of
+  // LeagueData: it says nothing about the league, and a profile column would
+  // have meant a migration applied to production by hand. The first paint uses
+  // the defaults and swaps after hydration — see useStoredChoice.
+  const [layout, setLayout] = useStoredChoice(PICKS_LAYOUT_KEY, GRID_LAYOUTS, "grid");
+  const [sort, setSort] = useStoredChoice(PICKS_SORT_KEY, GRID_SORTS, "record");
+
   const labelOpts = { maxPreWeek: practice?.maxPreWeek ?? 0 };
   const viewName = weekLabel(viewRef, labelOpts);
 
@@ -142,6 +155,15 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   }, [data.games, practice, viewingPractice, viewRef.week]);
 
   const byes = activeIdx.byesForWeek(viewRef.week);
+
+  // Always the regular-season schedule, even while viewing a practice week:
+  // preseason results are not season results. A practice week is numbered 1-4,
+  // so the cutoff leaves nothing to count and every card reads 0-0 — which is
+  // correct, and what the mockups show.
+  const records = useMemo(
+    () => recordsThroughWeek(data.games, viewRef.week),
+    [data.games, viewRef.week],
+  );
 
   // Teams already spent in THIS phase. Practice and the regular season keep
   // separate used-team lists — a team practised in preseason is available again at
@@ -271,6 +293,14 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             heading-jump navigation still reaches the grid. */}
         <h2 className="sr-only">Schedule</h2>
 
+        <PickFilters
+          layout={layout}
+          onLayoutChange={setLayout}
+          sort={sort}
+          onSortChange={setSort}
+          className="mb-4"
+        />
+
         {!isCurrent ? (
           <p className="mb-2.5 text-xs text-ink-mute">
             Picks are open for{" "}
@@ -289,7 +319,11 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           </p>
         ) : null}
 
-        {byes.length > 0 ? (
+        {/* The matchup layout only lists the week's fixtures, so a team that
+            isn't playing is simply absent and has to be named here. The grid
+            renders all 32 either way and says "BYE Week" on the card itself,
+            which makes this line a second, staler copy of the same fact. */}
+        {byes.length > 0 && layout === "matchups" ? (
           <p className="mb-2.5 text-xs text-ink-mute">
             {viewingPractice ? "Not playing this week" : "On bye this week"}:{" "}
             <span className="font-semibold text-ink-soft">
@@ -299,16 +333,35 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           </p>
         ) : null}
 
-        <WeekSchedule
-          weekRef={viewRef}
-          weekName={viewName}
-          games={games}
-          usedByTeam={usedByTeam}
-          selectedTeam={pickTeam}
-          interactive={isCurrent && !saving}
-          now={now}
-          onSelect={handleSelect}
-        />
+        {/* Both layouts are handed the same derived values — the week's games,
+            the used-team list with its two week-scoped exclusions, the pick and
+            whether this week is live. A new rule about what is pickable is added
+            once, above, and both surfaces get it. */}
+        {layout === "grid" ? (
+          <TeamGrid
+            weekRef={viewRef}
+            weekName={viewName}
+            games={games}
+            usedByTeam={usedByTeam}
+            selectedTeam={pickTeam}
+            interactive={isCurrent && !saving}
+            now={now}
+            sort={sort}
+            records={records}
+            onSelect={handleSelect}
+          />
+        ) : (
+          <WeekSchedule
+            weekRef={viewRef}
+            weekName={viewName}
+            games={games}
+            usedByTeam={usedByTeam}
+            selectedTeam={pickTeam}
+            interactive={isCurrent && !saving}
+            now={now}
+            onSelect={handleSelect}
+          />
+        )}
       </div>
     </div>
   );

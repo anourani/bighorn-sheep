@@ -278,6 +278,14 @@ Open the app, sign in, go to **My Picks**:
 - [ ] Switching to Week 1, **that same team is still available** — preseason practice
       doesn't use up a team.
 - [ ] Teams not playing a given week are shown as not pickable, rather than missing.
+- [ ] The **Layout** filter reads *Grid*, and the grid shows **32 cards** — every team,
+      with byes marked *BYE Week* and spent teams *Already Selected*. A short grid means
+      the schedule didn't fully load.
+- [ ] Switching Layout to *Matchups* shows the same week as fixtures, and a pick made in
+      one layout is already selected in the other.
+- [ ] Reloading keeps whichever layout you left it on (it's stored per browser).
+- [ ] Records on the cards read `0-0` until the scorer marks a game final. That is
+      expected before Week 1 — they're derived from completed games, not stored.
 
 From here the site looks after itself: every five minutes it refreshes scores and game
 status, picks up NFL schedule changes, and updates strikes and eliminations.

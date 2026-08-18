@@ -114,10 +114,16 @@ member. Watch them appear on **Standings** (roster) and in the header tally.
 ## 4. Everyone makes a pick
 
 On **My Picks**, tap the week you seeded in the week strip, then each player
-selects a team from the schedule. The pick saves
-immediately and is editable until that team's game kicks off. On **Standings**,
-each rival's current pick shows as a **padlock** — locked in, team hidden — until
-kickoff.
+selects a team. There are two ways to do that, and the **Layout** filter switches
+between them: **Grid** (the default) is all 32 teams as cards — tap one — and
+**Matchups** is the week's fixtures with a radio button per team. Either saves
+immediately, and the pick is editable until that team's game kicks off. On
+**Standings**, each rival's current pick shows as a **padlock** — locked in, team
+hidden — until kickoff.
+
+Worth exercising both while you have real data in front of you: the grid is the
+only surface that shows teams on a bye and teams already spent, so it is where a
+wrong used-team list is visible at a glance.
 
 ## 5. Advance the weekend
 
