@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
 import { Switch } from "@/components/ui/Switch";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
-import { setMemberBuyIn } from "@/app/app/actions";
+import { setGroupBuyIn, setMemberBuyIn } from "@/app/app/actions";
+import { formatMoney } from "@/lib/money";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { Group, Member } from "@/lib/league/types";
 
@@ -20,8 +21,159 @@ const BUY_IN_ERROR_COPY: Record<string, string> = {
   unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };
 
+const GROUP_BUY_IN_ERROR_COPY: Record<string, string> = {
+  not_admin: "Only an admin can change that.",
+  bad_amount: "Enter an amount of zero or more.",
+  group_not_found: "That league is gone.",
+  not_authenticated: "Your session expired — sign in again.",
+  // The likeliest cause is 0010 not having been applied to this database by
+  // hand — nothing in this repo applies migrations. The detail is in the
+  // Netlify function log.
+  buy_in_update_failed: "Couldn't save that. Try again.",
+  unexpected_error: "Something went wrong on our end. Try again in a moment.",
+};
+
+const AMOUNT_INPUT_CLASS =
+  "w-full rounded-control border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-mute/60 focus-visible:border-brand-strong";
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <Label>{children}</Label>;
+}
+
+/**
+ * What the pot costs — the other half of the account page's buy-in card, whose
+ * paid/unpaid badge is set by {@link MembersSection} below.
+ *
+ * Dollars in the inputs, cents in the database (`groups.buy_in_cents`,
+ * `groups.site_fee_cents` — migration 0010). The conversion happens here, at the
+ * one boundary, so nothing downstream has to wonder which unit it is holding.
+ *
+ * Writes through the `set_group_buy_in` RPC. `groups` DOES have an admin UPDATE
+ * policy, unlike `group_members`, so this could have been a plain `.update()` —
+ * but RLS cannot restrict which columns an update writes, so that would have
+ * handed the browser `invite_code` and the rules columns too. The RPC writes
+ * these two and nothing else.
+ *
+ * Deliberately still editable after the rules lock: locking freezes how the game
+ * is played, and correcting what it costs is money admin. Getting the number
+ * wrong is also exactly the sort of thing you discover after kickoff.
+ */
+function BuyInAmountSection({ group }: { group: Group }) {
+  const router = useRouter();
+  const [buyIn, setBuyIn] = useState(dollars(group.buyInCents));
+  const [fee, setFee] = useState(dollars(group.siteFeeCents));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const buyInCents = toCents(buyIn);
+  const feeCents = toCents(fee);
+  const valid = buyInCents !== null && feeCents !== null;
+  const dirty =
+    valid && (buyInCents !== group.buyInCents || feeCents !== group.siteFeeCents);
+
+  function save() {
+    if (!valid || !dirty) return;
+    setError(null);
+    setSaved(false);
+    startTransition(async () => {
+      try {
+        const res = await setGroupBuyIn({
+          groupId: group.id,
+          buyInCents,
+          siteFeeCents: feeCents,
+        });
+        if (!res.ok) {
+          setError(GROUP_BUY_IN_ERROR_COPY[res.error] ?? "Couldn't save that. Try again.");
+          return;
+        }
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1600);
+        router.refresh();
+      } catch (err) {
+        // A deploy landed while this tab was open — reload onto the new build.
+        if (isStaleDeploymentError(err) && reloadOnce()) return;
+        setError("Couldn't save that. Try again.");
+      }
+    });
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <SectionHeading>Buy-in</SectionHeading>
+        <span className="text-xs font-medium text-ink-mute tabular-nums">
+          {valid ? `${formatMoney(buyInCents + feeCents)} total` : "—"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label htmlFor="group-buy-in" className="mb-1.5 block">
+            <Label className="text-ink-mute">Buy in ($)</Label>
+          </label>
+          <input
+            id="group-buy-in"
+            inputMode="decimal"
+            value={buyIn}
+            disabled={pending}
+            onChange={(e) => setBuyIn(e.target.value)}
+            className={AMOUNT_INPUT_CLASS}
+          />
+        </div>
+        <div>
+          <label htmlFor="group-site-fee" className="mb-1.5 block">
+            <Label className="text-ink-mute">Site fee ($)</Label>
+          </label>
+          <input
+            id="group-site-fee"
+            inputMode="decimal"
+            value={fee}
+            disabled={pending}
+            onChange={(e) => setFee(e.target.value)}
+            className={AMOUNT_INPUT_CLASS}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" disabled={!dirty || pending} onClick={save}>
+          {pending ? "Saving…" : saved ? "Saved" : "Save"}
+        </Button>
+        <p className="text-xs text-ink-mute">Shown on everyone&apos;s account page.</p>
+      </div>
+      {!valid ? (
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
+          <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Enter a dollar amount of zero or more.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
+          <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** Cents to the editable dollar string — "2000" becomes "20", "2150" "21.50". */
+function dollars(cents: number): string {
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
+}
+
+/**
+ * The dollar string back to cents, or null when it isn't a number.
+ *
+ * `Number("")` is 0 and `Number(" ")` is 0, which would turn an emptied field
+ * into a silent "free league" rather than an error — hence the explicit blank
+ * check before the parse.
+ */
+function toCents(input: string): number | null {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value * 100);
 }
 
 /**
@@ -217,6 +369,10 @@ export function AdminSettingsModal({
             </p>
           ) : null}
         </section>
+
+        {/* Buy-in amount — the paid/unpaid flag for each member is in Members
+            below, so both halves of what the account page prints are set here. */}
+        <BuyInAmountSection group={group} />
 
         {/* Members */}
         <MembersSection groupId={group.id} members={members} />

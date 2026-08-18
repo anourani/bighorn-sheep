@@ -8,9 +8,19 @@ import {
   formatDayClock,
   formatFull,
   formatLong,
+  formatMonthDay,
+  formatWeekdayDate,
 } from "@/lib/time";
 
-type Mode = "clock" | "clockzone" | "date" | "dayclock" | "full" | "long";
+type Mode =
+  | "clock"
+  | "clockzone"
+  | "date"
+  | "dayclock"
+  | "full"
+  | "long"
+  | "monthday"
+  | "weekdaydate";
 
 function format(iso: string, mode: Mode, timeZone?: string): string {
   const opts = { timeZone };
@@ -19,6 +29,8 @@ function format(iso: string, mode: Mode, timeZone?: string): string {
   if (mode === "date") return formatDate(iso, opts);
   if (mode === "full") return formatFull(iso, opts);
   if (mode === "long") return formatLong(iso, opts);
+  if (mode === "monthday") return formatMonthDay(iso, opts);
+  if (mode === "weekdaydate") return formatWeekdayDate(iso, opts);
   return formatDayClock(iso, opts);
 }
 

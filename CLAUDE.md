@@ -36,7 +36,16 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0003_group_create_and_pick_flags` → `0004_profile_names_avatars` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
 `0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
-`0009_public_standings`.
+`0009_public_standings` → `0010_account_closure_and_league_buy_in`.
+
+**0010 is what the redesigned account page reads and writes**, and until it is
+applied that page shows a $0 buy-in and Delete Account fails with
+`close_failed`. It adds `groups.buy_in_cents` / `site_fee_cents`, the
+policy-less `account_closures` table, `close_own_account()` and
+`set_group_buy_in()`, and **redefines `set_member_buy_in` so `buy_in_paid_at` is
+stamped on every change** rather than only the paid branch — the card prints
+"UNPAID · Updated 10/21", which 0007's `else null` made unrenderable. Replayable;
+0007 is untouched.
 
 **0009 needs a second, separate statement.** Applying it publishes nothing; the
 landing page stays in its no-data state until a row is inserted into
@@ -443,25 +452,73 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     key.
   - **The function takes no arguments.** A group id or invite code parameter
     would make it a universal standings reader for every league in the project.
-- **The account page's "Your League" and "Preferences" sections are hidden.**
-  `/app/account` is title → `ProfileCard` → Log out. Both sections are gated
-  behind `SHOW_LEAGUE_AND_PREFERENCES` in
-  `src/components/account/AccountClient.tsx` — the markup is intact and flipping
-  the constant to `true` restores them exactly as they were, so don't read the
-  `LeagueCard` / `PreferenceRow` helpers, or the `statusLabel` and
-  `BUY_IN_LABEL` imports (this is their only call site in `src/`), as dead code.
+- **The account page is two 322px columns in a 656px block, and every number in
+  it is transcribed from the mock-ups.** `/app/account` is title → [Personal
+  Details | For the Common Good] → More → Log Out on desktop, and reorders to
+  … → Log Out → More on a phone. `SHOW_LEAGUE_AND_PREFERENCES` and its two hidden
+  sections are **gone** — the redesign supersedes them, and `git log` is where
+  they live now. Seven things are load-bearing:
+  - **`lg` is where it turns over**, as everywhere else in the app, and the
+    column is `max-w-[656px]` inside `main`'s 968 (`max-w-shell` less its
+    `px-4`). The two columns are 322 + 12 + 322. Blocks are 32px apart on a phone
+    and 48px on a desktop; the two columns are 32px apart stacked and 12px apart
+    side by side, which is a real difference in the mock-ups and not rounding.
+  - **DOM order is not visual order.** Log Out carries `order-3 lg:order-4` and
+    More `order-4 lg:order-3`, rather than the button being rendered twice.
+    `.stagger` animates on `:nth-child`, which `order` leaves alone.
+  - **`variant="primary"` cannot be repainted black**, which is why
+    `SPEC_BUTTON_DARK` in `src/components/account/spec.ts` pairs with
+    `variant="ghost"`. `bg-brand-sheen` is a background *image*, so a background
+    *colour* lands in a different tailwind-merge group and the gradient survives;
+    and `shadow-none` loses to `shadow-panel-sm` outright, because tailwind-merge
+    does not recognise `panel-sm` as a shadow size and so never treats the two as
+    alternatives — CSS source order then favours the `extend`ed one. The button
+    ships with a soft drop shadow under it and nothing errors. Measured, not
+    reasoned about; same family as `Label`'s `text-label-md` trap.
+  - **The favorite-animal chevron is drawn beside real text, with the `<select>`
+    invisible on top at `opacity-0`.** A select's box is as wide as its *widest
+    option*, not the one showing, so a chevron pinned to its right edge sat 70px
+    past "Koala" at the card's edge. The select is still the interactive element,
+    so the iOS wheel and the platform keyboard behaviour are unchanged.
+  - **The unpaid buy-in card wears a 5px `#A71930` cap and squares its top
+    corners; the paid one has neither.** That cap is the only thing that
+    distinguishes the two states from across the page.
+  - **The "More" rows are 8px radius where every card above them is 4px.** In the
+    design at both widths — not a slip waiting to be unified.
+  - **The invite row hides once entry closes**, matching `InviteCta` on
+    Standings: the code still exists but `join_by_invite` refuses it. Its link is
+    built from `NEXT_PUBLIC_APP_URL ?? window.location.origin`, not
+    `StandingsClient`'s `?? "https://bighorn.example"`, which is a domain that
+    does not exist.
+
   Two consequences worth knowing:
-  - **The flag does not gate the way into a league.** A viewer who belongs to no
-    league gets a "Join an Existing League" section in that same slot, rendered
-    on `!activeLeague` alone. The two are mutually exclusive states — hiding the
-    league card can never hide the invite field — so a player who signs in before
-    anyone invites them can join from this page. `/app` and `/app/standings`
-    still offer the same `JoinByCode` through `NoLeagueState`; three entry points
-    is intentional.
-  - **`loadAccount` still fetches the league data** the hidden card wanted
-    (`src/lib/league/load.ts`, the `group_members` and `groups` queries). That
-    is deliberate: trimming it would change the shared `AccountData` shape and
-    make un-hiding a multi-file job — and `activeLeague` is now load-bearing
-    anyway, since it decides whether the join tile shows. `SPEC_BUTTON`'s
-    docblock in `ProfileCard.tsx` likewise still describes sharing its style with
-    the Preferences card's "Install App" — true of the code, not of the screen.
+  - **The 160px avatar portrait is gone from this page.** It is not in either
+    mock-up. The Favorite Animal row is still the app's only avatar picker, so a
+    player chooses their animal here and sees it on Standings.
+  - **The flag never gated the way into a league, and still doesn't.** A viewer
+    who belongs to none gets "Join an Existing League" in the Common Good column
+    instead, on `!activeLeague` alone. `/app` and `/app/standings` offer the same
+    `JoinByCode` through `NoLeagueState`; three entry points is intentional.
+
+- **Deleting an account closes it. It does not delete anything.** "Delete
+  Account" in the Danger Zone opens a confirm sheet and then writes one row to
+  `account_closures` (0010) through `close_own_account()`. The player's profile,
+  membership, picks and strikes all survive, because their line on the standings
+  board is part of the season's record — `toMember` already tolerated a missing
+  profile and `public_league_snapshot` already `left join`s profiles, so nothing
+  on Standings changed at all. Three things are load-bearing:
+  - **Closure is a policy-less side table, not a `profiles.deleted_at` column.**
+    0001's `"profiles update own"` lets a user UPDATE their own row and RLS cannot
+    restrict *which columns* — so a column would be clearable by the very account
+    it locks out, with the anon key, from the browser. A table with RLS on and no
+    INSERT/UPDATE/DELETE policies can only be written by a definer function. The
+    absence of those policies **is** the enforcement.
+  - **`src/app/app/layout.tsx` is the only place the lockout is enforced**, via
+    `accountClosed()`, and that function **fails open**: any error — the table
+    absent because 0010 has not been applied, a dropped connection — resolves to
+    "not closed". Failing closed would turn one unapplied migration into the whole
+    league being locked out at once.
+  - **There is no way back from inside the app**, by design. Reopening is
+    `delete from public.account_closures where id = '<uuid>'` in the SQL editor
+    until an admin control ships. Permanently removing someone from the standings
+    board is that same follow-up and does not exist yet.

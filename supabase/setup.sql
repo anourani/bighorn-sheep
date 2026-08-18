@@ -1043,3 +1043,159 @@ $$;
 
 revoke all on function public.public_league_snapshot() from public;
 grant execute on function public.public_league_snapshot() to anon, authenticated;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0010 — account closure, and a per-league buy-in amount.
+--
+-- See supabase/migrations/0010_account_closure_and_league_buy_in.sql for the
+-- full rationale, particularly why closure is a policy-less side table rather
+-- than a `profiles.deleted_at` column (RLS cannot restrict which columns an
+-- update writes, so a self-clearable lockout is not a lockout) and why the
+-- buy-in amount goes through an RPC despite `groups` already having an admin
+-- UPDATE policy (same reason, one table over).
+--
+-- The set_member_buy_in below REPLACES the copy defined earlier in this file:
+-- the timestamp now records every change rather than only the paid branch, so
+-- the account page can print "UNPAID · Updated 10/21". Order matters — this
+-- bundle is meant to be read and run top to bottom.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+alter table public.groups
+  add column if not exists buy_in_cents integer not null default 2000;
+alter table public.groups
+  add column if not exists site_fee_cents integer not null default 100;
+
+alter table public.groups drop constraint if exists groups_buy_in_cents_nonneg;
+alter table public.groups
+  add constraint groups_buy_in_cents_nonneg check (buy_in_cents >= 0);
+alter table public.groups drop constraint if exists groups_site_fee_cents_nonneg;
+alter table public.groups
+  add constraint groups_site_fee_cents_nonneg check (site_fee_cents >= 0);
+
+-- Closing an account is not a delete: the player's profile, membership, picks
+-- and strikes all survive, because their line on the standings board is part of
+-- the league's record for the season. RLS on, and deliberately no insert /
+-- update / delete policies — the absence is what stops a closed account
+-- clearing its own lockout with the anon key.
+--
+-- To reopen an account:
+--   delete from public.account_closures where id = '<user-uuid>';
+create table if not exists public.account_closures (
+  id        uuid primary key references public.profiles (id) on delete cascade,
+  closed_at timestamptz not null default now()
+);
+
+alter table public.account_closures enable row level security;
+
+drop policy if exists "account closure read" on public.account_closures;
+create policy "account closure read" on public.account_closures
+  for select to authenticated
+  using (id = auth.uid() or public.is_admin_for_member(id));
+
+create or replace function public.close_own_account()
+returns public.account_closures
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  closed public.account_closures;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  insert into public.account_closures (id)
+  values (auth.uid())
+  on conflict (id) do nothing;
+
+  select * into closed from public.account_closures where id = auth.uid();
+  return closed;
+end;
+$$;
+
+revoke all on function public.close_own_account() from public;
+grant execute on function public.close_own_account() to authenticated;
+
+create or replace function public.set_group_buy_in(
+  p_group_id       uuid,
+  p_buy_in_cents   integer,
+  p_site_fee_cents integer
+)
+returns public.groups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated public.groups;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  if not public.is_group_admin(p_group_id) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+
+  if p_buy_in_cents is null or p_site_fee_cents is null
+     or p_buy_in_cents < 0 or p_site_fee_cents < 0 then
+    raise exception 'bad_amount' using errcode = '22023';
+  end if;
+
+  update public.groups
+     set buy_in_cents   = p_buy_in_cents,
+         site_fee_cents = p_site_fee_cents
+   where id = p_group_id
+  returning * into updated;
+
+  if not found then
+    raise exception 'group_not_found' using errcode = 'P0002';
+  end if;
+
+  return updated;
+end;
+$$;
+
+revoke all on function public.set_group_buy_in(uuid, integer, integer) from public;
+grant execute on function public.set_group_buy_in(uuid, integer, integer) to authenticated;
+
+create or replace function public.set_member_buy_in(
+  p_group_id uuid,
+  p_user_id  uuid,
+  p_paid     boolean
+)
+returns public.group_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated public.group_members;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  if not public.is_group_admin(p_group_id) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+
+  update public.group_members
+     set buy_in_paid    = p_paid,
+         buy_in_paid_at = now()
+   where group_id = p_group_id
+     and user_id  = p_user_id
+  returning * into updated;
+
+  if not found then
+    raise exception 'member_not_found' using errcode = 'P0002';
+  end if;
+
+  return updated;
+end;
+$$;
+
+revoke all on function public.set_member_buy_in(uuid, uuid, boolean) from public;
+grant execute on function public.set_member_buy_in(uuid, uuid, boolean) to authenticated;

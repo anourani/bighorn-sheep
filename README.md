@@ -105,13 +105,20 @@ select 'function: ' || f,
        then 'PRESENT' else 'MISSING' end
 from unnest(array['account_exists','create_group','join_by_invite',
                   'invite_preview','hidden_pick_user_ids','handle_new_user',
-                  'public_league_snapshot']) f
+                  'public_league_snapshot','set_member_buy_in','set_group_buy_in',
+                  'close_own_account']) f
 union all
 select 'table: ' || t,
        case when exists (select 1 from information_schema.tables
          where table_schema='public' and table_name=t)
        then 'PRESENT' else 'MISSING' end
-from unnest(array['public_league']) t
+from unnest(array['public_league','profile_private','account_closures']) t
+union all
+select 'column: groups.' || c,
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='groups' and column_name=c)
+       then 'PRESENT' else 'MISSING' end
+from unnest(array['buy_in_cents','site_fee_cents']) c
 union all
 select 'bucket: avatars',
        case when exists (select 1 from storage.buckets where id='avatars')
@@ -120,6 +127,11 @@ order by 1;
 ```
 
 Fully migrated means everything PRESENT **except** `display_name`, which 0004 drops.
+
+`set_member_buy_in` being PRESENT does not tell you whether 0010's *redefinition*
+of it ran — the name is 0007's. The two `groups` columns beside it do, since they
+land in the same file. If they are MISSING, the account page shows a $0 buy-in and
+"UNPAID" with no date, and Delete Account fails with `close_failed`.
 
 `public_league` being PRESENT only means 0009 ran. It does **not** mean the
 landing page is showing anything — publishing is a separate, deliberate step:

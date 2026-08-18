@@ -103,6 +103,51 @@ function ordinalSuffix(day: number): string {
   }
 }
 
+/**
+ * A bare numeric date — "10/21".
+ *
+ * The account page's buy-in card prints when an admin last moved the paid flag,
+ * beside a badge that already says what the flag is. That line is metadata, not
+ * a deadline, so it wants the shortest unambiguous form and no weekday. Pinned
+ * to en-US for the same reason {@link formatLong} is: month-first is the form
+ * the design shows, and honouring the browser locale would silently turn it into
+ * 21/10 for half the world while the card around it stays in dollars.
+ *
+ * Returns "" on an unparseable timestamp rather than "Invalid Date" — the line
+ * is decorative, and a broken column value should drop it, not shout.
+ */
+export function formatMonthDay(iso: string, opts: FmtOpts = {}): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    timeZone: opts.timeZone,
+  });
+}
+
+/**
+ * A date with its weekday, no clock — "Sunday, August 15".
+ *
+ * For the buy-in card's deadline sentence, which reads "Anyone who doesn't pay
+ * by ___ will be removed from the league". {@link formatLong} is the wrong tool
+ * there: it appends an ordinal and a time ("Sunday, August 15th at 1:00 PM
+ * EDT"), which is right for a kickoff and reads as false precision for a
+ * money deadline.
+ *
+ * en-US and "" on a bad value, for the same reasons as {@link formatMonthDay}.
+ */
+export function formatWeekdayDate(iso: string, opts: FmtOpts = {}): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: opts.timeZone,
+  });
+}
+
 export function weekdayShort(iso: string, opts: FmtOpts = {}): string {
   return new Date(iso)
     .toLocaleDateString(undefined, { weekday: "short", timeZone: opts.timeZone })

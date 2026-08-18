@@ -367,6 +367,111 @@ export async function setMemberBuyIn(input: {
 }
 
 /**
+ * Set what the pot costs, for one league. Admin-only.
+ *
+ * Goes through the set_group_buy_in RPC rather than a plain `.update()`, and the
+ * reason is the same one 0007 gives for `set_member_buy_in` one table over:
+ * `groups` DOES have an admin UPDATE policy (0001), but RLS cannot restrict
+ * WHICH COLUMNS an update writes, so shipping the first client-side `groups`
+ * update would hand the browser `invite_code`, `entry_closes_at`,
+ * `elimination_type` and `tie_rule` along with the two it wants.
+ *
+ * Dollars are converted to cents by the caller. Validated here as well as in the
+ * function body and the column's check constraint — three gates, because the
+ * only one a determined caller cannot skip is the last.
+ */
+export async function setGroupBuyIn(input: {
+  groupId: string;
+  buyInCents: number;
+  siteFeeCents: number;
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const buyInCents = Math.round(input.buyInCents);
+    const siteFeeCents = Math.round(input.siteFeeCents);
+    if (
+      !Number.isFinite(buyInCents) ||
+      !Number.isFinite(siteFeeCents) ||
+      buyInCents < 0 ||
+      siteFeeCents < 0
+    ) {
+      return { ok: false, error: "bad_amount" };
+    }
+
+    const { error } = await supabase.rpc("set_group_buy_in", {
+      p_group_id: input.groupId,
+      p_buy_in_cents: buyInCents,
+      p_site_fee_cents: siteFeeCents,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      // A missing function means 0010 has not been applied to this database.
+      // Worth its own code for the same reason 0007's was: the symptom is
+      // otherwise indistinguishable from a permissions problem, and nothing in
+      // this repo applies migrations (see CLAUDE.md).
+      const reason = msg.includes("not_admin")
+        ? "not_admin"
+        : msg.includes("bad_amount")
+          ? "bad_amount"
+          : msg.includes("group_not_found")
+            ? "group_not_found"
+            : "buy_in_update_failed";
+      console.error("[setGroupBuyIn] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Close the viewer's own account.
+ *
+ * Deliberately NOT a delete. The profile, membership, picks and strikes all
+ * survive, because the player's line on the standings board is part of the
+ * league's record for the season — removing someone from the board for good is
+ * an admin action and does not exist yet. All this writes is a row in
+ * `account_closures` (0010), which `/app`'s layout reads to redirect them to
+ * `/account-closed`.
+ *
+ * The RPC takes no argument: it writes `auth.uid()`, so there is no id for a
+ * caller to substitute, and there is no reopen counterpart for the same reason
+ * the flag is not a `profiles.deleted_at` column — the account being closed must
+ * not be able to open itself.
+ *
+ * Does not sign the caller out; the client does that, because `signOut()` clears
+ * cookies the browser holds and this runs on the server.
+ */
+export async function closeOwnAccount(): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("close_own_account");
+    if (error) {
+      console.error("[closeOwnAccount] rpc failed", error);
+      return { ok: false, error: "close_failed" };
+    }
+
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
  * Switch which league every screen renders — My Picks, Standings, the header
  * survivor strip. Stored in a cookie rather than a route param so it survives a
  * cold start and needs no change to any existing link.

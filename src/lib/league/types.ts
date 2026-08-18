@@ -37,6 +37,18 @@ export interface Group {
   entryClosesAt: string;
   /** Set once Week 1 picks begin; rules are frozen after this. */
   settingsLockedAt?: string | null;
+  /**
+   * What the pot costs, in cents (migration 0010), set by an admin through the
+   * `set_group_buy_in` RPC. Two numbers rather than one because the account
+   * page prints both the total and the breakdown — "$21" over "$20 buy in + $1
+   * site fee" — and deriving one from the other either way loses information.
+   *
+   * Cents, not dollars: an integer cannot drift the way a float does, and
+   * `formatMoney` in src/lib/money.ts is the only place that turns it into a
+   * string.
+   */
+  buyInCents: number;
+  siteFeeCents: number;
 }
 
 export interface HistoryPick {

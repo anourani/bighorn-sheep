@@ -58,6 +58,29 @@ export interface Database {
         };
         Relationships: [];
       };
+      /**
+       * One row per player who has closed their own account (0010). Written
+       * only by close_own_account(): RLS is on and there is deliberately no
+       * insert, update or delete policy, because 0001's "profiles update own"
+       * shows why a `profiles.deleted_at` column would not have worked — RLS
+       * cannot restrict which columns an update writes, so the locked-out
+       * account could clear its own lockout with the anon key.
+       *
+       * Closing is not deleting. The profile, membership, picks and strikes all
+       * survive so the standings board keeps its record of the season.
+       */
+      account_closures: {
+        Row: {
+          id: string;
+          closed_at: string;
+        };
+        Insert: {
+          id: string;
+          closed_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["account_closures"]["Insert"]>;
+        Relationships: [];
+      };
       groups: {
         Row: {
           id: string;
@@ -68,6 +91,15 @@ export interface Database {
           invite_code: string;
           entry_closes_at: string;
           settings_locked_at: string | null;
+          /**
+           * What the pot costs, in cents, added in 0010. Writable only through
+           * the set_group_buy_in RPC: `groups` DOES have an admin UPDATE policy,
+           * but RLS cannot restrict which columns it writes, so a direct
+           * .update() would be the first client write path to invite_code and
+           * the rules columns as well.
+           */
+          buy_in_cents: number;
+          site_fee_cents: number;
           created_by: string;
           created_at: string;
         };
@@ -80,6 +112,8 @@ export interface Database {
           invite_code: string;
           entry_closes_at: string;
           settings_locked_at?: string | null;
+          buy_in_cents?: number;
+          site_fee_cents?: number;
           created_by: string;
           created_at?: string;
         };
@@ -232,10 +266,32 @@ export interface Database {
        * Admin-only buy-in write, added in 0007. SECURITY DEFINER because
        * group_members has no UPDATE policy at all; the function re-checks
        * is_group_admin() itself and raises `not_admin` otherwise.
+       *
+       * 0010 redefined the body so buy_in_paid_at is stamped on every change
+       * rather than only when p_paid is true — the account page prints
+       * "UNPAID · Updated 10/21", which the old `else null` made unrenderable.
+       * The signature is unchanged.
        */
       set_member_buy_in: {
         Args: { p_group_id: string; p_user_id: string; p_paid: boolean };
         Returns: Database["public"]["Tables"]["group_members"]["Row"];
+      };
+      /**
+       * Admin-only write of what the pot costs (0010). Raises `not_admin`,
+       * `bad_amount` on a negative, `group_not_found` on an unknown id.
+       */
+      set_group_buy_in: {
+        Args: { p_group_id: string; p_buy_in_cents: number; p_site_fee_cents: number };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      /**
+       * Close the caller's own account (0010). Takes no argument by design —
+       * it writes auth.uid(), so there is no id for a caller to substitute —
+       * and is idempotent, so a retry after a dropped response is a no-op.
+       */
+      close_own_account: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["account_closures"]["Row"];
       };
       invite_preview: {
         Args: { p_code: string };

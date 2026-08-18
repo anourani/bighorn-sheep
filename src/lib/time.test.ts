@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatClockZone, formatDate, formatFull, formatLong } from "./time";
+import {
+  formatClockZone,
+  formatDate,
+  formatFull,
+  formatLong,
+  formatMonthDay,
+  formatWeekdayDate,
+} from "./time";
 
 /**
  * en-US separates the clock from AM/PM with U+202F (narrow no-break space), and
@@ -94,5 +101,40 @@ describe("formatLong", () => {
   // "Invalid Date". One bad kickoff row should not blank the picks page.
   it("returns empty rather than throwing on an unparseable timestamp", () => {
     expect(formatLong("not-a-date")).toBe("");
+  });
+});
+
+describe("formatMonthDay", () => {
+  it("gives a bare numeric date", () => {
+    expect(formatMonthDay(KICKOFF, NY)).toBe("9/13");
+  });
+
+  it("is month-first regardless of the runtime locale", () => {
+    // Pinned to en-US: the buy-in card shows 10/21, and a browser on en-GB
+    // must not silently turn that into 21/10 next to a dollar amount.
+    expect(formatMonthDay("2026-10-21T16:00:00Z", NY)).toBe("10/21");
+  });
+
+  it("resolves in the given zone, not UTC", () => {
+    // 00:30 UTC on the 14th is still the 13th in New York.
+    expect(formatMonthDay("2026-09-14T00:30:00Z", NY)).toBe("9/13");
+  });
+
+  it("returns empty on an unparseable timestamp rather than 'Invalid Date'", () => {
+    expect(formatMonthDay("not a date")).toBe("");
+  });
+});
+
+describe("formatWeekdayDate", () => {
+  it("gives the weekday and date with no ordinal and no clock", () => {
+    expect(formatWeekdayDate(KICKOFF, NY)).toBe("Sunday, September 13");
+  });
+
+  it("differs from formatLong, which is for kickoffs", () => {
+    expect(formatWeekdayDate(KICKOFF, NY)).not.toBe(norm(formatLong(KICKOFF, NY)));
+  });
+
+  it("returns empty on an unparseable timestamp", () => {
+    expect(formatWeekdayDate("")).toBe("");
   });
 });
