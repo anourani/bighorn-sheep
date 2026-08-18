@@ -12,7 +12,10 @@ import type { GroupRules, Member, PickResult, TeamRecord } from "./types";
 
 export type TeamAvailability =
   | { state: "selected" }
-  | { state: "used"; week: number; result: "win" | "loss" | "push" }
+  // `result` is optional: a pick still spends its team before its game has
+  // produced a result, and My Picks builds this map from a used-team list that
+  // carries only the week. `buildTeamStates` still fills it in.
+  | { state: "used"; week: number; result?: "win" | "loss" | "push" }
   | { state: "bye" }
   | { state: "available" };
 
@@ -215,7 +218,7 @@ function isActionable(state: TeamAvailability): boolean {
 export function orderPickerTeams(
   teamIds: TeamId[],
   states: Map<TeamId, TeamAvailability>,
-  opts: { sort: TeamSort; availableOnly: boolean },
+  opts: { sort: TeamSort; availableOnly: boolean; groupUnavailable?: boolean },
   accessors: {
     recordFor: (id: TeamId) => TeamRecord;
     gameFor: (id: TeamId) => Game | undefined;
@@ -231,9 +234,14 @@ export function orderPickerTeams(
 
   return ids.sort((a, b) => {
     // Actionable teams lead; used/bye sink to the bottom (still shown, disabled).
-    const aAct = isActionable(stateFor(a));
-    const bAct = isActionable(stateFor(b));
-    if (aAct !== bAct) return aAct ? -1 : 1;
+    // Opt out with `groupUnavailable: false` and the sort is a pure ranking of
+    // all 32 — which is what the grid layout wants, where a bye team with a good
+    // record is still worth seeing in its rightful place.
+    if (opts.groupUnavailable !== false) {
+      const aAct = isActionable(stateFor(a));
+      const bAct = isActionable(stateFor(b));
+      if (aAct !== bAct) return aAct ? -1 : 1;
+    }
 
     if (opts.sort === "record") {
       const diff = winPct(accessors.recordFor(b)) - winPct(accessors.recordFor(a));

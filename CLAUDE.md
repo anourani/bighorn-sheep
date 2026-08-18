@@ -333,6 +333,66 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
 
 ## Things that are true now and weren't
 
+- **There are two ways to make a pick, and the grid is the default.** `TeamGrid`
+  draws all 32 teams as square cards, one tap to pick; `WeekSchedule` is the old
+  radio-group over the week's matchups and is unchanged. `PickFilters` switches
+  between them, and orders the grid by team record or alphabetically. Six things
+  are load-bearing:
+  - **Both surfaces are handed the same derived values.** `MyPicksClient` already
+    computed the week's `games`, the `usedByTeam` map with its two week-scoped
+    exclusions, `byes`, `pickTeam` and `interactive`, and both layouts take those
+    verbatim. A new rule about what is pickable goes in that one place; putting it
+    in a layout means the other layout disagrees with it, silently.
+  - **The geometry is exact, not approximate**, and both ends come off the
+    mockups. Desktop is six 154.66px cards with 8px gutters inside the 968px
+    column, which is `max-w-shell` (1000) minus the shell's `px-4`. Mobile is
+    three 125.66px cards at 393px, full-bleed via `-mx-4` with 4px of padding and
+    4px gutters. Change `main`'s `px-4` or `max-w-shell` and both stop matching.
+    The column count steps at `480px`/`md`/`lg` — holding three across up to `lg`
+    would draw 328px cards on a tablet. `lg` is still where the *shape* turns
+    over: it is where the grid stops bleeding.
+  - **The selected card's edge is `ring-2 ring-inset`, not a border.** A 2px
+    border sits inside the *content* box as well as the card, which took 4px off
+    the width the logo is sized from — so the logo visibly shrank the moment you
+    picked it, 90.66px to 86.66px. A ring is a box-shadow and costs no layout.
+    Measured, not reasoned about.
+  - **Logos are greyscale at rest and come up in colour on hover or once
+    picked.** Figma reaches that with `mix-blend-luminosity`; over a neutral card
+    that is the same picture as `grayscale`, without the isolation and
+    stacking-context rules a blend mode drags in.
+  - **`TeamLogo` has a `fill` prop** for the desktop logo, which is sized off the
+    column rather than in pixels — `size` is an inline style no breakpoint class
+    can reach, which is why `PickHero` renders three copies. At 32 cards that
+    would have been 64+ `<img>` elements. `max-w-none` is still load-bearing under
+    `fill`: preflight's cap is relative to the intrinsic 500px artwork, not to the
+    box.
+  - **Layout and sort live in `localStorage`** (`lms:picks:*`), so they are
+    per-device and are *not* part of `LeagueData`. `useStoredChoice` renders the
+    default first and reads storage in an effect — seeding state from
+    `localStorage` in a `useState` initializer is a hydration mismatch, since the
+    server has no such thing. The cost is one paint for anyone who changed the
+    setting.
+
+- **Team records are derived on the client, and nothing stores them.** The `games`
+  table has no standings columns and neither `load-schedule` nor `poll-scores`
+  writes any; `TeamRecord` in `src/lib/league/types.ts` had exactly one producer,
+  a demo table in `src/lib/mock/data.ts` that **no file imports**.
+  `recordsThroughWeek` in `src/lib/league/records.ts` folds `gameWinner` over the
+  regular-season schedule the client already holds, counting weeks *strictly
+  before* the one on screen so the badge means "record coming into this week" and
+  doesn't shift between Thursday and Monday night. Two consequences: preseason is
+  excluded outright, and **every team reads 0-0 until the scorer marks a real
+  regular-season game final** — which, per Open issues, has never happened. That
+  is not a bug in the fold.
+
+- **`orderPickerTeams` is no longer dead code.** It was written and unit-tested
+  for a picker that was deleted, and the grid now uses it. It grew one option,
+  `groupUnavailable`, which defaults to `true` purely so its original tests keep
+  meaning what they said; the grid passes `false`, because bye and already-spent
+  cards sort *in place* — "Team Record" is a straight ranking of all 32, and a
+  card must not move merely because you spent it. "ABCs" needs no sort key of its
+  own: `TEAMS` is already alphabetical by city and then nickname.
+
 - **The My Picks pick module is no longer a team-coloured card.** The team's
   colour is three vertical gradient strips behind the logo — `stripGradient` in
   `src/components/picks/pick-hero.ts`, a fixed .25 -> .80 alpha ramp, alternating

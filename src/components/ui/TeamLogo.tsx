@@ -34,11 +34,24 @@ function readableOn(hex: string): string {
 export function TeamLogo({
   teamId,
   size = "md",
+  fill = false,
   className,
 }: {
   teamId: TeamId;
   /** A named size token, or an explicit pixel size. */
   size?: keyof typeof SIZES | number;
+  /**
+   * Fill the containing box instead of taking a fixed size, letterboxing inside
+   * it with `object-contain`. For call sites whose logo is fluid — the pick grid
+   * sizes 32 of them off the column width, and cannot say so in `size` because
+   * the width below is an inline style that no Tailwind class can reach. (That
+   * is why `PickHero` renders three copies behind `md:hidden` / `hidden lg:block`;
+   * 32 cards would have made that 64.)
+   *
+   * `size` still applies to the fallback tile's text, which has no box to scale
+   * against — pass a representative pixel size alongside `fill`.
+   */
+  fill?: boolean;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
@@ -52,12 +65,12 @@ export function TeamLogo({
         role="img"
         aria-label={team ? `${team.location} ${team.name}` : teamId.toUpperCase()}
         className={cn(
-          "inline-grid shrink-0 place-items-center rounded-[6px] font-semibold leading-none ring-1 ring-black/10",
+          "inline-grid place-items-center rounded-[6px] font-semibold leading-none ring-1 ring-black/10",
+          fill ? "h-full w-full" : "shrink-0",
           className,
         )}
         style={{
-          width: px,
-          height: px,
+          ...(fill ? null : { width: px, height: px }),
           backgroundColor: bg,
           color: readableOn(bg),
           fontSize: Math.max(9, Math.round(px * 0.32)),
@@ -82,8 +95,11 @@ export function TeamLogo({
       // site whose container is narrower than `size` silently gets a letterboxed
       // logo instead of the size it asked for. This component's whole contract
       // is "this logo is `size` px"; without it, the contract is a suggestion.
-      className={cn("shrink-0 object-contain max-w-none", className)}
-      style={{ width: px, height: px }}
+      // It matters just as much under `fill`, where `h-full w-full` sets the box:
+      // preflight's cap is relative to the *intrinsic* 500px artwork, not to the
+      // box, so it still wins wherever the parent is narrower.
+      className={cn("object-contain max-w-none", fill ? "h-full w-full" : "shrink-0", className)}
+      style={fill ? undefined : { width: px, height: px }}
     />
   );
 }
