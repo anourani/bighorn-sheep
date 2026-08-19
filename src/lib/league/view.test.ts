@@ -118,6 +118,8 @@ describe("survivorCounts", () => {
       status,
       strikes: 0,
       buyInPaid: false,
+    buyInPaidAt: null,
+    showPreseason: false,
       history: [],
       currentPick: null,
     };

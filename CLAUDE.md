@@ -36,7 +36,8 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0003_group_create_and_pick_flags` → `0004_profile_names_avatars` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
 `0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
-`0009_public_standings` → `0010_account_closure_and_league_buy_in`.
+`0009_public_standings` → `0010_account_closure_and_league_buy_in` →
+`0011_admin_settings`.
 
 **0010 is what the redesigned account page reads and writes**, and until it is
 applied that page shows a $0 buy-in and Delete Account fails with
@@ -46,6 +47,37 @@ policy-less `account_closures` table, `close_own_account()` and
 stamped on every change** rather than only the paid branch — the card prints
 "UNPAID · Updated 10/21", which 0007's `else null` made unrenderable. Replayable;
 0007 is untouched.
+
+**0011 is what the retabbed admin settings modal reads and writes.** Until it is
+applied, renaming the league, editing the rules and the per-member preseason
+toggle all fail with their own error codes, and the Data Feed tab shows its
+unavailable state. Preseason access **fails open**, so nobody loses practice to a
+late migration. Replayable. Three things in it are worth knowing:
+
+- **`set_group_rules` tests two conditions, not one.** 0001 declared
+  `settings_locked_at` to freeze the rules and **nothing in this project has ever
+  written it** — grep: readers only, in the RLS policy, both modals and the mock
+  fixture. A lock gated on that column alone would never fire. The function also
+  tests `entry_closes_at <= now()`, which is the same "the season has started"
+  fact `seasonPhase()` derives everywhere else, and the modal mirrors both.
+- **`set_group_name` deliberately has no lock check at all**, which is the whole
+  feature: 0001's `"groups update by admin (unlocked)"` refuses *every* `groups`
+  write once the season starts, so a typo in a league name was unfixable outside
+  the SQL editor. Name always editable, rules frozen — two definer functions
+  differing by one test, because RLS cannot restrict which columns an update
+  writes.
+- **The `show_preseason` backfill is fenced inside its own column-creation
+  guard**, for 0004's lesson turned around: a bare `UPDATE` out in the file would
+  re-run on every replay and silently re-enable every member an admin had since
+  turned off. It is also non-deterministic (it reads `now()`), so replayable and
+  deterministic are not the same property here.
+
+**Never widen a `select()` to name a column a pending migration adds.** PostgREST
+raises `42703` on an unknown column rather than returning undefined, so
+`submitPick` selecting `show_preseason` before 0011 landed would have made
+`membership` null and turned *every pick in the app* into `not_a_member` — one
+late migration escalating from "an admin panel is broken" to "nobody can play".
+It uses `select("*")` and reads `?? true`.
 
 **0009 needs a second, separate statement.** Applying it publishes nothing; the
 landing page stays in its no-data state until a row is inserted into
@@ -428,6 +460,76 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
   - **The strips take the same ramp for all 32 teams**, so a dark team (LV
     `#000000`, CLE `#311D00`) reads as a grey-to-black bar. That is accepted, not
     an oversight.
+
+- **The admin settings modal is three tabs, and the league name lives above
+  them.** Members (roster, two switches per row, invite, buy-in amount), Rules,
+  Data Feed. Five things are load-bearing:
+  - **Nothing inside it may scroll.** The tab bar is a plain flow child — not
+    sticky, not `overflow-x-auto` — and no panel carries `max-h` or `overflow`.
+    `Modal.tsx`'s panel (`max-h-[92vh] overflow-y-auto`) stays the only scroller
+    in the tree, so a short tab doesn't scroll and a long one scrolls the whole
+    modal. A taller two-switch roster row is exactly what tempts a `max-h-64` in
+    there; there is a comment above the `<ul>` saying so.
+  - **The name is above the tab bar, not in a tab.** It names the thing all three
+    tabs are about, and it replaced `Modal`'s static `description={group.name}`.
+    In a tab, "rename any time" would have meant "rename any time you're on the
+    right tab".
+  - **`ui/Tabs.tsx` is a real tablist; `ui/Segmented.tsx` is not, and is still
+    unused.** `Segmented` puts `role="tablist"`/`role="tab"` on a plain value
+    selector with no panels, so extending it would have left every other caller
+    claiming a role it doesn't fulfil. The visual treatment is deliberately
+    identical. `tabs.ts`'s `nextTabIndex` **wraps**, where `week-strip.ts`'s
+    `nextIndex` **clamps** — WAI-ARIA wraps for tabs, and the strip clamps
+    because arrowing off Week 1 onto Week 18 would fling its scroller.
+  - **The rules editor is native radios in a `<fieldset disabled>`**, not a
+    `Segmented`. Disabling propagates for free, and a second `role="tablist"`
+    inside a dialog that already has one would be a real a11y bug.
+  - **Only the active panel is rendered**, not hidden. It keeps the modal exactly
+    as tall as what's on screen, and it makes "fetch the feed status when the
+    Data Feed tab opens" fall out of mount rather than needing a visibility
+    effect. The active tab is plain `useState` and survives close/reopen, because
+    `Modal` returns null when closed so only its *subtree* unmounts.
+
+- **The score feed's health is a real reading now.** The Data Feed tab used to
+  print a hardcoded `ESPN · healthy` Pill beside a permanently `disabled` "Enter
+  a result manually" button. `poll-scores` now routes every terminal return
+  through a `finish()` funnel that writes 0011's one-row `feed_status` — the same
+  argument the file already made for logging, extended to the database. Three
+  things:
+  - **Two timestamps, and that is the point.** `checked_at` is stamped on every
+    run; `last_ok_at` only advances on success. A fresh one beside a stale other
+    reads as "we're checking and it's failing", which is a different message from
+    "nothing has run at all".
+  - **Staleness is the only way a dead scorer is detectable.** If Netlify stops
+    invoking the function, nothing is written at all and `status` stays whatever
+    it last was, forever. `describeFeed` therefore tests the age of `checked_at`
+    *before* it looks at `status`.
+  - **The status write can never fail the run.** A missing `feed_status` costs
+    observability, never scoring. `checked_at` and the read's `now` both come
+    from Postgres, so "checked 3 minutes ago" can't go negative across two
+    machines' clocks.
+
+- **Preseason access is per member, and it is one condition in the loader.**
+  0011's `group_members.show_preseason`, set by an admin. `load.ts` simply stops
+  building `LeagueData.practice` for a switched-off viewer, and that alone
+  removes the preseason chips from the week strip and the practice grid from
+  Standings — `MyPicksClient` already fell back to the live regular week when a
+  selected preseason week left the strip, because entry closing mid-session does
+  the same thing. Four consequences:
+  - **It gates access, not just visibility.** `submitPick` refuses a preseason
+    pick from a switched-off member; a Server Action gated only in the UI isn't
+    gated.
+  - **Existing preseason picks survive**, because the round is derived at read
+    time. Turning it off hides history rather than deleting it.
+  - **It does not remove anyone from the round for OTHER viewers.**
+    `derivePractice` still folds over every member, so a switched-off player
+    keeps their line on an admin's practice table. The flag gates your access to
+    the round, not your existence in it.
+  - **`LeagueData.practiceEnabled` exists because a null `practice` has two
+    causes.** Before it, a null mid-preseason rendered *nothing* between the
+    status report and the foot of Standings — no heading, no explanation. The two
+    empty states are "your admin hasn't turned this on" and "no preseason
+    schedule is loaded", and they can't be told apart from the null alone.
 
 - **There is no create-a-league path.** One standalone league for the inaugural
   season, so every player arrives via an invite code. `CreateGroupModal` and the

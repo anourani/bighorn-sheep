@@ -81,6 +81,42 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["account_closures"]["Insert"]>;
         Relationships: [];
       };
+      /**
+       * One row, upserted by the scheduled scorer — see migration 0011. RLS is
+       * on with NO policies, so this is unreadable with the anon key and
+       * reachable only through `feed_status_for_admin`; the writer is the
+       * service role, which bypasses RLS.
+       */
+      feed_status: {
+        Row: {
+          singleton: boolean;
+          /** Heartbeat — written on EVERY run, succeeded or not. */
+          checked_at: string;
+          status: "ok" | "error";
+          detail: string;
+          provider: string;
+          season: number | null;
+          /** Only advanced by a run that succeeded — never cleared by a failing one. */
+          last_ok_at: string | null;
+          games_upserted: number;
+          members_updated: number;
+          error: string | null;
+        };
+        Insert: {
+          singleton?: boolean;
+          checked_at?: string;
+          status?: "ok" | "error";
+          detail?: string;
+          provider?: string;
+          season?: number | null;
+          last_ok_at?: string | null;
+          games_upserted?: number;
+          members_updated?: number;
+          error?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["feed_status"]["Insert"]>;
+        Relationships: [];
+      };
       groups: {
         Row: {
           id: string;
@@ -136,6 +172,13 @@ export interface Database {
            */
           buy_in_paid: boolean;
           buy_in_paid_at: string | null;
+          /**
+           * Whether the preseason practice round exists for this member — both
+           * the weeks in their picker and their ability to pick one. Admin-set
+           * through set_member_preseason (0011); same no-UPDATE-policy caveat as
+           * buy_in_paid above.
+           */
+          show_preseason: boolean;
           joined_at: string;
         };
         Insert: {
@@ -148,6 +191,7 @@ export interface Database {
           eliminated_week?: number | null;
           buy_in_paid?: boolean;
           buy_in_paid_at?: string | null;
+          show_preseason?: boolean;
           joined_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["group_members"]["Insert"]>;
@@ -292,6 +336,66 @@ export interface Database {
       close_own_account: {
         Args: Record<string, never>;
         Returns: Database["public"]["Tables"]["account_closures"]["Row"];
+      };
+      /**
+       * Rename a league (0011). Deliberately NOT gated on settings_locked_at:
+       * 0001's admin UPDATE policy refuses every `groups` write once the season
+       * locks, which is what made a post-kickoff typo unfixable outside the SQL
+       * editor. Raises `not_admin`, `name_required`, `name_too_long`,
+       * `group_not_found`.
+       */
+      set_group_name: {
+        Args: { p_group_id: string; p_name: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      /**
+       * Edit the rules (0011) — the counterpart to set_group_name, and the half
+       * that DOES enforce the lock — on `settings_locked_at` OR
+       * `entry_closes_at <= now()`, because nothing has ever written the former.
+       * Raises `not_admin`, `bad_elimination_type`, `bad_tie_rule`,
+       * `settings_locked`, `group_not_found`.
+       */
+      set_group_rules: {
+        Args: { p_group_id: string; p_elimination_type: string; p_tie_rule: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      /**
+       * Admin-only write of a member's preseason access (0011). Raises
+       * `not_admin`, `member_not_found`.
+       */
+      set_member_preseason: {
+        Args: { p_group_id: string; p_user_id: string; p_show: boolean };
+        Returns: Database["public"]["Tables"]["group_members"]["Row"];
+      };
+      /**
+       * The scorer's write path (0011). Granted to `service_role` only — the
+       * browser must never reach it. Kept here so the shape is documented.
+       */
+      record_feed_sync: {
+        Args: {
+          p_status: "ok" | "error";
+          p_detail: string;
+          p_provider: string;
+          p_season: number | null;
+          p_games_upserted?: number;
+          p_members_updated?: number;
+          p_error?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["feed_status"]["Row"];
+      };
+      /**
+       * The scorer's last-run record (0011). The group id proves the caller is
+       * an admin; it does not select which row — there is only one.
+       *
+       * `unknown` rather than a shape, matching public_league_snapshot: it
+       * returns jsonb `{ now, sync }`, where `sync` is null until the poller has
+       * run. `now` is the DATABASE's clock, so "checked 3 minutes ago" cannot go
+       * negative against a Netlify container's. Mapped by mapFeedStatus in
+       * src/lib/league/feed.ts. Raises `not_admin`.
+       */
+      feed_status_for_admin: {
+        Args: { p_group_id: string };
+        Returns: unknown;
       };
       invite_preview: {
         Args: { p_code: string };

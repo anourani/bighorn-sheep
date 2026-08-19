@@ -20,6 +20,19 @@ export function getNflProvider(): NflProvider {
   return cached;
 }
 
+/**
+ * Which provider `getNflProvider()` will build, as a bare string.
+ *
+ * `NFL_PROVIDER` is server-side only — deliberately not `NEXT_PUBLIC_` — so the
+ * browser cannot read it. The admin modal's Data Feed tab therefore has to be
+ * TOLD the provider, and the scorer records this alongside each run. Sharing one
+ * source of truth with `getNflProvider` is what stops the recorded name and the
+ * instantiated provider drifting apart.
+ */
+export function nflProviderName(): string {
+  return (process.env.NFL_PROVIDER ?? "espn").toLowerCase() === "mock" ? "mock" : "espn";
+}
+
 /** For tests that need to force a specific provider. */
 export function __setNflProvider(provider: NflProvider | null): void {
   cached = provider;

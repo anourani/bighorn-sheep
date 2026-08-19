@@ -147,6 +147,11 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
       favoriteAnimal: null,
       phone: null,
       buyInPaid: false,
+      // Neither travels on the public payload, and neither is rendered there:
+      // `public_league_snapshot` filters to season_type = 'regular', so preseason
+      // is absent by construction rather than by this flag.
+      buyInPaidAt: null,
+      showPreseason: false,
       role: m.role === "admin" ? "admin" : "player",
       status: m.status === "eliminated" ? "eliminated" : "alive",
       strikes: typeof m.strikes === "number" ? m.strikes : 0,

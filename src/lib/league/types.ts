@@ -92,6 +92,23 @@ export interface Member {
    * set_member_buy_in RPC.
    */
   buyInPaid: boolean;
+  /**
+   * When an admin last touched {@link buyInPaid}, either direction. 0010
+   * redefined `set_member_buy_in` to stamp it on every change — 0007's `else
+   * null` cleared it on unpaid, which made "UNPAID · Updated 10/21"
+   * unrenderable. Null means nobody has ever set it.
+   */
+  buyInPaidAt: string | null;
+  /**
+   * Whether the preseason practice round exists for this member at all — the
+   * weeks in their picker AND their ability to pick one (migration 0011).
+   * Admin-set through the set_member_preseason RPC; `group_members` has no
+   * UPDATE policy, so there is no other write path.
+   *
+   * Reads FAIL OPEN (`?? true`): a dropped read or an unapplied 0011 must not
+   * take practice away from the whole league.
+   */
+  showPreseason: boolean;
   eliminatedWeek?: number | null;
   history: HistoryPick[];
   currentPick?: CurrentPick | null;

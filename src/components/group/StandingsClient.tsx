@@ -17,7 +17,8 @@ import type { LeagueData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
 export function StandingsClient({ data }: { data: LeagueData }) {
-  const { group, currentWeek, finalWeek, nowIso, phase, hiddenPickUserIds, practice } = data;
+  const { group, currentWeek, finalWeek, nowIso, phase, hiddenPickUserIds, practice, practiceEnabled } =
+    data;
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const idx = useMemo(() => buildGameIndex(data.games), [data.games]);
   const me = data.members.find((m) => m.id === data.viewer.id);
@@ -26,7 +27,17 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   const [rulesOpen, setRulesOpen] = useState(false);
 
   const ranked = useMemo(() => rankMembers(data.members), [data.members]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://bighorn.example";
+  /*
+   * Empty string, not "https://bighorn.example" — a domain that does not exist,
+   * so the old fallback handed out invite links nobody could open. The modal
+   * falls back to `window.location.origin`, matching /app/account.
+   *
+   * This fixes the MISSING case only. NEXT_PUBLIC_* is inlined at build time and
+   * this one is set as "same value in all deploy contexts", so a deploy preview
+   * still hands out production links — that is a Netlify dashboard setting, not
+   * something code can reach (see CLAUDE.md).
+   */
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const isPreseason = phase === "preseason";
 
   const practiceIdx = useMemo(
@@ -148,7 +159,25 @@ export function StandingsClient({ data }: { data: LeagueData }) {
               hiddenPickUserIds={practice.hiddenPickUserIds}
             />
           </section>
-        ) : null
+        ) : (
+          /*
+           * Without this the page has a hole in it. The branch renders the
+           * practice table during preseason and the real standings after it, so
+           * a null `practice` mid-preseason used to emit NOTHING between the
+           * status report and the foot of the page — no heading, no explanation.
+           *
+           * Two quite different causes land here, which is why `practiceEnabled`
+           * exists as its own flag rather than being inferred from the null.
+           */
+          <section className="mt-7 lg:mt-12">
+            <SectionHeader title="Practice Standings" />
+            <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
+              {practiceEnabled
+                ? "No preseason schedule has been loaded yet, so there's nothing to practise against."
+                : "Preseason practice isn't switched on for you. Your league admin can turn it on from Settings."}
+            </p>
+          </section>
+        )
       ) : (
         <section className="mt-7 lg:mt-12">
           <SectionHeader title="Standings" />
@@ -197,6 +226,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           group={group}
           members={data.members}
           appUrl={appUrl}
+          phase={phase}
         />
       ) : null}
     </div>
