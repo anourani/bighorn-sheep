@@ -129,11 +129,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
        null when closed, so neither ever occupied an :nth-child slot on load. */
     <>
       {/* No `space-y-*` here any more. The redesign gives the first three blocks
-          a rhythm of their own (tiles → 20px → status report → 28/60px → table)
+          a rhythm of their own (tiles → 20px → status report → 20/48px → table)
           that a single uniform gap can't express, and `space-y-6`'s `> * + *`
           selector outranks a child's own `mt-*` on specificity, so it can't be
           overridden per child either. `stagger` stays: it keys the entrance
-          animation off direct children, and the count below is unchanged. */}
+          animation off direct children, and the count below is unchanged.
+
+          The desktop 48 reads as 60 on screen because StatusReport carries its
+          own `lg:py-3`; the mockup measures the box, so the margin is 48. */}
       <div className="stagger">
         <LeagueDetails
           group={group}
@@ -157,7 +160,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
 
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
-            <section className="mt-7 lg:mt-12">
+            <section className="mt-5 lg:mt-12">
               <SectionHeader title="Practice Standings" />
               <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
                 A real run-through — a wrong pick strikes you here too. None of it carries over: this
@@ -185,7 +188,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              * Two quite different causes land here, which is why `practiceEnabled`
              * exists as its own flag rather than being inferred from the null.
              */
-            <section className="mt-7 lg:mt-12">
+            <section className="mt-5 lg:mt-12">
               <SectionHeader title="Practice Standings" />
               <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
                 {practiceEnabled
@@ -195,7 +198,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             </section>
           )
         ) : (
-          <section className="mt-7 lg:mt-12">
+          <section className="mt-5 lg:mt-12">
             <SectionHeader title="Standings" />
             <div className="mt-3">
               <StandingsGrid

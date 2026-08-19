@@ -33,10 +33,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="relative mx-auto flex min-h-dvh max-w-shell flex-col">
       <AppHeader />
-      {/* pb-12, not the pb-28 this had while a fixed bottom tab bar sat over the
-          page. All navigation is in the header now, so the only job left for the
-          bottom padding is to keep the last row off the viewport edge. */}
-      <main className="flex-1 px-4 pb-12 pt-5">{children}</main>
+      {/* The page rhythm, straight off the mockups: 40px above the first block
+          and 80px below the last on a phone, 64/128 from `lg`. The desktop pair
+          looks lopsided written down and isn't — the mockup pads its section by
+          64 and then pads the page wrapper by another 64, so the foot of the
+          page is deliberately twice its head.
+
+          `px-4` is a separate contract and must not move with these: StatusReport,
+          StandingsGrid, WeekStrip and TeamGrid all full-bleed by cancelling it
+          with `-mx-4`. Nothing cancels the vertical padding — there is no `-mt-*`
+          anywhere in src/ — so the two can be reasoned about apart.
+
+          Historical note, since the number has now moved twice: this was `pb-28`
+          while a fixed bottom tab bar sat over the page, then `pb-12` once
+          navigation folded into the header. Neither was a design value. */}
+      <main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">{children}</main>
     </div>
   );
 }

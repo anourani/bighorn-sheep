@@ -437,6 +437,37 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The page rhythm is one line, and page roots must not add to it.** `main` in
+  `src/app/app/layout.tsx` is `px-4 pb-20 pt-10 lg:pb-32 lg:pt-16` — 40px above the
+  first block and 80px below the last on a phone, 64/128 from `lg`. The desktop pair
+  is asymmetric on purpose: the mockup pads its section by 64 and then pads the page
+  wrapper by another 64, so the foot of the page is twice its head. It replaced a flat
+  `pt-5 pb-12` that predated the mockups. Three things follow:
+  - **No page root may carry vertical padding of its own.** `NoLeagueState` did — a
+    `py-6` that put the no-league screen 24px lower than every other screen — and that
+    is the failure mode to expect from the next route, because a root that pads itself
+    looks completely fine in isolation. It is only wrong *relative* to its siblings,
+    and nothing renders two page roots at once.
+  - **`px-4` on that same element is a separate contract.** `StatusReport`,
+    `StandingsGrid`, `WeekStrip` and `TeamGrid` full-bleed by cancelling it with
+    `-mx-4`. Nothing cancels the vertical padding — there is no `-mt-*` anywhere in
+    `src/` — so the two halves of that class string can be changed independently, and
+    only the horizontal half has downstream readers.
+  - **The breakpoint is `lg`, like everything else.** At `md` the page would take
+    desktop padding while `WeekStrip`, `StandingsGrid`, `PickHero` and the account
+    grid are all still phone-shaped.
+
+- **`MyPicksClient`'s root has no `space-y-*`, and that is load-bearing.** The mockup
+  butts the pick module straight against the week selector — `PickHero`'s own
+  `py-10 lg:py-12` is the whole gap. A root `space-y-4` stacked 16px on top and made
+  that seam 56/64px against the designed 40/48. Removing it is all-or-nothing:
+  `space-y-*` compiles to `> * + *`, which outranks a child's own `mt-*` on
+  specificity, so no single child can opt out. Every other block therefore carries an
+  explicit `mt-4` — the same trade `StandingsClient` already made, for the same
+  reason. The preseason banner carries `my-4` rather than `mt-4`, because it sits
+  *between* the strip and the module and a top-only margin would collapse the second
+  seam while fixing the first.
+
 - **There are two ways to make a pick, and the grid is the default.** `TeamGrid`
   draws all 32 teams as square cards, one tap to pick; `WeekSchedule` is the old
   radio-group over the week's matchups and is unchanged. `PickFilters` switches
