@@ -16,10 +16,9 @@ import { nextTabIndex, panelId, tabId } from "./tabs";
  *
  * NOTHING HERE MAY SCROLL, and that has not changed. The bar is never
  * `overflow-x-auto` and panels carry no `max-h`/`overflow`; the containing
- * dialog's panel — `Modal`'s `max-h-[92vh]` or `Drawer`'s `max-h-[90dvh]` —
- * stays the only scroller in the tree, so a short tab doesn't scroll at all and
- * a long one scrolls as one dialog rather than trapping a scrollbar inside a
- * tab.
+ * dialog owns the one scroller in the tree — `Modal`'s panel, or the body of
+ * `Drawer`'s fixed-height panel — so a short tab doesn't scroll at all and a
+ * long one scrolls as one dialog rather than trapping a scrollbar inside a tab.
  *
  * The bar being a plain flow child DID change, and only inside `Drawer`, where
  * the admin panel pins it in the sticky header. Sticky is a pin, not a scroll

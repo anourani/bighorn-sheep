@@ -91,7 +91,7 @@ export function CommonGood({ league }: { league: LeagueSummary }) {
             {view.updatedIso ? (
               <span className="text-[12px] font-medium leading-[1.4] tracking-[-0.12px] text-shell-mute">
                 Updated{" "}
-                <LocalTime iso={view.updatedIso} mode="monthday" />
+                <LocalTime iso={view.updatedIso} mode="monthdayclock" />
               </span>
             ) : null}
           </div>

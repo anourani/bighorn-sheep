@@ -45,7 +45,7 @@ applied that page shows a $0 buy-in and Delete Account fails with
 policy-less `account_closures` table, `close_own_account()` and
 `set_group_buy_in()`, and **redefines `set_member_buy_in` so `buy_in_paid_at` is
 stamped on every change** rather than only the paid branch — the card prints
-"UNPAID · Updated 10/21", which 0007's `else null` made unrenderable. Replayable;
+"UNPAID · Updated 10/21, 2:47 PM", which 0007's `else null` made unrenderable. Replayable;
 0007 is untouched.
 
 **0011 is what the admin settings drawer reads and writes**, and it went
@@ -539,6 +539,24 @@ reading, but only the first kind is the lesson.
     `vh` is the *large* viewport — it ignores the URL bar — so `92vh` on a
     bottom-pinned panel puts its last ~60px under the browser chrome. `Modal`
     escapes this only by centring from `sm`.
+  - **The height is FIXED at `h-[90dvh]`, not `max-h`.** It was `max-h` — sized
+    to whichever tab was open — and because a sheet anchored to the bottom edge
+    grows *upward*, switching tabs made the header lurch rather than the foot
+    settle. One height for all three.
+  - **The drawer slides both ways, and that costs a third state.** `rendered`
+    outlives `open` for the length of `drawer-down`, and the scroll lock, the
+    focus trap and the focus restore all key off `rendered` — releasing them on
+    `open` would unlock the page and hand focus back while a panel is still on
+    screen. Unmounting is driven by `animationend` with a 500ms `setTimeout`
+    backstop, because a missed event would otherwise strand the drawer on screen
+    with the page locked behind it. `prefers-reduced-motion` needs no special
+    case: `globals.css` clamps every duration to `0.001ms`, so it fires next
+    frame. **`Modal` deliberately does NOT do this** and still vanishes on close.
+  - **The close button is absolutely positioned in the panel's corner**, not laid
+    out with the title, and the `pr-12` that keeps the title clear of it is on
+    the header ROW rather than on `DRAWER_RAIL`. Padding the rail would inset the
+    header's text 48px from the body's rail and break the alignment with the page
+    behind, which is the drawer's whole premise.
   - **The drawer must not be a child of `.stagger`.** `globals.css`'s
     `.stagger > *` applies `reveal-up 0.5s both` with an `:nth-child` delay, and a
     dialog rendered as a direct child inherits it on its own `fixed inset-0`
@@ -555,8 +573,11 @@ reading, but only the first kind is the lesson.
     lines up with the page behind it. macOS/iOS overlay scrollbars hide the
     problem, which is why it would otherwise ship looking fine.
   - **Nothing inside it may scroll.** No panel carries `max-h` or `overflow`; the
-    `Drawer` panel (`max-h-[90dvh] overflow-y-auto`) is the only scroller, so a
-    short tab doesn't scroll and a long one scrolls the whole drawer. A
+    drawer's BODY (`min-h-0 flex-1 overflow-y-auto`, a flex sibling of the fixed
+    header) is the only scroller, so a short tab doesn't scroll and a long one
+    scrolls the whole drawer. The `min-h-0` is not optional — a flex child
+    defaults to `min-height: auto` and refuses to shrink below its content, so
+    without it the panel grows past 90dvh and the page behind scrolls instead. A
     sixteen-row roster is exactly what tempts a `max-h-64` in there; there is a
     comment above the `<ul>` saying so.
   - **The tab bar IS now sticky, inside the drawer's header — a deliberate
@@ -606,6 +627,26 @@ reading, but only the first kind is the lesson.
     the season started, which was honest when the whole tab froze together and is
     a false claim about half the tab now. `locked` is no longer computed in the
     export at all.
+
+- **The buy-in stamp carries a TIME, and that is not decoration.** It used to be
+  `formatMonthDay` — "10/21" and nothing else — on both the admin roster and the
+  member's account card. An admin toggling the paid switch off and back on the
+  same afternoon then watched the date beside it never move, because two
+  different writes formatted to the same six characters. The database was
+  correct (0010 stamps `now()` on every change, both directions) and the refresh
+  was correct (the stamp reads a prop, not the optimistic overlay); the FORMAT
+  was throwing the change away. `formatMonthDayClock` replaced it outright, and
+  `formatMonthDay` is gone rather than left unused. A stamp that cannot show a
+  same-day change is not a stamp.
+
+- **The roster's optimistic overrides are pruned once the server agrees.**
+  `paidOverrides` / `preseasonOverrides` cover the gap between the tap and the
+  refresh, and nothing used to clear them — so an override outlived its write and
+  shadowed the server for the life of the mounted drawer, hiding any change made
+  by another admin. `pruneAgreed` drops entries matching the incoming prop on
+  each `members` identity change. Pruning on AGREEMENT, not on write-success, is
+  what keeps it safe: an entry whose write is still in flight disagrees with the
+  prop it hasn't landed in yet, so it survives and the switch doesn't flicker.
 
 - **The score feed's health is a real reading, and an admin can trigger one.**
   The Data Feed tab used to print a hardcoded `ESPN · healthy` Pill beside a

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { XIcon } from "@/components/icons";
@@ -33,27 +33,36 @@ export const DRAWER_RAIL = "mx-auto w-full max-w-shell px-4";
  * would also have to decide whether the focus trap and focus restore below apply
  * to Modal's five callers, and either answer is wrong.
  *
- * Three slots beyond `children`, all inside the sticky header:
- *   - `title`/`eyebrow` — the identity, on the first line with the close button.
+ * Three slots beyond `children`, all inside the fixed header:
+ *   - `title`/`eyebrow` — the identity, on the first line.
  *   - `aside` — sits BESIDE the title from `lg` and wraps under it below. One
- *     instance, reordered, never two behind `lg:hidden`: the admin drawer puts
- *     its league-name field here, and a second copy would duplicate the input's
- *     `id` and split its React state.
+ *     instance, never two behind `lg:hidden`: the admin drawer puts its
+ *     league-name field here, and a second copy would duplicate the input's `id`
+ *     and split its React state.
  *   - `subheader` — a full-rail row at the foot of the header. The tab bar.
  *
- * THE PANEL IS THE ONLY SCROLLER. The header is `sticky`, which pins without
- * scrolling; nothing inside `children` may take `max-h` or `overflow`, or a
- * short tab gains a scrollbar and a long one gains two.
+ * The close button is not a slot. It is absolutely positioned in the panel's
+ * top-right corner rather than laid out with the title, because it is chrome for
+ * the drawer and the rail's right edge is nowhere near the corner at 1000px.
  *
- * `if (!open) return null` unmounts the subtree, which is deliberate and
- * load-bearing for the caller: state held OUTSIDE the drawer (the admin panel's
- * active tab) survives close and reopen, state inside it resets.
+ * FIXED HEIGHT, and the body is the only scroller. The panel is `h-[90dvh]` in
+ * every state, so the drawer does not resize as you move between tabs — sizing
+ * to content meant the header lurched, since a sheet anchored to the bottom edge
+ * grows upward. The header is a `shrink-0` flex sibling and the body is
+ * `min-h-0 flex-1 overflow-y-auto`; nothing inside `children` may take `max-h`
+ * or `overflow`, or a short tab gains a scrollbar and a long one gains two.
  *
- * No exit animation, matching every other dialog here. Playing one means keeping
- * the panel mounted past `open === false` until `animationend`, so a third
- * "closing" state exists that every caller must not reopen through — and
- * `prefers-reduced-motion` clamps animations to 0.001ms globally, so that path
- * has to work at zero duration anyway. It disappears the frame `onClose` fires.
+ * It unmounts once closed, which is deliberate and load-bearing for the caller:
+ * state held OUTSIDE the drawer (the admin panel's active tab) survives close
+ * and reopen, state inside it resets.
+ *
+ * IT SLIDES BOTH WAYS. That costs the third state the rest of this file keeps
+ * having to mention — `rendered` outlives `open` for the length of the slide
+ * down — and it is why the scroll lock, the focus trap and the focus restore all
+ * key off `rendered`: releasing them on `open` would unlock the page and hand
+ * focus back while a panel is still sitting on screen. `Modal` deliberately does
+ * NOT do this and still vanishes on close; its five callers are small centred
+ * cards, where an instant dismissal reads fine.
  */
 export function Drawer({
   open,
@@ -76,6 +85,45 @@ export function Drawer({
   const returnRef = useRef<HTMLElement | null>(null);
 
   /*
+   * Two booleans, because "closing" is a real state and not the absence of one.
+   *
+   * `open` is the caller's intent; `rendered` is whether anything is on screen.
+   * They diverge for exactly one interval — the length of the slide down — and
+   * everything below keys off `rendered` rather than `open` for that reason: the
+   * page must stay scroll-locked and focus must stay trapped while a panel is
+   * still visibly there.
+   */
+  const [rendered, setRendered] = useState(open);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      // Also covers reopening mid-close. Clearing `closing` swaps the class back
+      // to `animate-drawer-up`, and a changed animation-name restarts the
+      // animation on its own — there is nothing else to undo.
+      setRendered(true);
+      setClosing(false);
+    } else if (rendered) {
+      setClosing(true);
+    }
+  }, [open, rendered]);
+
+  /*
+   * Backstop. If `animationend` never arrives — a display:none ancestor, a
+   * browser quirk, an animation cancelled out from under us — the drawer would
+   * otherwise sit on screen forever with the page locked behind it, which is a
+   * far worse failure than no animation at all.
+   */
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => {
+      setRendered(false);
+      setClosing(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [closing]);
+
+  /*
    * `onClose` through a ref so the effect below can depend on `open` ALONE.
    *
    * Callers pass an inline arrow (`onClose={() => setSettingsOpen(false)}`), so
@@ -93,7 +141,7 @@ export function Drawer({
   });
 
   useEffect(() => {
-    if (!open) return;
+    if (!rendered) return;
 
     // Captured before we steal focus, restored on the way out, so closing the
     // drawer puts the caret back on the gear that opened it.
@@ -116,11 +164,29 @@ export function Drawer({
       const back = returnRef.current;
       if (back?.isConnected) back.focus();
     };
-  }, [open]);
+  }, [rendered]);
 
   // `typeof document` guards the portal during SSR. The drawer only ever renders
   // from a client interaction, so this is a type-level concern, not a real one.
-  if (!open || typeof document === "undefined") return null;
+  if (!rendered || typeof document === "undefined") return null;
+
+  /*
+   * The slide is over; take the drawer down.
+   *
+   * `e.target !== e.currentTarget` is load-bearing: animationend BUBBLES, so
+   * every animated descendant — and there are several, the scrim aside — would
+   * otherwise end the close early, on its own schedule.
+   *
+   * No special case for `prefers-reduced-motion`, though it looks like one is
+   * needed. globals.css clamps every animation-duration to 0.001ms !important,
+   * so this fires on the next frame and the drawer simply disappears, which is
+   * what reduced motion asks for.
+   */
+  function onPanelAnimationEnd(e: React.AnimationEvent<HTMLDivElement>) {
+    if (!closing || e.target !== e.currentTarget) return;
+    setRendered(false);
+    setClosing(false);
+  }
 
   function onPanelKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Tab") return;
@@ -147,7 +213,11 @@ export function Drawer({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className={cn(
+        "fixed inset-0 z-50 flex items-end justify-center",
+        // A departing scrim must not swallow the click that reopens the drawer.
+        closing && "pointer-events-none",
+      )}
       role="dialog"
       aria-modal="true"
       aria-label={typeof title === "string" ? title : undefined}
@@ -156,29 +226,60 @@ export function Drawer({
         aria-label="Close dialog"
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-ink/45 backdrop-blur-[2px] animate-scrim-in"
+        className={cn(
+          "absolute inset-0 cursor-default bg-ink/45 backdrop-blur-[2px]",
+          closing ? "animate-scrim-out" : "animate-scrim-in",
+        )}
       />
       <div
         ref={panelRef}
         tabIndex={-1}
         onKeyDown={onPanelKeyDown}
+        onAnimationEnd={onPanelAnimationEnd}
         className={cn(
-          "relative z-10 w-full rounded-t-card bg-white shadow-lift outline-none",
+          "relative z-10 flex w-full flex-col rounded-t-card bg-white shadow-lift outline-none",
           // `dvh`, not `vh`. On iOS Safari `vh` is the LARGE viewport — it
           // ignores the URL bar — so a panel pinned to the bottom edge puts its
           // last ~60px under the browser chrome. Modal escapes this by centring
-          // from `sm`. `max-h`, not `h`: the drawer is as tall as whatever tab is
-          // open, since only the active panel is rendered.
-          "max-h-[90dvh] overflow-y-auto overscroll-contain",
-          "animate-drawer-up",
+          // from `sm`.
+          //
+          // `h`, not `max-h`: one height for every tab. Sizing to content made
+          // the drawer jump as you moved between Members and Data Feed, and a
+          // panel anchored to the bottom edge grows UPWARD, so the jump was the
+          // header lurching rather than the foot settling.
+          "h-[90dvh]",
+          closing ? "animate-drawer-down" : "animate-drawer-up",
         )}
       >
-        <div className="sticky top-0 z-20 border-b border-line bg-white/95 backdrop-blur">
+        {/* `relative` for the close button below; `shrink-0` so the header keeps
+            its height and the body absorbs the slack. No longer `sticky`: at a
+            fixed height the header is structurally fixed, so there is nothing to
+            pin it against and nothing scrolls under it — hence a solid
+            background rather than the old translucent one. */}
+        <div className="relative shrink-0 border-b border-line bg-white">
+          {/* The X sits in the DRAWER's corner, not the rail's — it is chrome
+              for the panel, and at 1000px the rail's right edge is nowhere near
+              the corner your thumb goes to. `right-3 top-3` against the header,
+              which is why that wrapper is `relative`. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-control text-ink-mute transition-colors hover:bg-[#F1F2F5] hover:text-ink"
+          >
+            <XIcon className="h-5 w-5" />
+          </button>
+
           {/* Its own rail, not one wrapper around the whole panel: the header's
               background and hairline must span the full viewport width while the
               text inside them stays on the rail. */}
           <div className={cn(DRAWER_RAIL, "py-3 lg:py-4")}>
-            <div className="flex flex-wrap items-start gap-x-4 gap-y-3 lg:flex-nowrap lg:items-center">
+            {/* `pr-12` on the ROW, never on DRAWER_RAIL. Padding the rail would
+                inset this text 48px from the body's rail and break the alignment
+                with the page behind, which is the whole premise of the drawer.
+                On the row it reclaims exactly the space the X used to occupy, so
+                nothing else moves. */}
+            <div className="flex flex-wrap items-start gap-x-4 gap-y-3 pr-12 lg:flex-nowrap lg:items-center">
               <div className="min-w-0 flex-1 lg:flex-none">
                 {eyebrow ? <Label className="text-brand-strong">{eyebrow}</Label> : null}
                 <h2
@@ -191,21 +292,12 @@ export function Drawer({
                 </h2>
               </div>
 
-              {/* DOM order is not visual order — the same `order-*` trick the
-                  account page uses for Log Out / More. The close button is
-                  rendered before `aside` so it keeps its place at the right edge
-                  when `aside` wraps to its own line below `lg`. */}
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="order-2 grid h-9 w-9 shrink-0 place-items-center rounded-control text-ink-mute transition-colors hover:bg-[#F1F2F5] hover:text-ink lg:order-3"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-
+              {/* No `order-*` any more. That existed only to keep the close
+                  button at the right edge once `aside` wrapped below `lg`; with
+                  the button lifted out of this row, wrapping is the whole
+                  behaviour. */}
               {aside ? (
-                <div className="order-3 w-full lg:order-2 lg:w-auto lg:min-w-0 lg:max-w-[460px] lg:flex-1">
+                <div className="w-full lg:w-auto lg:min-w-0 lg:max-w-[460px] lg:flex-1">
                   {aside}
                 </div>
               ) : null}
@@ -215,11 +307,22 @@ export function Drawer({
           </div>
         </div>
 
-        {children ? (
-          <div className={cn(DRAWER_RAIL, "py-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]")}>
-            {children}
-          </div>
-        ) : null}
+        {/* THE ONE SCROLLER. It moved here from the panel when the panel took a
+            fixed height, and there is still exactly one: nothing inside
+            `children` may take `max-h` or `overflow`, or a short tab gains a
+            scrollbar and a long one gains two.
+
+            `min-h-0` is not optional. A flex child defaults to
+            `min-height: auto`, which refuses to shrink below its content — leave
+            it off and the panel grows past 90dvh instead of this box
+            scrolling. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {children ? (
+            <div className={cn(DRAWER_RAIL, "py-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]")}>
+              {children}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>,
     document.body,
