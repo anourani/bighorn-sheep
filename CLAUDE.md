@@ -301,6 +301,73 @@ recover users' browsers en masse.
 
 ---
 
+## Page layout: what a new page inherits, and what it must not add
+
+Every `/app` route renders inside one `<main>` — `src/app/app/layout.tsx` — and that
+element owns the whole page frame:
+
+```
+<main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">
+```
+
+40px above the first block and 80px below the last on a phone; 64 and 128 from `lg`.
+Those are the mockups' numbers. The desktop pair is asymmetric on purpose — the mockup
+pads its section by 64 and then pads the page wrapper by another 64, so the foot of a
+page is deliberately twice its head. Don't "balance" it.
+
+**A new page therefore adds no vertical padding of its own: no `py-*`, `pt-*`, `pb-*`
+or `mt-*` on its root.** Every `src/app/app/*/page.tsx` is a thin Server Component
+whose body is a load, a guard and a client root, so that client root is where this
+goes wrong — a root that pads itself looks completely correct in isolation. It is only
+wrong *relative to the other routes*, and nothing renders two page roots at once, so
+nobody sees it. `NoLeagueState` carried a `py-6` for exactly this reason and sat 24px lower
+than every other screen for as long as it existed.
+
+Five more rules, roughly in the order they come up:
+
+- **`px-4` on that same element is a separate contract.** `StatusReport`,
+  `StandingsGrid`, `WeekStrip` and `TeamGrid` full-bleed by cancelling it with `-mx-4`
+  (plus `lg:mx-0` where the bleed stops at desktop). Nothing cancels the *vertical*
+  padding — there is no `-mt-*` anywhere in `src/` — so the two halves of that class
+  string move independently, and only the horizontal half has downstream readers.
+- **The breakpoint is `lg` (1024px), never `md`.** It is the app's single turn-over
+  width: `WeekStrip`, `StandingsGrid`, `PickHero` and the account grid all change shape
+  there, and `max-w-shell` (1000px) less its `px-4` only reaches its full 968px
+  content column around that width. `md` steps *scale* only, so a page that turns over
+  there takes desktop padding while every component inside it is still phone-shaped.
+- **Think twice before putting `space-y-*` on a page root.** It compiles to `> * + *`,
+  which outranks a child's own `mt-*` on specificity, so no single child can opt out —
+  it is all-or-nothing. `StandingsClient` and `MyPicksClient` both dropped theirs for
+  that reason and give each block an explicit `mt-*` instead. Use `space-y-*` only when
+  every block genuinely wants the same gap and none of them owns its own seam.
+- **A component carrying the design's own top and bottom padding owns the seam around
+  it, and the page adds nothing.** `PickHero` is `py-10 lg:py-12` straight off its
+  Figma frame, and that module is *supposed* to butt against the week strip — so a
+  sibling gap stacked on top is not extra breathing room, it is the wrong number. This
+  is the same mistake as a self-padding page root, one level down.
+- **`.stagger` is animation only.** It sets `reveal-up` and `:nth-child` delays and
+  contributes no spacing whatsoever, so adding a root to it changes no layout and
+  removing spacing from a root changes no animation. It does mean a measurement taken
+  before the animation settles reads 12px low — `reveal-up` starts at
+  `translateY(12px)` — which looks exactly like a padding bug.
+
+**Routes outside `/app` inherit none of this.** `/`, `/login`, `/account-closed` and
+`/offline` each render their own `<main>`, and `<body>` carries no padding.
+`global-error.tsx` ships its own `<html>`/`<body>` with inline styles, and Tailwind
+never reaches it at all.
+
+**Verify by measuring, not by eye**, per the debugging protocol below — Tailwind's JIT
+compiles a class it cannot find to *nothing*, so a typo like `lg:pb-32x` fails silently
+and presents as padding that "didn't take":
+
+```js
+const m = document.querySelector('main');
+[getComputedStyle(m).paddingTop, getComputedStyle(m).paddingBottom];
+// 40px / 80px below lg, 64px / 128px from lg
+```
+
+---
+
 ## Styling traps that have already bitten
 
 **Tailwind's preflight caps every image at `max-width: 100%`, and that outranks
@@ -437,25 +504,12 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
-- **The page rhythm is one line, and page roots must not add to it.** `main` in
-  `src/app/app/layout.tsx` is `px-4 pb-20 pt-10 lg:pb-32 lg:pt-16` — 40px above the
-  first block and 80px below the last on a phone, 64/128 from `lg`. The desktop pair
-  is asymmetric on purpose: the mockup pads its section by 64 and then pads the page
-  wrapper by another 64, so the foot of the page is twice its head. It replaced a flat
-  `pt-5 pb-12` that predated the mockups. Three things follow:
-  - **No page root may carry vertical padding of its own.** `NoLeagueState` did — a
-    `py-6` that put the no-league screen 24px lower than every other screen — and that
-    is the failure mode to expect from the next route, because a root that pads itself
-    looks completely fine in isolation. It is only wrong *relative* to its siblings,
-    and nothing renders two page roots at once.
-  - **`px-4` on that same element is a separate contract.** `StatusReport`,
-    `StandingsGrid`, `WeekStrip` and `TeamGrid` full-bleed by cancelling it with
-    `-mx-4`. Nothing cancels the vertical padding — there is no `-mt-*` anywhere in
-    `src/` — so the two halves of that class string can be changed independently, and
-    only the horizontal half has downstream readers.
-  - **The breakpoint is `lg`, like everything else.** At `md` the page would take
-    desktop padding while `WeekStrip`, `StandingsGrid`, `PickHero` and the account
-    grid are all still phone-shaped.
+- **`main` no longer carries a flat `pt-5 pb-12`.** It predated the mockups; the page
+  frame is now `px-4 pb-20 pt-10 lg:pb-32 lg:pt-16` and every route inherits it.
+  `NoLeagueState` lost the `py-6` that had it sitting 24px below every other screen.
+  The rules a new page has to follow are their own section — **Page layout: what a new
+  page inherits, and what it must not add** — rather than repeated here, because two
+  copies of a number is how this file goes stale.
 
 - **`MyPicksClient`'s root has no `space-y-*`, and that is load-bearing.** The mockup
   butts the pick module straight against the week selector — `PickHero`'s own
