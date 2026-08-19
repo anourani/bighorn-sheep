@@ -311,18 +311,26 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         </div>
       ) : null}
 
-      <div className="mt-4">
-        {/* Replaces the visible "Schedule" heading the week strip absorbed, so
-            heading-jump navigation still reaches the grid. */}
-        <h2 className="sr-only">Schedule</h2>
+      <div className="mt-4 lg:mt-8">
+        {/* sr-only below lg — replaces the visible "Schedule" heading the week
+            strip absorbed, so heading-jump navigation still reaches the grid.
+            From lg it's revealed beside the filters (Figma's "Select a Team",
+            justify-between against the Layout/Sort row); mobile has no such
+            heading in the mockups, so it stays sr-only there. The row's own
+            mb-6/lg:mb-5 is the 24px/20px gap down to whatever follows —
+            replaces PickFilters' old flat mb-4. */}
+        <div className="mb-6 flex flex-col lg:mb-5 lg:flex-row lg:items-start lg:justify-between">
+          <h2 className="sr-only lg:not-sr-only lg:text-[16px] lg:font-semibold lg:uppercase lg:leading-[1.1] lg:text-shell-mute">
+            Select a Team
+          </h2>
 
-        <PickFilters
-          layout={layout}
-          onLayoutChange={setLayout}
-          sort={sort}
-          onSortChange={setSort}
-          className="mb-4"
-        />
+          <PickFilters
+            layout={layout}
+            onLayoutChange={setLayout}
+            sort={sort}
+            onSortChange={setSort}
+          />
+        </div>
 
         {!isCurrent ? (
           <p className="mb-2.5 text-xs text-ink-mute">
