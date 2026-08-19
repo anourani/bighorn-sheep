@@ -14,11 +14,21 @@ import { nextTabIndex, panelId, tabId } from "./tabs";
  * future segmented control to a concept it doesn't have. The visual treatment is
  * deliberately identical; the semantics are not.
  *
- * NOTHING HERE MAY SCROLL. The bar is a plain flow child — not sticky, not
- * `overflow-x-auto` — and panels carry no `max-h`/`overflow`. `Modal`'s panel
- * (`max-h-[92vh] overflow-y-auto`) stays the only scroller in the tree, so a
- * short tab doesn't scroll at all and a long one scrolls as one modal rather
- * than trapping a scrollbar inside a tab.
+ * NOTHING HERE MAY SCROLL, and that has not changed. The bar is never
+ * `overflow-x-auto` and panels carry no `max-h`/`overflow`; the containing
+ * dialog's panel — `Modal`'s `max-h-[92vh]` or `Drawer`'s `max-h-[90dvh]` —
+ * stays the only scroller in the tree, so a short tab doesn't scroll at all and
+ * a long one scrolls as one dialog rather than trapping a scrollbar inside a
+ * tab.
+ *
+ * The bar being a plain flow child DID change, and only inside `Drawer`, where
+ * the admin panel pins it in the sticky header. Sticky is a pin, not a scroll
+ * region, so the invariant above is untouched — but the reason it used to be a
+ * flow child is worth keeping: in a 480px modal the bar was never more than a
+ * short scroll from the top of the viewport, so pinning it bought nothing and
+ * cost vertical space. At 90dvh with a sixteen-row roster under it, it scrolls
+ * out of sight and the tabs become unreachable without scrolling back. The
+ * caller decides by wrapping; nothing in this file assumes either.
  */
 
 export interface TabOption<T extends string> {

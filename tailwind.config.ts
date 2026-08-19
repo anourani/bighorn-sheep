@@ -169,6 +169,22 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(12px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        // A whole panel height, not a card's 12px nudge. Paired with `scrim-in`
+        // rather than fading itself: a sheet that slides AND fades reads as two
+        // effects competing, so the scrim does all the fading.
+        "drawer-up": {
+          from: { transform: "translateY(100%)" },
+          to: { transform: "translateY(0)" },
+        },
+        // The scrim used to borrow `reveal-up`, which starts at
+        // translateY(12px) — so an `absolute inset-0` scrim sat 12px low for the
+        // length of the animation, leaving the top 12px of the viewport
+        // unscrimmed and unblurred. Invisible behind a 480px card; a bright band
+        // across the top of the screen behind a full-bleed drawer.
+        "scrim-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
         "reveal-mask": {
           from: { opacity: "0", clipPath: "inset(0 0 100% 0)" },
           to: { opacity: "1", clipPath: "inset(0 0 0 0)" },
@@ -187,6 +203,10 @@ const config: Config = {
       },
       animation: {
         "reveal-up": "reveal-up 0.5s cubic-bezier(0.22,1,0.36,1) both",
+        // 0.32s, not reveal-up's 0.5s: the travel is a full panel height rather
+        // than 12px, and half a second of that reads as lag rather than grace.
+        "drawer-up": "drawer-up 0.32s cubic-bezier(0.22,1,0.36,1) both",
+        "scrim-in": "scrim-in 0.2s ease both",
         "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
         "pulse-live": "pulse-live 1.6s ease-in-out infinite",
         drift: "drift 9s ease-in-out infinite",

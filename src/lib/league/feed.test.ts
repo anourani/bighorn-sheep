@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  FEED_MANUAL_COOLDOWN_MS,
   FEED_STALE_AFTER_MS,
   agoLabel,
   describeFeed,
+  describeFeedDetail,
+  feedCheckedRecently,
   mapFeedStatus,
   providerLabel,
   type FeedSnapshot,
@@ -159,3 +162,56 @@ describe("providerLabel", () => {
 function iso(agoMs: number): string {
   return new Date(Date.parse(NOW) - agoMs).toISOString();
 }
+
+describe("feedCheckedRecently", () => {
+  it("is false when nothing has ever run — a manual check is exactly what's wanted", () => {
+    expect(feedCheckedRecently(null, FEED_MANUAL_COOLDOWN_MS)).toBe(false);
+    expect(feedCheckedRecently({ now: NOW, sync: null }, FEED_MANUAL_COOLDOWN_MS)).toBe(false);
+  });
+
+  it("blocks a second check inside the cooldown", () => {
+    expect(feedCheckedRecently(snapshot(10_000), FEED_MANUAL_COOLDOWN_MS)).toBe(true);
+  });
+
+  it("allows one again past the cooldown, and exactly at the boundary", () => {
+    expect(feedCheckedRecently(snapshot(FEED_MANUAL_COOLDOWN_MS), FEED_MANUAL_COOLDOWN_MS)).toBe(false);
+    expect(feedCheckedRecently(snapshot(5 * 60_000), FEED_MANUAL_COOLDOWN_MS)).toBe(false);
+  });
+
+  it("fails OPEN on an unreadable timestamp rather than stranding the button", () => {
+    const bad: FeedSnapshot = { now: NOW, sync: { ...snapshot(0).sync!, checkedAt: "not-a-date" } };
+    expect(feedCheckedRecently(bad, FEED_MANUAL_COOLDOWN_MS)).toBe(false);
+  });
+
+  it("treats a future timestamp as just-checked, matching agoLabel's clamp", () => {
+    // ageMs clamps at zero, so clock skew reads as 0ms old — inside any cooldown.
+    expect(feedCheckedRecently(snapshot(-90_000), FEED_MANUAL_COOLDOWN_MS)).toBe(true);
+  });
+});
+
+describe("describeFeedDetail", () => {
+  it("names the scoring verdict with its week", () => {
+    expect(describeFeedDetail("scored-through-week-3")).toBe("Scored through Week 3");
+    expect(describeFeedDetail("scored-through-week-18")).toBe("Scored through Week 18");
+  });
+
+  it("translates every non-scoring verdict the funnel writes", () => {
+    expect(describeFeedDetail("no-schedule-loaded")).toBe("No schedule loaded yet");
+    expect(describeFeedDetail("preseason-only")).toBe("Preseason games only — nothing to score");
+    expect(describeFeedDetail("schedule-read")).toBe("Couldn't read the schedule from the database");
+    expect(describeFeedDetail("provider")).toBe("The provider returned no games");
+    expect(describeFeedDetail("games-upsert")).toBe("Couldn't write the games it fetched");
+    expect(describeFeedDetail("recompute")).toBe("Failed while recomputing standings");
+  });
+
+  it("passes an unknown verdict through — a new one should show itself, not hide", () => {
+    expect(describeFeedDetail("some-future-stage")).toBe("some-future-stage");
+    // Not a week token, so it must not be mangled into "Scored through Week NaN".
+    expect(describeFeedDetail("scored-through-week-")).toBe("scored-through-week-");
+  });
+
+  it("is empty for the empty detail the ok paths write", () => {
+    expect(describeFeedDetail("")).toBe("");
+    expect(describeFeedDetail("   ")).toBe("");
+  });
+});

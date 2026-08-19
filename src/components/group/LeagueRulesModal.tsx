@@ -22,7 +22,7 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /**
- * The league's rules, in full, for everyone — as opposed to `AdminSettingsModal`,
+ * The league's rules, in full, for everyone — as opposed to `AdminSettingsDrawer`,
  * which is the admin's control panel behind the gear.
  *
  * The elimination and tie sentences are generated from `group.rules` so the copy

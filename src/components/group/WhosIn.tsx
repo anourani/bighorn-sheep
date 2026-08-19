@@ -72,7 +72,7 @@ export function InviteCta({ group, appUrl, now }: { group: Group; appUrl: string
     // production, so it is often "" — building the link from it raw produced a
     // relative `/login?invite=...`, which is not a link anyone can paste.
     //
-    // Resolved here rather than in render, unlike `AdminSettingsModal`: that
+    // Resolved here rather than in render, unlike `AdminSettingsDrawer`: that
     // modal never renders on the server (`open` starts false), but this CTA
     // does, so reading `window` in the render body would break the server pass.
     // A handler only ever runs in the browser. Nothing renders the link — the

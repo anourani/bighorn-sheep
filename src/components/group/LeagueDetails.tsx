@@ -41,7 +41,7 @@ function Value({ children }: { children: React.ReactNode }) {
  *
  * There is no section heading here any more. The mockup opens the page on the
  * tiles themselves, which is why the admin gear — previously the heading's right
- * slot, and still the only way into `AdminSettingsModal` anywhere in the app —
+ * slot, and still the only way into `AdminSettingsDrawer` anywhere in the app —
  * now sits on its own row above them.
  */
 export function LeagueDetails({

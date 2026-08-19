@@ -10,6 +10,22 @@
   html {
     -webkit-text-size-adjust: 100%;
     height: 100%;
+
+    /* Reserve the scrollbar's width whether or not a scrollbar is showing.
+
+       Every dialog in this app locks the page with `body { overflow: hidden }`,
+       which on platforms with CLASSIC scrollbars (Windows, most Linux) removes
+       the scrollbar and lets the page behind jump ~15px to the right. That was
+       survivable behind a 480px centred card. It is not behind the admin drawer,
+       whose whole premise is that its content column lines up with the page
+       still visible behind it — the alignment breaks at the moment the drawer
+       opens, which is the only moment anyone can see it.
+
+       The trade, stated plainly: a permanent gutter on those platforms, most
+       noticeable on a short page. macOS and iOS use overlay scrollbars and show
+       no difference at all — which is exactly why this would otherwise ship
+       looking fine and get reported once, from a laptop. */
+    scrollbar-gutter: stable;
   }
 
   body {
