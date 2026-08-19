@@ -50,17 +50,72 @@ export function canonicalNetlifyHost(host: string): string | null {
 }
 
 /**
- * The same URL on the canonical site host, or `null` if it's already there.
+ * The site's own origin, from the build-time `NEXT_PUBLIC_APP_URL`, or `null`
+ * when it cannot be used.
+ *
+ * Unlike `x-forwarded-host` — which this file refuses on open-redirect grounds,
+ * see `publicOrigin` — this is a build-time constant set by the site owner in
+ * the Netlify dashboard. It is not attacker-supplied, so it is safe to redirect
+ * to. It is also deliberately blank outside production, which is why every
+ * unusable shape has to fall back rather than throw:
+ *
+ * - blank or whitespace: a preview or branch build, where the variable is unset
+ *   on purpose and the netlify.app host is the right answer.
+ * - unparseable: a typo in the dashboard must not take sign-in down.
+ * - a permalink itself: `canonicalNetlifyHost` is documented and tested as never
+ *   matching its own output, so a caller cannot loop. That guarantee is only
+ *   inherited if a permalink-shaped value here is rejected too.
+ *
+ * Returns the origin alone, so a trailing slash or a stray path in the variable
+ * cannot leak into the redirect.
+ */
+function siteOrigin(appUrl: string | undefined): string | null {
+  if (!appUrl?.trim()) return null;
+  try {
+    const parsed = new URL(appUrl);
+    return canonicalNetlifyHost(parsed.host) ? null : parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The origin a visitor who landed on a deploy permalink belongs on, or `null`
+ * if this host is not a permalink.
+ *
+ * Prefers the custom domain and falls back to the netlify.app host the permalink
+ * is a snapshot of. Both are correct in their own context: production knows its
+ * own domain, and a preview build — where `NEXT_PUBLIC_APP_URL` is blank by
+ * design — keeps exactly the behaviour this had before the domain existed.
+ *
+ * Null for previews, branch deploys, localhost and the canonical host itself,
+ * **regardless of `appUrl`**. Those are real origins holding their own verifier
+ * cookies; rewriting one to production would break sign-in there rather than
+ * repair it, which is the whole reason `DEPLOY_PERMALINK` keys on the 24-char id.
+ */
+export function canonicalOrigin(
+  host: string,
+  appUrl: string | undefined = process.env.NEXT_PUBLIC_APP_URL,
+): string | null {
+  const netlifyHost = canonicalNetlifyHost(host);
+  if (!netlifyHost) return null;
+  return siteOrigin(appUrl) ?? `https://${netlifyHost}`;
+}
+
+/**
+ * The same URL on the canonical origin, or `null` if it's already there.
  * Path and query are preserved untouched — the `code`, and any `next`/`invite`
  * that survived GoTrue's fallback, have to arrive intact.
  */
-export function canonicalNetlifyUrl(url: URL): URL | null {
-  const host = canonicalNetlifyHost(url.host);
-  if (!host) return null;
+export function canonicalNetlifyUrl(url: URL, appUrl?: string): URL | null {
+  const origin = canonicalOrigin(url.host, appUrl);
+  if (!origin) return null;
+  const target = new URL(origin);
   const canonical = new URL(url);
-  canonical.host = host;
-  // A permalink is always HTTPS; the canonical host is too.
-  canonical.protocol = "https:";
+  // Protocol before host: a permalink is always HTTPS and so is the custom
+  // domain, but taking both from the resolved origin keeps them consistent.
+  canonical.protocol = target.protocol;
+  canonical.host = target.host;
   return canonical;
 }
 
@@ -75,34 +130,17 @@ export function canonicalNetlifyUrl(url: URL): URL | null {
  * browser is now on the permalink, so the next sign-in they start from there
  * addresses its magic link back to the permalink too. The fault propagates.
  *
- * Deliberately derived from the URL alone, never from `x-forwarded-host`. A
- * request header is attacker-supplied unless a proxy is known to overwrite it,
- * and one used to build a redirect is an open redirect. The header would buy us
- * nothing here anyway: if the host is a permalink we already know the canonical
- * form, and if it is not, it is already right.
+ * Deliberately derived from the URL and the build-time `NEXT_PUBLIC_APP_URL`,
+ * never from `x-forwarded-host`. A request header is attacker-supplied unless a
+ * proxy is known to overwrite it, and one used to build a redirect is an open
+ * redirect. The header would buy us nothing here anyway: if the host is a
+ * permalink we already know where it belongs, and if it is not, it is already
+ * right.
  *
- * **The custom domain is the case this does not cover, and it now exists.**
- * Production is `sheepwithglasses.com`, but `<id>--bighorn-sheep.netlify.app`
- * still canonicalises to `bighorn-sheep.netlify.app` — the netlify.app host, not
- * the custom one. Previews and permalinks genuinely still live on netlify.app,
- * so the regex is right; it is only the *destination* that is now second-best.
- *
- * Today that is cosmetic: someone who opens `/login` on a permalink is sent to
- * the netlify.app host and signs in there — wrong host, working sign-in — because
- * `https://bighorn-sheep.netlify.app/**` is still on the Supabase redirect
- * allowlist.
- *
- * **Remove that allowlist entry and this path breaks.** The redirect still lands
- * on netlify.app, `emailRedirectTo` is built from that origin, GoTrue rejects it
- * and falls back to the Site URL (`sheepwithglasses.com`), and the PKCE verifier
- * cookie is then on the wrong origin — a good link reporting itself expired,
- * which is precisely the failure this whole file exists to prevent. So either
- * keep the entry, or fix this first: prefer `NEXT_PUBLIC_APP_URL` when it is set
- * and fall back to the canonical netlify host otherwise. That is correct in
- * production and leaves previews alone, since the permalink regex deliberately
- * does not match them.
+ * A permalink resolves to the custom domain in production and to the netlify.app
+ * host everywhere else — see `canonicalOrigin`. Anything that is not a permalink
+ * keeps its own origin.
  */
-export function publicOrigin(url: URL): string {
-  const canonical = canonicalNetlifyHost(url.host);
-  return canonical ? `https://${canonical}` : url.origin;
+export function publicOrigin(url: URL, appUrl?: string): string {
+  return canonicalOrigin(url.host, appUrl) ?? url.origin;
 }

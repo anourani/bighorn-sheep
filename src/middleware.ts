@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
-import { canonicalNetlifyHost } from "@/lib/deploy-origin";
+import { canonicalOrigin } from "@/lib/deploy-origin";
 
 /**
  * Auth boundary for the app.
@@ -37,18 +37,19 @@ export async function middleware(request: NextRequest) {
   // Correcting it here, before any verifier cookie exists, is the only place the
   // fix is free. Scoped to /login so a permalink stays usable for what it is for
   // — looking at one specific deploy. Previews and branch deploys are exempt in
-  // canonicalNetlifyHost: they are their own origins by design. The callback is
+  // canonicalOrigin: they are their own origins by design. The callback is
   // excluded from this matcher and makes the same check itself.
+  //
+  // The destination is the custom domain in production and the netlify.app host
+  // in any build that does not know one, so this is right in both.
   if (pathname === "/login") {
-    const canonicalHost = canonicalNetlifyHost(request.nextUrl.host);
-    if (canonicalHost) {
+    const origin = canonicalOrigin(request.nextUrl.host);
+    if (origin) {
       console.warn(
-        `[middleware] /login on deploy permalink ${request.nextUrl.host} → ${canonicalHost}. ` +
+        `[middleware] /login on deploy permalink ${request.nextUrl.host} → ${origin}. ` +
           `A sign-in started here would be addressed back to the permalink.`,
       );
-      const target = request.nextUrl.clone();
-      target.protocol = "https:";
-      target.host = canonicalHost;
+      const target = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, origin);
       return NextResponse.redirect(target);
     }
   }
@@ -114,10 +115,11 @@ function redirectPreservingCookies(
   target.search = "";
   // Same reason as the callback: never hand back a deploy-permalink URL, or the
   // cookies carried below arrive at an origin that does not recognise them.
-  const canonicalHost = canonicalNetlifyHost(target.host);
-  if (canonicalHost) {
-    target.protocol = "https:";
-    target.host = canonicalHost;
+  const origin = canonicalOrigin(target.host);
+  if (origin) {
+    const site = new URL(origin);
+    target.protocol = site.protocol;
+    target.host = site.host;
   }
   const redirect = NextResponse.redirect(target);
   response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
