@@ -6,9 +6,21 @@ import { XIcon } from "@/components/icons";
 import { Label } from "./Label";
 
 /**
- * Lightweight accessible dialog. Presents as a bottom sheet on phones and a
- * centered card on larger screens — the app never routes to a separate page for
- * these (group creation, admin settings, pick confirm all live in modals).
+ * Lightweight accessible dialog, 480px wide. Presents as a bottom sheet on
+ * phones and a centered card from `sm` — the app never routes to a separate page
+ * for these.
+ *
+ * For a surface where 480px is the constraint rather than the choice, see
+ * `Drawer` beside this: a full-width sheet that rises from the bottom at every
+ * width, with a focus trap and focus restore this does not have. The admin
+ * settings panel is its only caller. This component is unchanged by that and
+ * should stay the default for anything that fits in a card.
+ *
+ * The scrim animates with `scrim-in`, NOT `reveal-up`. `reveal-up` starts at
+ * translateY(12px), which slid an `absolute inset-0` scrim 12px down the screen
+ * for the length of the animation and left the top 12px unscrimmed and
+ * unblurred. Harmless-looking behind a small card, which is why it survived
+ * here for so long.
  */
 export function Modal({
   open,
@@ -64,7 +76,7 @@ export function Modal({
         aria-label="Close dialog"
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-ink/45 backdrop-blur-[2px] animate-[reveal-up_0.2s_ease]"
+        className="absolute inset-0 cursor-default bg-ink/45 backdrop-blur-[2px] animate-scrim-in"
       />
       <div
         ref={panelRef}

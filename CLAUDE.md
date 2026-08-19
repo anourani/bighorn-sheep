@@ -48,18 +48,29 @@ stamped on every change** rather than only the paid branch — the card prints
 "UNPAID · Updated 10/21", which 0007's `else null` made unrenderable. Replayable;
 0007 is untouched.
 
-**0011 is what the retabbed admin settings modal reads and writes.** Until it is
-applied, renaming the league, editing the rules and the per-member preseason
-toggle all fail with their own error codes, and the Data Feed tab shows its
-unavailable state. Preseason access **fails open**, so nobody loses practice to a
-late migration. Replayable. Three things in it are worth knowing:
+**0011 is what the admin settings drawer reads and writes**, and it went
+unapplied for long enough to cost a real debugging session: renaming the league
+failed with "Couldn't save that. Try again.", which is the *catch-all* of
+`setGroupName`'s error ladder, and the Data Feed tab showed nothing — two
+symptoms, one missing migration. **Applied to production 2026-08-19.** Preseason
+access **fails open**, so nobody loses practice to a late migration. Replayable.
+Five things in it are worth knowing:
+
+- **A missing RPC now says so.** `rpcErrorCode` in `actions.ts` reads PostgREST's
+  `PGRST202` / `42883` / "schema cache" and a bare `42501` (grants not replayed —
+  each migration does `revoke all … from public` first, so pasting a body without
+  its `grant execute` fails identically to the function not existing) and returns
+  `migration_missing`. Every admin ladder used to end in a catch-all whose copy
+  read "try again", which is an invitation to click Save forever. The `known`
+  substrings are tested FIRST, because `not_admin` also raises `42501`.
 
 - **`set_group_rules` tests two conditions, not one.** 0001 declared
   `settings_locked_at` to freeze the rules and **nothing in this project has ever
-  written it** — grep: readers only, in the RLS policy, both modals and the mock
-  fixture. A lock gated on that column alone would never fire. The function also
-  tests `entry_closes_at <= now()`, which is the same "the season has started"
-  fact `seasonPhase()` derives everywhere else, and the modal mirrors both.
+  written it** — grep: readers only, in the RLS policy, the rules modal, the
+  admin drawer and the mock fixture. A lock gated on that column alone would
+  never fire. The function also tests `entry_closes_at <= now()`, which is the
+  same "the season has started" fact `seasonPhase()` derives everywhere else, and
+  the drawer mirrors both.
 - **`set_member_preseason` has a window `set_member_buy_in` doesn't** — it
   refuses after `entry_closes_at`, because practice ends at Week 1 and never
   returns. Money admin stays open all season; practice admin does not.
@@ -212,7 +223,7 @@ is rejected by every transactional provider and surfaces as **HTTP 500** on
 dashboard does nothing until the site is rebuilt.
 
 The one that bites is `NEXT_PUBLIC_APP_URL`, which builds invite links in
-`WhosIn.tsx` and `AdminSettingsModal.tsx`. Being a build-time constant, it holds
+`WhosIn.tsx` and `AdminSettingsDrawer.tsx`. Being a build-time constant, it holds
 the *same* host in every context unless it's scoped per deploy context — so a
 deploy preview hands out **production** invite links, and "Copy link" looks wrong
 while nothing is actually broken.
@@ -464,19 +475,54 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     `#000000`, CLE `#311D00`) reads as a grey-to-black bar. That is accepted, not
     an oversight.
 
-- **The admin settings modal is three tabs, and the league name lives above
-  them.** Members (roster, two switches per row, invite, buy-in amount), Rules,
-  Data Feed. Five things are load-bearing:
-  - **Nothing inside it may scroll.** The tab bar is a plain flow child — not
-    sticky, not `overflow-x-auto` — and no panel carries `max-h` or `overflow`.
-    `Modal.tsx`'s panel (`max-h-[92vh] overflow-y-auto`) stays the only scroller
-    in the tree, so a short tab doesn't scroll and a long one scrolls the whole
-    modal. A taller two-switch roster row is exactly what tempts a `max-h-64` in
-    there; there is a comment above the `<ul>` saying so.
+- **The admin settings panel is a full-width bottom drawer, not a modal.**
+  `AdminSettingsDrawer.tsx` (was `AdminSettingsModal.tsx`) renders
+  `ui/Drawer.tsx`. Three tabs — Members (roster, two switches per row, invite),
+  Rules (game rules **and** the buy-in amount), Data Feed — with the league name
+  above them. Eight things are load-bearing:
+  - **`Drawer` is a second primitive, and `Modal` is untouched.** Every geometry
+    decision inverts between them (`max-w-app` → full bleed, `sm:items-center` →
+    always `items-end`, `max-h-[92vh]` → `max-h-[90dvh]`), and a shared `variant`
+    prop would have had to decide whether `Drawer`'s focus trap and focus restore
+    apply to `Modal`'s five callers — either answer is wrong. `Modal` is still
+    the default for anything that fits in a 480px card.
+  - **`dvh`, not `vh`, on anything anchored to the bottom edge.** On iOS Safari
+    `vh` is the *large* viewport — it ignores the URL bar — so `92vh` on a
+    bottom-pinned panel puts its last ~60px under the browser chrome. `Modal`
+    escapes this only by centring from `sm`.
+  - **The drawer must not be a child of `.stagger`.** `globals.css`'s
+    `.stagger > *` applies `reveal-up 0.5s both` with an `:nth-child` delay, and a
+    dialog rendered as a direct child inherits it on its own `fixed inset-0`
+    root — the drawer was the 6th child, so it sat at opacity 0 for 275ms and
+    then faded in over 500ms while its own 320ms slide played invisibly. Reads as
+    a pop-in with no slide, and lengthening the slide makes it worse. `Drawer`
+    portals to `document.body` **and** `StandingsClient` renders both dialogs
+    outside the `.stagger` div; the account page hit this first and documents it
+    at `AccountClient.tsx`.
+  - **`globals.css` sets `scrollbar-gutter: stable` for the drawer's sake.**
+    Every dialog locks the page with `body { overflow: hidden }`, which on
+    classic-scrollbar platforms shifts the page ~15px right while the fixed
+    drawer stays put — and the drawer's whole premise is that its content column
+    lines up with the page behind it. macOS/iOS overlay scrollbars hide the
+    problem, which is why it would otherwise ship looking fine.
+  - **Nothing inside it may scroll.** No panel carries `max-h` or `overflow`; the
+    `Drawer` panel (`max-h-[90dvh] overflow-y-auto`) is the only scroller, so a
+    short tab doesn't scroll and a long one scrolls the whole drawer. A
+    sixteen-row roster is exactly what tempts a `max-h-64` in there; there is a
+    comment above the `<ul>` saying so.
+  - **The tab bar IS now sticky, inside the drawer's header — a deliberate
+    reversal.** It used to be a plain flow child, and the reasoning was sound at
+    480px: the bar was never more than a short scroll from the top of the
+    viewport, so pinning it bought nothing and cost height. At 90dvh with a long
+    roster under it, it scrolls out of sight and the other two tabs become
+    unreachable without scrolling back. Sticky is a pin, not a scroll region, so
+    the invariant above is untouched. Don't "fix" it back.
   - **The name is above the tab bar, not in a tab.** It names the thing all three
     tabs are about, and it replaced `Modal`'s static `description={group.name}`.
     In a tab, "rename any time" would have meant "rename any time you're on the
-    right tab".
+    right tab". It rides in `Drawer`'s `aside` slot, which is **one** instance
+    reordered with `order-*` — rendering it twice behind `lg:hidden` would
+    duplicate the input's `id` and split its React state.
   - **`ui/Tabs.tsx` is a real tablist; `ui/Segmented.tsx` is not, and is still
     unused.** `Segmented` puts `role="tablist"`/`role="tab"` on a plain value
     selector with no panels, so extending it would have left every other caller
@@ -487,18 +533,59 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
   - **The rules editor is native radios in a `<fieldset disabled>`**, not a
     `Segmented`. Disabling propagates for free, and a second `role="tablist"`
     inside a dialog that already has one would be a real a11y bug.
-  - **Only the active panel is rendered**, not hidden. It keeps the modal exactly
+  - **Only the active panel is rendered**, not hidden. It keeps the drawer exactly
     as tall as what's on screen, and it makes "fetch the feed status when the
     Data Feed tab opens" fall out of mount rather than needing a visibility
     effect. The active tab is plain `useState` and survives close/reopen, because
-    `Modal` returns null when closed so only its *subtree* unmounts.
+    `Drawer` returns null when closed so only its *subtree* unmounts.
 
-- **The score feed's health is a real reading now.** The Data Feed tab used to
-  print a hardcoded `ESPN · healthy` Pill beside a permanently `disabled` "Enter
-  a result manually" button. `poll-scores` now routes every terminal return
-  through a `finish()` funnel that writes 0011's one-row `feed_status` — the same
-  argument the file already made for logging, extended to the database. Three
-  things:
+- **The buy-in amount is a RULE, and it lives on the Rules tab — beside a control
+  that locks, while it never does.** `set_group_rules` (0011) refuses after
+  `settings_locked_at is not null or entry_closes_at <= now()`;
+  `set_group_buy_in` (0010) has **no lock check and no entry-close check at
+  all**, because correcting what the league costs is money admin and getting the
+  number wrong is exactly the thing you discover after kickoff. Three things
+  follow, and each exists to stop that asymmetry misleading an admin:
+  - **The `<fieldset disabled>` wraps the two radio groups and stops there.**
+    Sweeping the buy-in inputs into it would grey out a control the database
+    would have accepted. This is the single most likely regression in this file
+    and there is a comment in it saying so.
+  - **Each card states its own lock**, via a `Pill` in its heading — "Frozen" with
+    a `LockIcon` (matching what `LeagueRulesModal` prints for the same fact) or
+    "Editable" for the rules, "Always editable" for the fee.
+  - **The lock glyph came OFF the tab label.** It used to sit beside "Rules" once
+    the season started, which was honest when the whole tab froze together and is
+    a false claim about half the tab now. `locked` is no longer computed in the
+    export at all.
+
+- **The score feed's health is a real reading, and an admin can trigger one.**
+  The Data Feed tab used to print a hardcoded `ESPN · healthy` Pill beside a
+  permanently `disabled` "Enter a result manually" button. Every terminal return
+  now goes through a `finish()` funnel that writes 0011's one-row `feed_status` —
+  the same argument the file already made for logging, extended to the database.
+  Six things:
+  - **The scorer lives in `src/lib/nfl/poll.ts`, not in the Netlify function.**
+    `runScorePoll` has two callers — the five-minute cron and the "Check now"
+    button via the `runFeedCheck` action — and one body is what stops a manual
+    check drifting from the scheduled one. `netlify/functions/poll-scores.ts` is
+    now only the schedule, the service client, the log line and the `Response`.
+    It also **must not** live in `netlify/functions/`: Netlify deploys every file
+    there as a function and derives the name from the filename, which is what
+    `netlify/function-names.test.ts` exists to catch.
+  - **"Check now" runs in-process, not over HTTP.** Whether a Netlify *scheduled*
+    function's endpoint answers a request in production is a platform detail, and
+    a button built on a guess about it is how the disabled manual-entry control
+    came to sit there in the first place. It needs the service role
+    (`src/lib/supabase/service.ts`), because `record_feed_sync` is granted to
+    `service_role` alone and the poll writes past RLS; when the key isn't
+    readable the action returns `feed_poll_unavailable` and the panel says so.
+  - **A failing poll still resolves `ok`.** The funnel records the verdict before
+    returning, so `runFeedCheck` re-reads `feed_status` and the panel says "the
+    score feed is failing" and names the stage — strictly more use than a toast.
+    Only a refusal *before* the poll (not an admin, inside the 60s cooldown, no
+    service key) surfaces as an error line. That cooldown
+    (`feedCheckedRecently`) is the only thing between a double-tap and a
+    hammered provider, and it is checked before the service client is built.
   - **Two timestamps, and that is the point.** `checked_at` is stamped on every
     run; `last_ok_at` only advances on success. A fresh one beside a stale other
     reads as "we're checking and it's failing", which is a different message from
@@ -510,7 +597,10 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
   - **The status write can never fail the run.** A missing `feed_status` costs
     observability, never scoring. `checked_at` and the read's `now` both come
     from Postgres, so "checked 3 minutes ago" can't go negative across two
-    machines' clocks.
+    machines' clocks — which is also why `DataFeedSection` holds the whole
+    `FeedSnapshot` rather than just `describeFeed`'s one sentence: every age on
+    screen is measured against the database's clock, and the six facts under the
+    headline are what an admin actually came for.
 
 - **Preseason access is per member, and it is one condition in the loader.**
   0011's `group_members.show_preseason`, set by an admin. `load.ts` simply stops
@@ -524,7 +614,7 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     gated.
   - **The window closes at the first Week 1 kickoff and never reopens.**
     `set_member_preseason` raises `preseason_closed` after `entry_closes_at`, and
-    the modal disables the switch on the same condition, so there is no Week 11
+    the drawer disables the switch on the same condition, so there is no Week 11
     in which anyone's preseason can be switched back on. The loader ignores the
     flag by then anyway — what the guard buys is that the stored value cannot
     drift from what the season allows, and that an admin isn't misled into

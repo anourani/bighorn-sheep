@@ -58,7 +58,7 @@ export interface RankedMemberView {
  *
  * Lives here, not in StandingsClient, because the landing page ranks the same
  * members and importing the client component to reach it would drag
- * AdminSettingsModal, LeagueRulesModal, LeagueDetails and WhosIn into a
+ * AdminSettingsDrawer, LeagueRulesModal, LeagueDetails and WhosIn into a
  * signed-out page's bundle.
  */
 export function rankMembers(members: readonly Member[]): RankedMemberView[] {

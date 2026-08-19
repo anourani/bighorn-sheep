@@ -11,6 +11,13 @@ import type { SeasonType } from "@/lib/nfl/types";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
 import { isFavoriteAnimal } from "@/lib/profile/animals";
+import {
+  FEED_MANUAL_COOLDOWN_MS,
+  feedCheckedRecently,
+  mapFeedStatus,
+} from "@/lib/league/feed";
+import { runScorePoll } from "@/lib/nfl/poll";
+import { serviceClient } from "@/lib/supabase/service";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -33,6 +40,56 @@ async function attempt<T>(body: () => Promise<ActionResult<T>>): Promise<ActionR
     console.error("[action] unexpected failure", err);
     return { ok: false, error: "unexpected_error" };
   }
+}
+
+/**
+ * The stable code for a failed admin RPC.
+ *
+ * `known` is the ordered list of substrings the function itself raises; the
+ * first match wins, so each ladder stays one line at its call site instead of a
+ * five-deep nest of ternaries.
+ *
+ * The two tests after it are the ones that were previously invisible, and they
+ * are why this helper exists at all. Every admin ladder used to end in a
+ * catch-all like `name_update_failed`, whose copy reads "Couldn't save that. Try
+ * again." — so the single most common failure in this project, a migration that
+ * has not been applied by hand (see CLAUDE.md; nothing here applies them),
+ * rendered as an invitation to click Save again forever. It cost a real
+ * debugging session.
+ *
+ * Two shapes mean "the database is behind the code":
+ *
+ *   - The function is not there. PostgREST answers `PGRST202` with "Could not
+ *     find the function … in the schema cache"; Postgres answers `42883`. Note
+ *     that PostgREST's message names the argument list, which makes this look
+ *     like an argument-mismatch bug when it is nothing of the kind.
+ *   - The function is there but its grants were not replayed. Each migration
+ *     does `revoke all … from public` before `grant execute … to authenticated`,
+ *     so pasting the body without the grants leaves `42501 permission denied for
+ *     function`, which fails identically to the function not existing.
+ *
+ * `known` is tested FIRST, and that ordering is load-bearing: `not_admin` is
+ * itself raised with errcode 42501, so a bare-code test placed above it would
+ * report every non-admin as a missing migration.
+ */
+function rpcErrorCode(
+  error: { code?: string | null; message?: string | null },
+  known: readonly string[],
+  fallback: string,
+): string {
+  const message = error.message ?? "";
+  for (const code of known) {
+    if (message.includes(code)) return code;
+  }
+
+  const sqlstate = error.code ?? "";
+  if (sqlstate === "PGRST202" || sqlstate === "42883" || message.includes("schema cache")) {
+    return "migration_missing";
+  }
+  // Reached only when `known` did not match, so this is never a `not_admin`.
+  if (sqlstate === "42501") return "migration_missing";
+
+  return fallback;
 }
 
 /**
@@ -375,15 +432,11 @@ export async function setMemberBuyIn(input: {
       p_paid: input.paid,
     });
     if (error) {
-      const msg = error.message ?? "";
-      // A missing function means 0007 has not been applied to this database —
-      // worth its own code, because the symptom is otherwise indistinguishable
-      // from a permissions problem. See CLAUDE.md: migrations are applied by hand.
-      const reason = msg.includes("not_admin")
-        ? "not_admin"
-        : msg.includes("member_not_found")
-          ? "member_not_found"
-          : "buy_in_update_failed";
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin", "member_not_found"],
+        "buy_in_update_failed",
+      );
       console.error("[setMemberBuyIn] rpc failed", error);
       return { ok: false, error: reason };
     }
@@ -437,18 +490,11 @@ export async function setGroupBuyIn(input: {
       p_site_fee_cents: siteFeeCents,
     });
     if (error) {
-      const msg = error.message ?? "";
-      // A missing function means 0010 has not been applied to this database.
-      // Worth its own code for the same reason 0007's was: the symptom is
-      // otherwise indistinguishable from a permissions problem, and nothing in
-      // this repo applies migrations (see CLAUDE.md).
-      const reason = msg.includes("not_admin")
-        ? "not_admin"
-        : msg.includes("bad_amount")
-          ? "bad_amount"
-          : msg.includes("group_not_found")
-            ? "group_not_found"
-            : "buy_in_update_failed";
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin", "bad_amount", "group_not_found"],
+        "buy_in_update_failed",
+      );
       console.error("[setGroupBuyIn] rpc failed", error);
       return { ok: false, error: reason };
     }
@@ -492,19 +538,11 @@ export async function setGroupName(input: {
       p_name: name,
     });
     if (error) {
-      const msg = error.message ?? "";
-      // A missing function means 0011 has not been applied to this database.
-      // Its own code, because the symptom is otherwise indistinguishable from a
-      // permissions problem — same reasoning as 0007's and 0010's.
-      const reason = msg.includes("not_admin")
-        ? "not_admin"
-        : msg.includes("name_required")
-          ? "name_required"
-          : msg.includes("name_too_long")
-            ? "name_too_long"
-            : msg.includes("group_not_found")
-              ? "group_not_found"
-              : "name_update_failed";
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin", "name_required", "name_too_long", "group_not_found"],
+        "name_update_failed",
+      );
       console.error("[setGroupName] rpc failed", error);
       return { ok: false, error: reason };
     }
@@ -545,18 +583,18 @@ export async function setGroupRules(input: {
       p_tie_rule: input.tieRule,
     });
     if (error) {
-      const msg = error.message ?? "";
-      const reason = msg.includes("not_admin")
-        ? "not_admin"
-        : msg.includes("settings_locked")
-          ? "settings_locked"
-          : msg.includes("bad_elimination_type")
-            ? "bad_elimination_type"
-            : msg.includes("bad_tie_rule")
-              ? "bad_tie_rule"
-              : msg.includes("group_not_found")
-                ? "group_not_found"
-                : "rules_update_failed";
+      const reason = rpcErrorCode(
+        error,
+        [
+          "not_authenticated",
+          "not_admin",
+          "settings_locked",
+          "bad_elimination_type",
+          "bad_tie_rule",
+          "group_not_found",
+        ],
+        "rules_update_failed",
+      );
       console.error("[setGroupRules] rpc failed", error);
       return { ok: false, error: reason };
     }
@@ -606,14 +644,11 @@ export async function setMemberPreseason(input: {
       p_show: input.show,
     });
     if (error) {
-      const msg = error.message ?? "";
-      const reason = msg.includes("not_admin")
-        ? "not_admin"
-        : msg.includes("preseason_closed")
-          ? "preseason_closed"
-          : msg.includes("member_not_found")
-            ? "member_not_found"
-            : "preseason_update_failed";
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin", "preseason_closed", "member_not_found"],
+        "preseason_update_failed",
+      );
       console.error("[setMemberPreseason] rpc failed", error);
       return { ok: false, error: reason };
     }
@@ -650,13 +685,107 @@ export async function getFeedStatus(input: {
       p_group_id: input.groupId,
     });
     if (error) {
-      const msg = error.message ?? "";
-      const reason = msg.includes("not_admin") ? "not_admin" : "feed_status_unavailable";
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin"],
+        "feed_status_unavailable",
+      );
       console.error("[getFeedStatus] rpc failed", error);
       return { ok: false, error: reason };
     }
 
     return { ok: true, data };
+  });
+}
+
+/**
+ * Run the scorer NOW, on an admin's say-so, and hand back the fresh status.
+ *
+ * The Data Feed tab used to say outright that it could only read the last run.
+ * That is a reasonable thing for a panel to admit and a poor thing for it to be:
+ * the scorer is the league's heartbeat, and an admin watching a game with stale
+ * standings had no move but to wait out the five-minute cron.
+ *
+ * In-process, not an HTTP call to the scheduled function. Whether a Netlify
+ * scheduled function's endpoint answers a request in production is a platform
+ * detail, and a button built on a guess about it is how the previous
+ * "Enter a result manually" control came to sit there permanently disabled.
+ * `runScorePoll` is the same body the cron runs, so the two cannot drift.
+ *
+ * Three things about the order below are deliberate:
+ *
+ *   1. `feed_status_for_admin` is called FIRST and does double duty. It raises
+ *      `not_admin` in Postgres, so authorisation is enforced by the same definer
+ *      function the read path already uses — no new RPC, no new SQL, and no
+ *      second place for the admin check to rot. Its payload is also what the
+ *      cooldown reads.
+ *   2. The cooldown is checked BEFORE the service client is built, so a leaned-on
+ *      button never reaches the provider at all.
+ *   3. The status is re-read AFTER the poll, and its payload is what comes back.
+ *      Returning the snapshot taken before the run would print "checked 5
+ *      minutes ago" immediately after a successful check.
+ *
+ * A failing poll still resolves `ok`. `runScorePoll` records every verdict to
+ * `feed_status` before returning, so the re-read carries what the run actually
+ * hit — which the panel renders as "the score feed is failing" plus the stage
+ * and the provider's message. That is strictly more use than a toast saying
+ * something went wrong, and it is the reason the funnel writes from inside the
+ * poll rather than from its callers.
+ */
+export async function runFeedCheck(input: { groupId: string }): Promise<ActionResult<unknown>> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { data: before, error: readError } = await supabase.rpc("feed_status_for_admin", {
+      p_group_id: input.groupId,
+    });
+    if (readError) {
+      const reason = rpcErrorCode(
+        readError,
+        ["not_authenticated", "not_admin"],
+        "feed_status_unavailable",
+      );
+      console.error("[runFeedCheck] status read failed", readError);
+      return { ok: false, error: reason };
+    }
+
+    if (feedCheckedRecently(mapFeedStatus(before), FEED_MANUAL_COOLDOWN_MS)) {
+      return { ok: false, error: "poll_too_soon" };
+    }
+
+    // Null when SUPABASE_SERVICE_ROLE_KEY isn't readable from this runtime. The
+    // service role is not optional: record_feed_sync is granted to service_role
+    // alone (0011), and the poll writes games and group_members past RLS.
+    const service = serviceClient();
+    if (!service) {
+      console.error("[runFeedCheck] no service-role key in this runtime");
+      return { ok: false, error: "feed_poll_unavailable" };
+    }
+
+    const season = Number(process.env.NFL_SEASON ?? new Date().getUTCFullYear());
+    const outcome = await runScorePoll(service, { season, now: new Date() });
+    if (outcome.httpStatus !== 200) {
+      // Not returned to the caller — the verdict is already in feed_status and
+      // the re-read below carries it. This is for the function log.
+      console.error("[runFeedCheck] poll finished badly", outcome.httpStatus, outcome.body);
+    }
+
+    const { data: after, error: afterError } = await supabase.rpc("feed_status_for_admin", {
+      p_group_id: input.groupId,
+    });
+    if (afterError) {
+      console.error("[runFeedCheck] status re-read failed", afterError);
+      return { ok: false, error: "poll_failed" };
+    }
+
+    // A poll locks picks at kickoff and can eliminate people, so the boards move.
+    revalidatePath("/app");
+    revalidatePath("/app/standings");
+    return { ok: true, data: after };
   });
 }
 

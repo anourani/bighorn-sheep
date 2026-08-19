@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
-import { AdminSettingsModal } from "@/components/group/AdminSettingsModal";
+import { AdminSettingsDrawer } from "@/components/group/AdminSettingsDrawer";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta, WhosIn } from "@/components/group/WhosIn";
@@ -35,7 +35,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
    * variable is scoped per deploy context and left blank on previews and branch
    * deploys, so each one hands out its own links instead of production's. Every
    * consumer therefore resolves it as `appUrl || window.location.origin` —
-   * `InviteCta` and `AdminSettingsModal` here, `MoreSection` on /app/account.
+   * `InviteCta` and `AdminSettingsDrawer` here, `MoreSection` on /app/account.
    * Passing it down raw is what made a preview's link a relative path.
    */
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -113,104 +113,121 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   }, [finalWeek, practice]);
 
   return (
-    /* No `space-y-*` here any more. The redesign gives the first three blocks a
-       rhythm of their own (tiles → 20px → status report → 28/60px → table) that
-       a single uniform gap can't express, and `space-y-6`'s `> * + *` selector
-       outranks a child's own `mt-*` on specificity, so it can't be overridden
-       per child either. `stagger` stays: it keys the entrance animation off
-       direct children, and the count below is unchanged. */
-    <div className="stagger">
-      <LeagueDetails
-        group={group}
-        members={data.members}
-        currentWeek={currentWeek}
-        phase={phase}
-        isAdmin={isAdmin}
-        onOpenRules={() => setRulesOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+    /* A fragment, so the two dialogs below can sit OUTSIDE `.stagger`.
 
-      {/* The two mockups space this differently and both are reproduced here.
-          Phone: 20px below the tiles, no padding of its own. Desktop: 8px below
-          them plus 12px of padding, which is the same 20px to the label — the
-          padding earns its keep underneath, where it becomes 12 of the 60px
-          down to the "Standings" heading.
+       `.stagger > *` applies `animation: reveal-up 0.5s both` with a
+       :nth-child delay, and a dialog rendered as a direct child of it inherits
+       that on its own `fixed inset-0` root. The settings drawer was the 6th
+       rendered child, so opening it held the whole overlay at opacity 0 for
+       275ms and then faded it in over 500ms — during which the drawer's own
+       320ms slide had already finished, invisibly. The symptom is a quarter
+       second of nothing followed by a pop-in with no slide, and the obvious
+       response (lengthening the slide) makes it worse.
 
-          Only the vertical is ours. The shell's `main` supplies the horizontal
-          inset that the survivor strip inside cancels with `-mx-4`. */}
-      <StatusReport status={status} className="mt-5 lg:mt-2 lg:py-3" />
+       Same trap the account page hit and documents at AccountClient.tsx.
+       Moving them out changes the first-paint stagger not at all: both render
+       null when closed, so neither ever occupied an :nth-child slot on load. */
+    <>
+      {/* No `space-y-*` here any more. The redesign gives the first three blocks
+          a rhythm of their own (tiles → 20px → status report → 28/60px → table)
+          that a single uniform gap can't express, and `space-y-6`'s `> * + *`
+          selector outranks a child's own `mt-*` on specificity, so it can't be
+          overridden per child either. `stagger` stays: it keys the entrance
+          animation off direct children, and the count below is unchanged. */}
+      <div className="stagger">
+        <LeagueDetails
+          group={group}
+          members={data.members}
+          currentWeek={currentWeek}
+          phase={phase}
+          isAdmin={isAdmin}
+          onOpenRules={() => setRulesOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
-      {isPreseason ? (
-        practice && practiceRanked && practiceColumns && practiceIdx ? (
-          <section className="mt-7 lg:mt-12">
-            <SectionHeader title="Practice Standings" />
-            <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
-              A real run-through — a wrong pick strikes you here too. None of it carries over: this
-              table disappears and everyone starts Week 1 alive, with all 32 teams available.
-            </p>
-            <StandingsGrid
-              ranked={practiceRanked}
-              viewerId={data.viewer.id}
-              currentWeek={practice.currentWeek}
-              finalWeek={practice.maxPreWeek}
-              columns={practiceColumns}
-              rules={group.rules}
-              now={now}
-              gameForTeam={practiceIdx.gameForTeam}
-              hiddenPickUserIds={practice.hiddenPickUserIds}
-            />
-          </section>
+        {/* The two mockups space this differently and both are reproduced here.
+            Phone: 20px below the tiles, no padding of its own. Desktop: 8px below
+            them plus 12px of padding, which is the same 20px to the label — the
+            padding earns its keep underneath, where it becomes 12 of the 60px
+            down to the "Standings" heading.
+
+            Only the vertical is ours. The shell's `main` supplies the horizontal
+            inset that the survivor strip inside cancels with `-mx-4`. */}
+        <StatusReport status={status} className="mt-5 lg:mt-2 lg:py-3" />
+
+        {isPreseason ? (
+          practice && practiceRanked && practiceColumns && practiceIdx ? (
+            <section className="mt-7 lg:mt-12">
+              <SectionHeader title="Practice Standings" />
+              <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
+                A real run-through — a wrong pick strikes you here too. None of it carries over: this
+                table disappears and everyone starts Week 1 alive, with all 32 teams available.
+              </p>
+              <StandingsGrid
+                ranked={practiceRanked}
+                viewerId={data.viewer.id}
+                currentWeek={practice.currentWeek}
+                finalWeek={practice.maxPreWeek}
+                columns={practiceColumns}
+                rules={group.rules}
+                now={now}
+                gameForTeam={practiceIdx.gameForTeam}
+                hiddenPickUserIds={practice.hiddenPickUserIds}
+              />
+            </section>
+          ) : (
+            /*
+             * Without this the page has a hole in it. The branch renders the
+             * practice table during preseason and the real standings after it, so
+             * a null `practice` mid-preseason used to emit NOTHING between the
+             * status report and the foot of the page — no heading, no explanation.
+             *
+             * Two quite different causes land here, which is why `practiceEnabled`
+             * exists as its own flag rather than being inferred from the null.
+             */
+            <section className="mt-7 lg:mt-12">
+              <SectionHeader title="Practice Standings" />
+              <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
+                {practiceEnabled
+                  ? "No preseason schedule has been loaded yet, so there's nothing to practise against."
+                  : "Preseason practice isn't switched on for you. Your league admin can turn it on from Settings."}
+              </p>
+            </section>
+          )
         ) : (
-          /*
-           * Without this the page has a hole in it. The branch renders the
-           * practice table during preseason and the real standings after it, so
-           * a null `practice` mid-preseason used to emit NOTHING between the
-           * status report and the foot of the page — no heading, no explanation.
-           *
-           * Two quite different causes land here, which is why `practiceEnabled`
-           * exists as its own flag rather than being inferred from the null.
-           */
           <section className="mt-7 lg:mt-12">
-            <SectionHeader title="Practice Standings" />
-            <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
-              {practiceEnabled
-                ? "No preseason schedule has been loaded yet, so there's nothing to practise against."
-                : "Preseason practice isn't switched on for you. Your league admin can turn it on from Settings."}
+            <SectionHeader title="Standings" />
+            <div className="mt-3">
+              <StandingsGrid
+                ranked={ranked}
+                viewerId={data.viewer.id}
+                currentWeek={currentWeek}
+                finalWeek={finalWeek}
+                rules={group.rules}
+                now={now}
+                gameForTeam={idx.gameForTeam}
+                hiddenPickUserIds={hiddenPickUserIds}
+              />
+            </div>
+
+            <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
+              <LockIcon className="h-3.5 w-3.5" />
+              Current-week picks stay hidden until each team&apos;s game kicks off.
             </p>
           </section>
-        )
-      ) : (
-        <section className="mt-7 lg:mt-12">
-          <SectionHeader title="Standings" />
-          <div className="mt-3">
-            <StandingsGrid
-              ranked={ranked}
-              viewerId={data.viewer.id}
-              currentWeek={currentWeek}
-              finalWeek={finalWeek}
-              rules={group.rules}
-              now={now}
-              gameForTeam={idx.gameForTeam}
-              hiddenPickUserIds={hiddenPickUserIds}
-            />
-          </div>
+        )}
 
-          <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
-            <LockIcon className="h-3.5 w-3.5" />
-            Current-week picks stay hidden until each team&apos;s game kicks off.
-          </p>
-        </section>
-      )}
+        {/* Wrapped rather than given a `className` prop: the mockups stop at the
+            table and say nothing about what follows, so these two keep the 24px
+            the old `space-y-6` gave them. */}
+        <div className="mt-6">
+          <WhosIn members={data.members} preseason={isPreseason} />
+        </div>
 
-      {/* Wrapped rather than given a `className` prop: the mockups stop at the
-          table and say nothing about what follows, so these two keep the 24px
-          the old `space-y-6` gave them. */}
-      <div className="mt-6">
-        <WhosIn members={data.members} preseason={isPreseason} />
-      </div>
+        <div className="mt-6">
+          <InviteCta group={group} appUrl={appUrl} now={now} />
+        </div>
 
-      <div className="mt-6">
-        <InviteCta group={group} appUrl={appUrl} now={now} />
       </div>
 
       <LeagueRulesModal
@@ -220,8 +237,12 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         members={data.members}
       />
 
+      {/* `isAdmin ? … : null` rather than `settingsOpen && …`: the drawer holds the
+          active tab in its own state and `Drawer` unmounts only its subtree when
+          closed, so this component staying mounted is what makes the tab survive
+          close and reopen. */}
       {isAdmin ? (
-        <AdminSettingsModal
+        <AdminSettingsDrawer
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           group={group}
@@ -230,6 +251,6 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           phase={phase}
         />
       ) : null}
-    </div>
+    </>
   );
 }

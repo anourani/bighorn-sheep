@@ -51,6 +51,18 @@ export interface FeedSnapshot {
  */
 export const FEED_STALE_AFTER_MS = 20 * 60 * 1000;
 
+/**
+ * How soon after a recorded run the admin's "Check now" button refuses to poll
+ * again.
+ *
+ * The scorer is idempotent and its endpoint is deliberately ungated (the
+ * rationale is at the bottom of src/lib/cron-auth.ts), so the cost of a
+ * double-tap is burned function minutes and a hammered provider, not corrupt
+ * data. A minute is long enough that leaning on the button achieves nothing and
+ * short enough that an admin watching a live game never feels blocked.
+ */
+export const FEED_MANUAL_COOLDOWN_MS = 60_000;
+
 export type FeedTone = "healthy" | "failing" | "stale" | "unknown";
 
 export interface FeedDescription {
@@ -97,6 +109,27 @@ export function mapFeedStatus(raw: unknown): FeedSnapshot | null {
       error: typeof sync.error === "string" && sync.error.length > 0 ? sync.error : null,
     },
   };
+}
+
+/**
+ * Was the last recorded run less than `withinMs` ago?
+ *
+ * Both timestamps come from the SAME Postgres clock — `checked_at` is stamped
+ * inside `record_feed_sync` and `now` is returned by `feed_status_for_admin` —
+ * which is what lets this be a plain subtraction. Measuring against the Node
+ * process's clock instead would let two machines' drift either bypass the
+ * cooldown or lock the button out for a minute that never elapses.
+ *
+ * A snapshot with no sync is NOT recent: nothing has ever run, so a manual check
+ * is exactly what is wanted. An unparseable or future timestamp is treated the
+ * same way — the cooldown is a courtesy to the provider, not a correctness gate,
+ * so it fails open rather than stranding an admin behind a bad value.
+ */
+export function feedCheckedRecently(snapshot: FeedSnapshot | null, withinMs: number): boolean {
+  if (!snapshot?.sync) return false;
+  const age = ageMs(snapshot.sync.checkedAt, snapshot.now);
+  if (age === null) return false;
+  return age < withinMs;
 }
 
 /**
@@ -153,6 +186,45 @@ export function describeFeed(snapshot: FeedSnapshot | null): FeedDescription {
     detail: `Checked ${agoLabel(sync.checkedAt, now)}.`,
     provider,
   };
+}
+
+/**
+ * The scorer's own verdict string, as a sentence an admin can read.
+ *
+ * `detail` is written by `runScorePoll`'s funnel and is a machine token —
+ * "no-schedule-loaded", "games-upsert", "scored-through-week-3". It is the most
+ * specific thing the feed knows about what the last run actually DID, and it was
+ * being stored and never shown, so the tab could say "the score feed is failing"
+ * without saying which of four stages failed.
+ *
+ * Unknown values pass through verbatim rather than becoming "Unknown". A token
+ * this function has not been taught is still more use to whoever is debugging
+ * than a shrug, and a new verdict added to the funnel should degrade to showing
+ * itself rather than hiding.
+ */
+export function describeFeedDetail(detail: string): string {
+  const trimmed = detail.trim();
+  if (trimmed.length === 0) return "";
+
+  const week = /^scored-through-week-(\d+)$/.exec(trimmed);
+  if (week) return `Scored through Week ${week[1]}`;
+
+  switch (trimmed) {
+    case "no-schedule-loaded":
+      return "No schedule loaded yet";
+    case "preseason-only":
+      return "Preseason games only — nothing to score";
+    case "schedule-read":
+      return "Couldn't read the schedule from the database";
+    case "provider":
+      return "The provider returned no games";
+    case "games-upsert":
+      return "Couldn't write the games it fetched";
+    case "recompute":
+      return "Failed while recomputing standings";
+    default:
+      return trimmed;
+  }
 }
 
 /**

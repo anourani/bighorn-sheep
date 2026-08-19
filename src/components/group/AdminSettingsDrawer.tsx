@@ -2,15 +2,17 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Modal } from "@/components/ui/Modal";
+import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
 import { Switch } from "@/components/ui/Switch";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
 import {
   getFeedStatus,
+  runFeedCheck,
   setGroupBuyIn,
   setGroupName,
   setGroupRules,
@@ -19,7 +21,14 @@ import {
 } from "@/app/app/actions";
 import { formatMoney } from "@/lib/money";
 import { formatMonthDay } from "@/lib/time";
-import { describeFeed, mapFeedStatus, type FeedDescription } from "@/lib/league/feed";
+import {
+  agoLabel,
+  describeFeed,
+  describeFeedDetail,
+  mapFeedStatus,
+  providerLabel,
+  type FeedSnapshot,
+} from "@/lib/league/feed";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { SeasonPhase } from "@/lib/game/season";
 import type { EliminationType, Group, Member, TieRule } from "@/lib/league/types";
@@ -45,14 +54,22 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   bad_elimination_type: "Pick one of the two elimination types.",
   bad_tie_rule: "Pick one of the two tie rules.",
   bad_amount: "Enter an amount of zero or more.",
-  // Each of these means the RPC itself is missing, which almost always means
-  // 0011 (or 0010) has not been applied to this database by hand — nothing in
-  // this repo applies migrations. The detail is in the Netlify function log.
+  // The one that used to be a mystery. Every ladder in actions.ts ends in a
+  // catch-all, and a database missing its migration landed there — so "the
+  // admin panel needs a migration applied" rendered as "try again", which is an
+  // invitation to click Save forever. `rpcErrorCode` now names it.
+  migration_missing:
+    "This needs a database update that hasn't been applied to Supabase yet.",
+  // Reached only when the RPC failed for some OTHER reason; the detail is in the
+  // Netlify function log.
   name_update_failed: "Couldn't save that. Try again.",
   rules_update_failed: "Couldn't save that. Try again.",
   preseason_update_failed: "Couldn't save that. Try again.",
   buy_in_update_failed: "Couldn't save that. Try again.",
   feed_status_unavailable: "Couldn't read the feed status.",
+  poll_too_soon: "Just checked — give it a minute.",
+  feed_poll_unavailable: "Manual checks aren't configured on this deployment.",
+  poll_failed: "The check ran, but reading the result back failed.",
   unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };
 
@@ -62,6 +79,35 @@ function copyFor(code: string): string {
 
 const INPUT_CLASS =
   "w-full rounded-control border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-mute/60 focus-visible:border-brand-strong";
+
+/**
+ * One bordered card with a heading and a status pill on the right.
+ *
+ * Introduced for the Rules tab, where the two cards it holds lock on DIFFERENT
+ * conditions — the game rules freeze at the first Week 1 kickoff, the entry fee
+ * never freezes at all. Stating that per card is the entire reason this tab is
+ * two cards instead of one column: a single lock affordance covering both would
+ * be wrong about one of them whichever way it read.
+ */
+function SettingsCard({
+  heading,
+  pill,
+  children,
+}: {
+  heading: React.ReactNode;
+  pill?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3 rounded-control border border-line bg-white p-4">
+      <div className="flex items-center justify-between gap-2">
+        <SectionHeading>{heading}</SectionHeading>
+        {pill ?? null}
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <Label>{children}</Label>;
@@ -224,7 +270,24 @@ function RulesSection({ group }: { group: Group }) {
   }
 
   return (
-    <div className="space-y-5">
+    <SettingsCard
+      heading="Game rules"
+      pill={
+        locked ? (
+          <Pill variant="hidden" icon={<LockIcon />}>
+            Frozen
+          </Pill>
+        ) : (
+          <Pill variant="neutral">Editable</Pill>
+        )
+      }
+    >
+      {/* THE FIELDSET STOPS HERE — it wraps the two radio groups and nothing
+          else. The buy-in card beside this one writes through
+          `set_group_buy_in`, which has no lock check of any kind, so sweeping it
+          into this fieldset would grey out a control the database would have
+          accepted and tell an admin their entry fee is frozen when it is not.
+          That is the exact confusion this tab was split in two to prevent. */}
       <fieldset disabled={locked || pending} className="space-y-5">
         <RadioGroup
           legend="Elimination"
@@ -250,19 +313,29 @@ function RulesSection({ group }: { group: Group }) {
 
       {locked ? (
         <HintLine>
-          The season has started, so the rules are frozen — a league can&apos;t change what counts
-          as elimination halfway through. The name above is still editable.
+          The season has started, so elimination and tie rules are frozen — a league can&apos;t
+          change what counts as elimination halfway through. The buy-in and the league name are
+          both still editable.
         </HintLine>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" disabled={!dirty || pending} onClick={save}>
             {pending ? "Saving…" : saved ? "Saved" : "Save rules"}
           </Button>
-          <p className="text-xs text-ink-mute">Locks when the season starts.</p>
+          <p className="text-xs text-ink-mute">Locks at the first Week 1 kickoff.</p>
         </div>
       )}
+
+      {/* The date, not just the phrase. `entry_closes_at` is literally what
+          `set_group_rules` tests, and an admin deciding whether to change a rule
+          wants to know how long they have, not that a deadline exists. */}
+      <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-ink-mute">
+        <span>Entry closes</span>
+        <LocalTime iso={group.entryClosesAt} mode="full" className="font-medium text-ink-soft" />
+      </p>
+
       {error ? <ErrorLine>{error}</ErrorLine> : null}
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -322,10 +395,16 @@ function RadioGroup({
 }
 
 /**
- * What the pot costs — the other half of the account page's buy-in card, whose
- * paid/unpaid badge is set by {@link MembersSection} below. They share the
- * Members tab for that reason: the amount and who has paid it are two halves of
- * one fact.
+ * What the pot costs — a rule, and the one rule that is mandatory: paying it is
+ * what it takes to be in the league.
+ *
+ * It lives on the RULES tab, beside elimination and ties, rather than beside the
+ * per-member paid switches in {@link MembersSection}. The two are related but
+ * they are not the same kind of thing: the amount is a condition of entry that
+ * applies to everyone, and who has handed it over is bookkeeping about people.
+ * Splitting them costs one cross-reference in each direction — the hint below,
+ * and one in the Members rail — and buys a Rules tab that holds every term of
+ * the deal.
  *
  * Dollars in the inputs, cents in the database (`groups.buy_in_cents`,
  * `groups.site_fee_cents` — migration 0010). The conversion happens here, at the
@@ -340,6 +419,10 @@ function RadioGroup({
  * Deliberately still editable after the rules lock: locking freezes how the game
  * is played, and correcting what it costs is money admin. Getting the number
  * wrong is also exactly the sort of thing you discover after kickoff.
+ * `set_group_buy_in` (0010) accordingly has no lock check and no entry-close
+ * check — which is why this card sits OUTSIDE the fieldset next door and carries
+ * its own "Always editable" pill. Sharing a tab with a control that freezes is
+ * the one hazard of putting it here, and those two things are the answer to it.
  */
 function BuyInAmountSection({ group }: { group: Group }) {
   const router = useRouter();
@@ -374,10 +457,10 @@ function BuyInAmountSection({ group }: { group: Group }) {
   }
 
   return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <SectionHeading>Buy-in</SectionHeading>
-        <span className="text-xs font-medium text-ink-mute tabular-nums">
+    <SettingsCard heading="Buy-in" pill={<Pill variant="neutral">Always editable</Pill>}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs text-ink-mute">What it costs to be in the league.</p>
+        <span className="text-sm font-semibold text-ink tabular-nums">
           {valid ? `${formatMoney(buyInCents + feeCents)} total` : "—"}
         </span>
       </div>
@@ -409,15 +492,20 @@ function BuyInAmountSection({ group }: { group: Group }) {
           />
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" disabled={!dirty || pending} onClick={save}>
           {pending ? "Saving…" : saved ? "Saved" : "Save"}
         </Button>
         <p className="text-xs text-ink-mute">Shown on everyone&apos;s account page.</p>
       </div>
+      <HintLine>
+        Money admin never locks: you can correct the amount after kickoff, which is usually when
+        you find out it&apos;s wrong. Changing it doesn&apos;t touch anyone&apos;s paid switch —
+        those are on the Members tab.
+      </HintLine>
       {!valid ? <ErrorLine>Enter a dollar amount of zero or more.</ErrorLine> : null}
       {error ? <ErrorLine>{error}</ErrorLine> : null}
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -527,20 +615,39 @@ function MembersSection({
       </SectionHeading>
       {/*
         NO max-h / overflow here, however long the roster gets. A scroll region
-        inside a tab is the exact thing this layout exists to remove: `Modal`'s
-        panel is the one scroller, so a long list scrolls the whole modal rather
-        than trapping a scrollbar inside a tab that is itself inside a scroller.
-        A taller two-switch row is precisely what tempts a `max-h-64` in here.
+        inside a tab is the exact thing this layout exists to remove: the
+        `Drawer` panel is the one scroller, so a long list scrolls the whole
+        drawer rather than trapping a scrollbar inside a tab that is itself
+        inside a scroller. A taller row is precisely what tempts a `max-h-64`.
       */}
+
+      {/* aria-hidden, and that is not an oversight. Every Switch below already
+          carries its member's name in its own accessible label ("Buy-in paid —
+          Jane D."), so these four words are decoration for sighted readers; left
+          exposed, a screen reader would announce four orphan headings before
+          every roster. Hidden below `lg`, where each row still labels itself. */}
+      <div
+        aria-hidden
+        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px]"
+      >
+        <Label className="text-ink-mute">Member</Label>
+        <span />
+        <Label className="text-ink-mute">Paid</Label>
+        <Label className="text-ink-mute">Preseason</Label>
+      </div>
+
       <ul className="divide-y divide-line rounded-control border border-line">
         {members.map((m) => {
           const paid = paidFor(m);
           const preseason = preseasonFor(m);
           const paidStamp = m.buyInPaidAt ? formatMonthDay(m.buyInPaidAt) : "";
           return (
-            <li key={m.id} className="space-y-2 px-3 py-2.5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="min-w-0 flex-1">
+            <li
+              key={m.id}
+              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px] lg:items-center lg:gap-x-4 lg:space-y-0"
+            >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
+                <span className="min-w-0 flex-1 lg:min-w-0">
                   <span className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink">{m.name}</span>
                     {m.role === "admin" ? (
@@ -557,10 +664,19 @@ function MembersSection({
                     </span>
                   ) : null}
                 </span>
+                {/* `justify-self-start` matters only from `lg`, where the
+                    wrapper above goes `display: contents` and this pill becomes
+                    a grid item in its own right — a grid item stretches to its
+                    column by default, which would leave "ALIVE" adrift in a 72px
+                    box rather than sized to its text. */}
                 {m.status === "eliminated" ? (
-                  <Pill variant="out">Out</Pill>
+                  <Pill variant="out" className="lg:justify-self-start">
+                    Out
+                  </Pill>
                 ) : (
-                  <Pill variant="alive">Alive</Pill>
+                  <Pill variant="alive" className="lg:justify-self-start">
+                    Alive
+                  </Pill>
                 )}
               </div>
 
@@ -593,6 +709,23 @@ function MembersSection({
           );
         })}
       </ul>
+      {error ? <ErrorLine>{error}</ErrorLine> : null}
+    </section>
+  );
+}
+
+/**
+ * The paragraphs that explain the two switches, and the pointer to where the
+ * buy-in AMOUNT went.
+ *
+ * Separated from the roster so the wide layout can put them in the 312px rail
+ * beside it. That is not decoration: across the drawer's full 968px these run to
+ * a ~130-character measure, which is past the point anyone reads them. In the
+ * rail they are about 45.
+ */
+function MembersHints({ preseasonOpen }: { preseasonOpen: boolean }) {
+  return (
+    <div className="space-y-3">
       <HintLine>
         Buy-in is yours to track by hand — flip a switch as the money lands. Members see their own
         status on their account page and can&apos;t change it.
@@ -612,11 +745,28 @@ function MembersSection({
           </>
         )}
       </HintLine>
-      {error ? <ErrorLine>{error}</ErrorLine> : null}
-    </section>
+      {/* The other half of the split. Someone marking people paid is one thought
+          away from wanting to change what they owe, and the Rules tab is not
+          where they would look for it unaided. */}
+      <HintLine>What the buy-in costs is a rule — set the amount on the Rules tab.</HintLine>
+    </div>
   );
 }
 
+/**
+ * One switch with its label and current state, in two layouts and one element.
+ *
+ * Below `lg` it is a full-width row: label over state on the left, switch on the
+ * right. From `lg` it becomes a cell in the roster grid — switch on top, state
+ * underneath — and the label is suppressed, because the column header above the
+ * list says it once instead of once per member.
+ *
+ * The `sub` line survives at BOTH widths, and it is the reason hiding the label
+ * is safe: "Paid · 10/21" reads on its own under a switch in a column called
+ * Paid. `a11y` is unaffected either way — it carries the member's name into the
+ * Switch's accessible label, which is what a screen reader gets regardless of
+ * which of these two shapes is on screen.
+ */
 function MemberToggle({
   label,
   sub,
@@ -633,12 +783,18 @@ function MemberToggle({
   a11y: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 pl-0.5">
-      <span className="min-w-0">
-        <span className="block text-xs font-medium text-ink-soft">{label}</span>
-        <span className="block text-xs text-ink-mute">{sub}</span>
+    <div className="flex items-center justify-between gap-3 pl-0.5 lg:flex-col lg:items-start lg:justify-start lg:gap-1 lg:pl-0">
+      <span className="min-w-0 lg:order-2">
+        <span className="block text-xs font-medium text-ink-soft lg:hidden">{label}</span>
+        <span className="block text-xs leading-tight text-ink-mute">{sub}</span>
       </span>
-      <Switch checked={checked} disabled={disabled} onChange={onChange} label={a11y} />
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        label={a11y}
+        className="lg:order-1"
+      />
     </div>
   );
 }
@@ -700,24 +856,36 @@ const FEED_TONE_VARIANT = {
 } as const;
 
 /**
- * Is the score feed actually running?
+ * Is the score feed actually running, and can I make it run now?
  *
- * This replaces a hardcoded `ESPN · healthy` Pill and a permanently disabled
+ * This replaced a hardcoded `ESPN · healthy` Pill and a permanently disabled
  * "Enter a result manually" button — a status that was true by assertion and a
- * control that never worked. The button is gone rather than carried over:
- * game-result override is its own feature with its own audit-trail requirements,
- * and a dead control reads as a broken app.
+ * control that never worked. It now also replaces its own earlier admission
+ * that it "only reads its last run": "Check now" runs the same body the cron
+ * runs, in process.
  *
  * Fetched on mount rather than in `loadLeague`, because only admins can open
- * this modal and most of them never open this tab — putting it in the loader
+ * this drawer and most of them never open this tab — putting it in the loader
  * would buy every Standings render a query for a number nobody is reading.
  * Rendering only the active panel is what makes "on mount" mean "when the tab is
  * opened".
+ *
+ * Holds the SNAPSHOT, not just the description. `describeFeed` reduces a run to
+ * one sentence, which is the right headline and throws away the six facts under
+ * it — when it last succeeded, which provider, how many games moved. Those are
+ * what an admin actually came here for, so the reduction happens in render and
+ * the raw shape stays in state.
+ *
+ * Two buttons, deliberately, because they answer different questions. "Check
+ * now" polls the provider; "Refresh" re-reads what the last poll recorded. One
+ * button doing both would make a read cost an ESPN call.
  */
 function DataFeedSection({ groupId }: { groupId: string }) {
-  const [description, setDescription] = useState<FeedDescription | null>(null);
+  const router = useRouter();
+  const [snapshot, setSnapshot] = useState<FeedSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -732,7 +900,7 @@ function DataFeedSection({ groupId }: { groupId: string }) {
       setLoading(false);
       return;
     }
-    setDescription(describeFeed(mapFeedStatus(res.data)));
+    setSnapshot(mapFeedStatus(res.data));
     setLoading(false);
   }, [groupId]);
 
@@ -740,40 +908,146 @@ function DataFeedSection({ groupId }: { groupId: string }) {
     void load();
   }, [load]);
 
+  /*
+   * Run the scorer, then show what it recorded.
+   *
+   * A FAILED poll still comes back `ok`, carrying the fresh status — the action
+   * records every verdict to `feed_status` before returning, so the panel below
+   * can say "the score feed is failing" and name the stage, which beats a toast
+   * saying something went wrong. Only a refusal before the poll (not an admin,
+   * inside the cooldown, no service key) surfaces as an error line.
+   */
+  const check = useCallback(async () => {
+    setChecking(true);
+    setError(null);
+    const res = await runFeedCheck({ groupId }).catch((err) => {
+      if (isStaleDeploymentError(err) && reloadOnce()) return null;
+      return { ok: false as const, error: "unexpected_error" };
+    });
+    if (!res) return;
+    if (!res.ok) {
+      setError(copyFor(res.error));
+      setChecking(false);
+      return;
+    }
+    setSnapshot(mapFeedStatus(res.data));
+    setChecking(false);
+    // A poll locks picks at kickoff and can eliminate people, so the board
+    // behind this drawer may be out of date the moment it returns.
+    router.refresh();
+  }, [groupId, router]);
+
+  const description = describeFeed(snapshot);
+  const sync = snapshot?.sync ?? null;
+  // Lifted out so the JSX below doesn't have to re-narrow `snapshot` on every
+  // use. Every age on screen is measured against the DATABASE's clock, which is
+  // why `feed_status_for_admin` returns one at all — a Netlify container stamped
+  // `checked_at`, and two machines' clocks are how "checked -3 minutes ago" gets
+  // printed. `agoLabel` degrades to "at an unknown time" if it is ever empty.
+  const now = snapshot?.now ?? "";
+  const busy = loading || checking;
+
   return (
-    <section className="space-y-2">
-      <SectionHeading>Score feed</SectionHeading>
-      <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
-        {loading ? (
-          <p className="text-sm text-ink-mute">Checking…</p>
-        ) : error ? (
-          <>
-            <p className="text-sm font-medium text-ink">Feed status unavailable</p>
-            <p className="mt-2 text-xs leading-relaxed text-ink-mute">{error}</p>
-          </>
-        ) : description ? (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-medium text-ink">{description.headline}</span>
-              <Pill
-                variant={FEED_TONE_VARIANT[description.tone]}
-                live={description.tone === "healthy"}
-              >
-                {description.provider ?? "No data"}
-              </Pill>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-ink-mute">{description.detail}</p>
-          </>
-        ) : null}
-        <Button variant="outline" size="sm" className="mt-3" disabled={loading} onClick={load}>
-          Refresh
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
+      <section className="space-y-2">
+        <SectionHeading>Score feed</SectionHeading>
+        <div className="rounded-control border border-line bg-[#FAFAFB] p-3">
+          {loading && !sync ? (
+            <p className="text-sm text-ink-mute">Checking…</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-ink">{description.headline}</span>
+                <Pill
+                  variant={FEED_TONE_VARIANT[description.tone]}
+                  live={description.tone === "healthy"}
+                >
+                  {description.provider ?? "No data"}
+                </Pill>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-ink-mute">{description.detail}</p>
+
+              {sync ? (
+                <>
+                  {/* Two across on a phone, four across only where the column is
+                      genuinely wide enough for "Sun, Sep 13 · 4:00 PM" — which is
+                      the full-bleed `md` rail and NOT the narrower `lg` left
+                      column beside the action rail. The count follows the column
+                      width, not the viewport. */}
+                  <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-3 md:grid-cols-4 lg:grid-cols-2">
+                    <FeedFact term="Last checked">
+                      <LocalTime iso={sync.checkedAt} mode="full" />
+                      <span className="mt-0.5 block text-xs text-ink-mute">
+                        {agoLabel(sync.checkedAt, now)}
+                      </span>
+                    </FeedFact>
+                    <FeedFact term="Last success">
+                      {sync.lastOkAt ? (
+                        <>
+                          <LocalTime iso={sync.lastOkAt} mode="full" />
+                          <span className="mt-0.5 block text-xs text-ink-mute">
+                            {agoLabel(sync.lastOkAt, now)}
+                          </span>
+                        </>
+                      ) : (
+                        "Never"
+                      )}
+                    </FeedFact>
+                    <FeedFact term="Provider">{providerLabel(sync.provider)}</FeedFact>
+                    <FeedFact term="Season">{sync.season ?? "—"}</FeedFact>
+                    <FeedFact term="Last run">{describeFeedDetail(sync.detail) || "—"}</FeedFact>
+                    <FeedFact term="Games / players updated">
+                      <span className="tabular-nums">
+                        {sync.gamesUpserted} / {sync.membersUpdated}
+                      </span>
+                    </FeedFact>
+                  </dl>
+
+                  {sync.error ? (
+                    <p className="mt-3 break-words rounded border border-line bg-white p-2 font-mono text-xs leading-relaxed text-[#8A2C2C]">
+                      {sync.error}
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <HintLine>
+          Last checked is stamped on every run, success or not. Last success only moves when a run
+          works — a fresh check beside a stale success means the scorer is running and failing,
+          which is a different problem from nothing running at all.
+        </HintLine>
+      </section>
+
+      <div className="space-y-3">
+        <Button variant="primary" size="md" block disabled={busy} onClick={check}>
+          {checking ? "Checking…" : "Check now"}
         </Button>
+        <Button variant="outline" size="md" block disabled={busy} onClick={load}>
+          {loading ? "Reading…" : "Refresh"}
+        </Button>
+        <HintLine>
+          Check now runs the scorer immediately — it polls the provider, locks picks at kickoff and
+          updates standings. Refresh only re-reads the last run. The scorer also runs on its own
+          every five minutes.
+        </HintLine>
+        {error ? <ErrorLine>{error}</ErrorLine> : null}
       </div>
-      <HintLine>
-        The scorer runs on its own every five minutes; it locks picks at kickoff and updates
-        standings. This only reads its last run — it doesn&apos;t trigger one.
-      </HintLine>
-    </section>
+    </div>
+  );
+}
+
+/** One term/value pair in the feed's fact grid. */
+function FeedFact({ term, children }: { term: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt>
+        <Label className="text-ink-mute">{term}</Label>
+      </dt>
+      <dd className="mt-1 text-sm text-ink">{children}</dd>
+    </div>
   );
 }
 
@@ -786,25 +1060,49 @@ const TABS: { value: TabValue; label: string }[] = [
 ];
 
 /**
- * The league admin's one surface, in three tabs.
+ * The league admin's one surface: three tabs in a full-width bottom drawer.
  *
- * Why tabs: five stacked sections made the modal taller than a phone, so
- * `Modal`'s own `max-h-[92vh]` panel scroll engaged and the thing had to be
- * scrolled one-handed mid-week. Splitting membership, rules and feed health —
- * three genuinely unrelated concerns — is both the organising fix and the scroll
- * fix.
+ * Why tabs: five stacked sections made the panel taller than a phone, so it had
+ * to be scrolled one-handed mid-week. Splitting membership, rules and feed
+ * health — three genuinely unrelated concerns — is both the organising fix and
+ * the scroll fix.
  *
- * NOTHING IN HERE MAY SCROLL ON ITS OWN. The tab bar is a plain flow child, not
- * sticky; no panel carries `max-h` or `overflow`. So a short tab doesn't scroll
- * at all and a long one scrolls the whole modal, which is the rule: never a
- * scrollbar nested inside a tab.
+ * Why a drawer and not `Modal`: at 480px every one of these tabs was a single
+ * narrow column, and the roster in particular stacked two full-width switch rows
+ * under each member so a sixteen-player league ran to about three screens. The
+ * width was the constraint on the design rather than a choice, and the page it
+ * covers is 1000px wide. `Drawer` is full-bleed with its content on the same
+ * rail as `main`, so the columns here line up with the Standings page still
+ * visible behind them.
+ *
+ * NOTHING IN HERE MAY SCROLL ON ITS OWN — unchanged, and it matters more now. No
+ * panel carries `max-h` or `overflow`; the `Drawer` panel is the one scroller,
+ * so a short tab doesn't scroll at all and a long one scrolls the whole drawer.
+ * A sixteen-row roster is exactly what tempts a `max-h` in here.
+ *
+ * The tab bar IS now pinned, in the drawer's sticky header, which reverses what
+ * this comment used to say. In a 480px modal the bar was never more than a short
+ * scroll from the top of the viewport, so pinning it bought nothing; at 90dvh it
+ * scrolls out of sight and the other two tabs become unreachable without
+ * scrolling back up. Sticky is a pin, not a scroll region — the invariant above
+ * is untouched.
+ *
+ * The league name is `aside` rather than a tab, and above the tabs rather than
+ * inside one: it names the thing all three tabs are about, and burying it would
+ * make "rename any time" mean "rename any time you're on the right tab".
  *
  * The active tab is plain `useState` and survives close/reopen for the session:
- * `Modal` returns null when closed, so only its subtree unmounts — this
+ * `Drawer` returns null when closed, so only its subtree unmounts — this
  * component stays mounted in `StandingsClient`. No `localStorage`, which would
  * cost a paint flash to render a default first.
+ *
+ * NO LOCK GLYPH ON THE TAB BAR, deliberately. It used to sit beside "Rules" once
+ * the season started. That was honest when the whole tab froze together; now
+ * that the always-editable buy-in shares the tab it would be a claim about the
+ * tab that is false for half of it. Each card on the Rules tab states its own
+ * lock instead, which is the only place the distinction can be made accurately.
  */
-export function AdminSettingsModal({
+export function AdminSettingsDrawer({
   open,
   onClose,
   group,
@@ -820,56 +1118,62 @@ export function AdminSettingsModal({
   phase: SeasonPhase;
 }) {
   const [tab, setTab] = useState<TabValue>("members");
-  const locked = Boolean(group.settingsLockedAt) || new Date(group.entryClosesAt).getTime() <= Date.now();
 
   return (
-    <Modal open={open} onClose={onClose} eyebrow="Admin" title="Group Settings">
-      <div className="space-y-5">
-        <GroupNameSection group={group} />
+    <Drawer
+      open={open}
+      onClose={onClose}
+      eyebrow="Admin"
+      title="Group Settings"
+      aside={<GroupNameSection group={group} />}
+      subheader={
+        <Tabs
+          options={TABS}
+          value={tab}
+          onChange={setTab}
+          idBase="admin-settings"
+          label="Group settings sections"
+          // Left-aligned and capped rather than stretched: three tabs spread
+          // across 968px read as a navigation bar for the page rather than a
+          // control for the panel under them.
+          className="lg:max-w-[440px]"
+        />
+      }
+    >
+      {tab === "members" ? (
+        <TabPanel
+          idBase="admin-settings"
+          value="members"
+          className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-8"
+        >
+          <MembersSection groupId={group.id} members={members} phase={phase} />
+          {/* The rail: sharing the invite is membership admin, and the two long
+              explanations are unreadable at the full width of this drawer. */}
+          <div className="space-y-5">
+            <InviteSection group={group} appUrl={appUrl} />
+            <MembersHints preseasonOpen={phase === "preseason"} />
+          </div>
+        </TabPanel>
+      ) : null}
 
-        <div className="space-y-4">
-          <Tabs
-            options={TABS.map((t) => ({
-              value: t.value,
-              label:
-                t.value === "rules" && locked ? (
-                  <span className="inline-flex items-center gap-1">
-                    {t.label}
-                    <LockIcon className="h-3 w-3" />
-                  </span>
-                ) : (
-                  t.label
-                ),
-            }))}
-            value={tab}
-            onChange={setTab}
-            idBase="admin-settings"
-            label="Group settings sections"
-          />
+      {tab === "rules" ? (
+        <TabPanel
+          idBase="admin-settings"
+          value="rules"
+          className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
+        >
+          {/* Two cards, side by side, because they lock on different conditions
+              and the point is that you can see both states at once. */}
+          <RulesSection group={group} />
+          <BuyInAmountSection group={group} />
+        </TabPanel>
+      ) : null}
 
-          {tab === "members" ? (
-            <TabPanel idBase="admin-settings" value="members" className="space-y-6">
-              <MembersSection groupId={group.id} members={members} phase={phase} />
-              <InviteSection group={group} appUrl={appUrl} />
-              {/* The buy-in amount and the per-member paid flag are the two
-                  halves of what the account page prints, so they share a tab. */}
-              <BuyInAmountSection group={group} />
-            </TabPanel>
-          ) : null}
-
-          {tab === "rules" ? (
-            <TabPanel idBase="admin-settings" value="rules">
-              <RulesSection group={group} />
-            </TabPanel>
-          ) : null}
-
-          {tab === "feed" ? (
-            <TabPanel idBase="admin-settings" value="feed">
-              <DataFeedSection groupId={group.id} />
-            </TabPanel>
-          ) : null}
-        </div>
-      </div>
-    </Modal>
+      {tab === "feed" ? (
+        <TabPanel idBase="admin-settings" value="feed">
+          <DataFeedSection groupId={group.id} />
+        </TabPanel>
+      ) : null}
+    </Drawer>
   );
 }
