@@ -185,6 +185,17 @@ const config: Config = {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        // The exits. Separate keyframes rather than `animation-direction:
+        // reverse`, because a reversed animation also reverses its easing curve
+        // — the drawer would leave slowly and stop abruptly, which is backwards.
+        "drawer-down": {
+          from: { transform: "translateY(0)" },
+          to: { transform: "translateY(100%)" },
+        },
+        "scrim-out": {
+          from: { opacity: "1" },
+          to: { opacity: "0" },
+        },
         "reveal-mask": {
           from: { opacity: "0", clipPath: "inset(0 0 100% 0)" },
           to: { opacity: "1", clipPath: "inset(0 0 0 0)" },
@@ -207,6 +218,11 @@ const config: Config = {
         // than 12px, and half a second of that reads as lag rather than grace.
         "drawer-up": "drawer-up 0.32s cubic-bezier(0.22,1,0.36,1) both",
         "scrim-in": "scrim-in 0.2s ease both",
+        // 0.28s against the entrance's 0.32s. An exit that lingers as long as
+        // the entrance reads as sluggish: nobody is waiting to look at the thing
+        // they just dismissed.
+        "drawer-down": "drawer-down 0.28s cubic-bezier(0.22,1,0.36,1) both",
+        "scrim-out": "scrim-out 0.2s ease both",
         "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
         "pulse-live": "pulse-live 1.6s ease-in-out infinite",
         drift: "drift 9s ease-in-out infinite",

@@ -8,7 +8,7 @@ import {
   formatDayClock,
   formatFull,
   formatLong,
-  formatMonthDay,
+  formatMonthDayClock,
   formatWeekdayDate,
 } from "@/lib/time";
 
@@ -19,7 +19,7 @@ type Mode =
   | "dayclock"
   | "full"
   | "long"
-  | "monthday"
+  | "monthdayclock"
   | "weekdaydate";
 
 function format(iso: string, mode: Mode, timeZone?: string): string {
@@ -29,7 +29,7 @@ function format(iso: string, mode: Mode, timeZone?: string): string {
   if (mode === "date") return formatDate(iso, opts);
   if (mode === "full") return formatFull(iso, opts);
   if (mode === "long") return formatLong(iso, opts);
-  if (mode === "monthday") return formatMonthDay(iso, opts);
+  if (mode === "monthdayclock") return formatMonthDayClock(iso, opts);
   if (mode === "weekdaydate") return formatWeekdayDate(iso, opts);
   return formatDayClock(iso, opts);
 }

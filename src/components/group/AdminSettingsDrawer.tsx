@@ -20,7 +20,7 @@ import {
   setMemberPreseason,
 } from "@/app/app/actions";
 import { formatMoney } from "@/lib/money";
-import { formatMonthDay } from "@/lib/time";
+import { formatMonthDayClock } from "@/lib/time";
 import {
   agoLabel,
   describeFeed,
@@ -533,6 +533,28 @@ function toCents(input: string): number | null {
 type PendingKey = `${string}:${"paid" | "preseason"}`;
 
 /**
+ * Drop the overrides the server has caught up with, keeping the rest.
+ *
+ * Returns the SAME object when nothing changed, so the caller's `setState` bails
+ * out instead of re-rendering on every refresh.
+ */
+function pruneAgreed(
+  overrides: Record<string, boolean>,
+  members: Member[],
+  serverValue: (m: Member) => boolean,
+): Record<string, boolean> {
+  const keys = Object.keys(overrides);
+  if (keys.length === 0) return overrides;
+
+  const next: Record<string, boolean> = {};
+  for (const m of members) {
+    const override = overrides[m.id];
+    if (override !== undefined && override !== serverValue(m)) next[m.id] = override;
+  }
+  return Object.keys(next).length === keys.length ? overrides : next;
+}
+
+/**
  * The roster, and the two things an admin can change per member: who has paid,
  * and who gets the preseason practice round.
  *
@@ -572,6 +594,26 @@ function MembersSection({
 
   const paidFor = (m: Member) => paidOverrides[m.id] ?? m.buyInPaid;
   const preseasonFor = (m: Member) => preseasonOverrides[m.id] ?? m.showPreseason;
+
+  /*
+   * Retire each override once the server agrees with it.
+   *
+   * The overlay above exists to cover the gap between the tap and the refresh,
+   * and nothing was ever clearing it — so an override outlived the write that
+   * justified it and shadowed the server for the life of the mounted drawer. A
+   * value changed by ANOTHER admin, or a write that silently landed differently
+   * from what was optimistically shown, would never appear.
+   *
+   * Pruning on agreement rather than on write-success is what makes this safe:
+   * an entry whose write is still in flight disagrees with the prop it has not
+   * arrived in yet, so it survives and the switch does not flicker back.
+   * `members` gets a fresh array identity from every server render, so this runs
+   * on each refresh; dropping to the same object short-circuits the state update.
+   */
+  useEffect(() => {
+    setPaidOverrides((o) => pruneAgreed(o, members, (m) => m.buyInPaid));
+    setPreseasonOverrides((o) => pruneAgreed(o, members, (m) => m.showPreseason));
+  }, [members]);
   const paidCount = members.filter(paidFor).length;
   // Matches set_member_preseason's own condition, so the UI and the database
   // close the window at the same moment.
@@ -640,7 +682,12 @@ function MembersSection({
         {members.map((m) => {
           const paid = paidFor(m);
           const preseason = preseasonFor(m);
-          const paidStamp = m.buyInPaidAt ? formatMonthDay(m.buyInPaidAt) : "";
+          // With the time, not just the date: an admin correcting a mistake
+          // toggles this twice in a minute, and a bare "8/19" cannot show that
+          // the second write landed. Called directly rather than through
+          // `LocalTime` because the drawer never renders on the server, so there
+          // is no hydration mismatch to design around.
+          const paidStamp = m.buyInPaidAt ? formatMonthDayClock(m.buyInPaidAt) : "";
           return (
             <li
               key={m.id}

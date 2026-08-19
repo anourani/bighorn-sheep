@@ -104,24 +104,35 @@ function ordinalSuffix(day: number): string {
 }
 
 /**
- * A bare numeric date — "10/21".
+ * A numeric date with its clock — "10/21, 2:47 PM".
  *
- * The account page's buy-in card prints when an admin last moved the paid flag,
- * beside a badge that already says what the flag is. That line is metadata, not
- * a deadline, so it wants the shortest unambiguous form and no weekday. Pinned
- * to en-US for the same reason {@link formatLong} is: month-first is the form
- * the design shows, and honouring the browser locale would silently turn it into
- * 21/10 for half the world while the card around it stays in dollars.
+ * For an audit stamp: when an admin last moved someone's buy-in flag, printed
+ * both on the admin roster and on that member's own account card.
  *
- * Returns "" on an unparseable timestamp rather than "Invalid Date" — the line
- * is decorative, and a broken column value should drop it, not shout.
+ * It carries the TIME, and that is the entire point. This used to be
+ * `formatMonthDay`, which emitted "10/21" and nothing else — so an admin who
+ * toggled a switch off and back on the same afternoon watched the stamp beside
+ * it not move, because both writes formatted to the same six characters. The
+ * database was correct and the refresh was correct; the format was throwing the
+ * change away. A stamp that cannot show a same-day change is not a stamp.
+ *
+ * Not {@link formatFull}, which is "Sun, Sep 13 · 4:00 PM": its weekday is
+ * padding here, and its `·` separator collides with the surrounding copy, which
+ * already reads "Paid · …".
+ *
+ * Pinned to en-US and returning "" on a bad value, for the reasons
+ * {@link formatWeekdayDate} gives below — month-first is the form the design
+ * shows, and a broken column value should drop the line rather than shout
+ * "Invalid Date" at a user.
  */
-export function formatMonthDay(iso: string, opts: FmtOpts = {}): string {
+export function formatMonthDayClock(iso: string, opts: FmtOpts = {}): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleString("en-US", {
     month: "numeric",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
     timeZone: opts.timeZone,
   });
 }
@@ -135,7 +146,7 @@ export function formatMonthDay(iso: string, opts: FmtOpts = {}): string {
  * EDT"), which is right for a kickoff and reads as false precision for a
  * money deadline.
  *
- * en-US and "" on a bad value, for the same reasons as {@link formatMonthDay}.
+ * en-US and "" on a bad value, for the same reasons as {@link formatMonthDayClock}.
  */
 export function formatWeekdayDate(iso: string, opts: FmtOpts = {}): string {
   const d = new Date(iso);

@@ -4,7 +4,7 @@ import {
   formatDate,
   formatFull,
   formatLong,
-  formatMonthDay,
+  formatMonthDayClock,
   formatWeekdayDate,
 } from "./time";
 
@@ -104,24 +104,35 @@ describe("formatLong", () => {
   });
 });
 
-describe("formatMonthDay", () => {
-  it("gives a bare numeric date", () => {
-    expect(formatMonthDay(KICKOFF, NY)).toBe("9/13");
+describe("formatMonthDayClock", () => {
+  it("gives a numeric date and a clock", () => {
+    expect(formatMonthDayClock(KICKOFF, NY)).toBe("9/13, 4:00 PM");
+  });
+
+  it("distinguishes two stamps on the same day — the whole reason it has a time", () => {
+    // The bug this replaced: an admin toggling a buy-in switch off and back on
+    // the same afternoon saw the date beside it never change, because a
+    // month/day format collapsed two different writes onto one string.
+    const morning = formatMonthDayClock("2026-10-21T14:05:00Z", NY);
+    const afternoon = formatMonthDayClock("2026-10-21T19:47:00Z", NY);
+    expect(morning).toBe("10/21, 10:05 AM");
+    expect(afternoon).toBe("10/21, 3:47 PM");
+    expect(morning).not.toBe(afternoon);
   });
 
   it("is month-first regardless of the runtime locale", () => {
     // Pinned to en-US: the buy-in card shows 10/21, and a browser on en-GB
     // must not silently turn that into 21/10 next to a dollar amount.
-    expect(formatMonthDay("2026-10-21T16:00:00Z", NY)).toBe("10/21");
+    expect(formatMonthDayClock("2026-10-21T16:00:00Z", NY)).toBe("10/21, 12:00 PM");
   });
 
   it("resolves in the given zone, not UTC", () => {
     // 00:30 UTC on the 14th is still the 13th in New York.
-    expect(formatMonthDay("2026-09-14T00:30:00Z", NY)).toBe("9/13");
+    expect(formatMonthDayClock("2026-09-14T00:30:00Z", NY)).toBe("9/13, 8:30 PM");
   });
 
   it("returns empty on an unparseable timestamp rather than 'Invalid Date'", () => {
-    expect(formatMonthDay("not a date")).toBe("");
+    expect(formatMonthDayClock("not a date")).toBe("");
   });
 });
 
