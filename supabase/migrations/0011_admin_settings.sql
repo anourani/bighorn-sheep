@@ -182,6 +182,11 @@ grant execute on function public.set_group_rules(uuid, text, text) to authentica
 -- Default false: joining a league should not silently enrol you in a practice
 -- game, and the admin turning it on per player is the decision this implements.
 --
+-- The flag is a PRESEASON-ONLY affair and closes for good at the first Week 1
+-- kickoff. `set_member_preseason` refuses to move it after that, and the loader
+-- ignores it regardless — practice does not exist once the season starts, so
+-- there is no Week 11 in which somebody's preseason could be switched back on.
+--
 -- The backfill is the exception to that, and it is deliberately WIDER than "has
 -- already made a preseason pick". Someone who joined during preseason but hasn't
 -- picked yet is the very person about to — evicting them on the day this
@@ -226,7 +231,20 @@ end $$;
 --
 -- An RPC for the strongest of the three reasons in this file: `group_members`
 -- has NO update policy at all (0001), so a direct update from the client reports
--- success and changes nothing. Mirrors set_member_buy_in (0007/0010) exactly.
+-- success and changes nothing. Mirrors set_member_buy_in (0007/0010) exactly,
+-- with one addition it does not have: a window.
+--
+-- Practice is over at the first Week 1 kickoff and never comes back, so this
+-- refuses to move the flag after `entry_closes_at` — the same "the season has
+-- started" fact set_group_rules tests and seasonPhase() derives everywhere else.
+-- The read side already ignores the flag by then, so this is belt and braces:
+-- what it actually buys is that the stored value cannot drift away from what the
+-- season allows, and that an admin can't be misled into thinking a toggle they
+-- just flipped in Week 11 did something.
+--
+-- Unlike set_group_rules this does NOT also test settings_locked_at. That column
+-- has never been written by anything (see §2), and here the kickoff is the whole
+-- and only rule.
 -- ─────────────────────────────────────────────────────────────────────────────
 create or replace function public.set_member_preseason(
   p_group_id uuid,
@@ -251,6 +269,13 @@ begin
 
   if p_show is null then
     raise exception 'bad_value' using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1 from public.groups
+     where id = p_group_id and entry_closes_at <= now()
+  ) then
+    raise exception 'preseason_closed' using errcode = '55000';
   end if;
 
   update public.group_members

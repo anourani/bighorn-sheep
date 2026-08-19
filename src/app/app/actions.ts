@@ -582,6 +582,11 @@ export async function setGroupRules(input: {
  * pick from one. Their existing picks are untouched either way — the round is
  * derived at read time, so turning this off hides history rather than deleting
  * it.
+ *
+ * Refuses to move at all once the season starts (`preseason_closed`). Practice
+ * ends at the first Week 1 kickoff and never comes back, so there is no Week 11
+ * in which this could be switched back on — the RPC enforces that, and the UI
+ * disables the switch to match.
  */
 export async function setMemberPreseason(input: {
   groupId: string;
@@ -604,9 +609,11 @@ export async function setMemberPreseason(input: {
       const msg = error.message ?? "";
       const reason = msg.includes("not_admin")
         ? "not_admin"
-        : msg.includes("member_not_found")
-          ? "member_not_found"
-          : "preseason_update_failed";
+        : msg.includes("preseason_closed")
+          ? "preseason_closed"
+          : msg.includes("member_not_found")
+            ? "member_not_found"
+            : "preseason_update_failed";
       console.error("[setMemberPreseason] rpc failed", error);
       return { ok: false, error: reason };
     }

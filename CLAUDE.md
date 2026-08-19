@@ -60,6 +60,9 @@ late migration. Replayable. Three things in it are worth knowing:
   fixture. A lock gated on that column alone would never fire. The function also
   tests `entry_closes_at <= now()`, which is the same "the season has started"
   fact `seasonPhase()` derives everywhere else, and the modal mirrors both.
+- **`set_member_preseason` has a window `set_member_buy_in` doesn't** — it
+  refuses after `entry_closes_at`, because practice ends at Week 1 and never
+  returns. Money admin stays open all season; practice admin does not.
 - **`set_group_name` deliberately has no lock check at all**, which is the whole
   feature: 0001's `"groups update by admin (unlocked)"` refuses *every* `groups`
   write once the season starts, so a typo in a league name was unfixable outside
@@ -519,6 +522,14 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
   - **It gates access, not just visibility.** `submitPick` refuses a preseason
     pick from a switched-off member; a Server Action gated only in the UI isn't
     gated.
+  - **The window closes at the first Week 1 kickoff and never reopens.**
+    `set_member_preseason` raises `preseason_closed` after `entry_closes_at`, and
+    the modal disables the switch on the same condition, so there is no Week 11
+    in which anyone's preseason can be switched back on. The loader ignores the
+    flag by then anyway — what the guard buys is that the stored value cannot
+    drift from what the season allows, and that an admin isn't misled into
+    thinking a toggle they just flipped did something. Disabled rather than
+    hidden: a control that vanishes reads as a bug.
   - **Existing preseason picks survive**, because the round is derived at read
     time. Turning it off hides history rather than deleting it.
   - **It does not remove anyone from the round for OTHER viewers.**

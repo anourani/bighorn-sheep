@@ -41,6 +41,7 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   name_required: "Give the league a name.",
   name_too_long: "That name is too long — 60 characters max.",
   settings_locked: "The season has started, so the rules are frozen.",
+  preseason_closed: "Preseason is over — that can't be changed now.",
   bad_elimination_type: "Pick one of the two elimination types.",
   bad_tie_rule: "Pick one of the two tie rules.",
   bad_amount: "Enter an amount of zero or more.",
@@ -455,6 +456,12 @@ type PendingKey = `${string}:${"paid" | "preseason"}`;
  * Pending state is keyed per (member, field) rather than one global id. With one
  * switch per row a single flag was merely coarse; with two it would grey out all
  * sixteen controls every time anyone flipped one.
+ *
+ * The preseason switch is live during preseason ONLY. Practice ends at the first
+ * Week 1 kickoff and never returns, so after that the switch is disabled and
+ * `set_member_preseason` refuses the write as well — there is no Week 11 in
+ * which anyone's preseason can be turned back on. Disabled rather than hidden:
+ * a control that vanishes reads as a bug, and the state is still worth seeing.
  */
 function MembersSection({
   groupId,
@@ -478,6 +485,9 @@ function MembersSection({
   const paidFor = (m: Member) => paidOverrides[m.id] ?? m.buyInPaid;
   const preseasonFor = (m: Member) => preseasonOverrides[m.id] ?? m.showPreseason;
   const paidCount = members.filter(paidFor).length;
+  // Matches set_member_preseason's own condition, so the UI and the database
+  // close the window at the same moment.
+  const preseasonOpen = phase === "preseason";
 
   function toggle(m: Member, field: "paid" | "preseason", next: boolean) {
     const key: PendingKey = `${m.id}:${field}`;
@@ -567,9 +577,15 @@ function MembersSection({
               />
               <MemberToggle
                 label="Show preseason weeks"
-                sub={preseason ? "Can see and pick preseason" : "Regular season only"}
-                checked={preseason}
-                disabled={pending.has(`${m.id}:preseason`)}
+                sub={
+                  !preseasonOpen
+                    ? "Preseason is over"
+                    : preseason
+                      ? "Can see and pick preseason"
+                      : "Regular season only"
+                }
+                checked={preseasonOpen && preseason}
+                disabled={!preseasonOpen || pending.has(`${m.id}:preseason`)}
                 onChange={(next) => toggle(m, "preseason", next)}
                 a11y={`Show preseason weeks — ${m.name}`}
               />
@@ -582,12 +598,19 @@ function MembersSection({
         status on their account page and can&apos;t change it.
       </HintLine>
       <HintLine>
-        Preseason is practice: picks are real for the practice table, but nothing carries into the
-        season — nobody is eliminated by a preseason loss. Turning it off hides those weeks from
-        that member and stops them picking; their existing preseason picks are kept.
-        {phase !== "preseason"
-          ? " Preseason is over for this season, so this setting won't change anything until the next one."
-          : ""}
+        {preseasonOpen ? (
+          <>
+            Preseason is practice: picks are real for the practice table, but nothing carries into
+            the season — nobody is eliminated by a preseason loss. Switch it on for whoever wants to
+            play those weeks; switching it off hides them from that member and stops them picking,
+            keeping any picks they already made.
+          </>
+        ) : (
+          <>
+            Preseason ended at the first Week 1 kickoff and these switches are closed for the
+            season. Practice never carried into the standings, so nothing was lost when it went.
+          </>
+        )}
       </HintLine>
       {error ? <ErrorLine>{error}</ErrorLine> : null}
     </section>
