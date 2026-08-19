@@ -88,6 +88,16 @@ export interface LeagueData {
    * the reset: no job runs, nothing is deleted, practice simply stops being read.
    */
   practice: PracticeData | null;
+  /**
+   * Whether the practice round is switched on FOR THIS VIEWER (0011's
+   * `group_members.show_preseason`), as opposed to whether it exists.
+   *
+   * `practice` alone cannot tell those apart, and the difference is the whole
+   * empty state: during preseason a null `practice` means either "your admin
+   * hasn't turned practice on for you" or "no preseason schedule is loaded yet",
+   * and a screen that says neither is just a hole in the page.
+   */
+  practiceEnabled: boolean;
 }
 
 export interface PracticeData extends PracticeState {
@@ -150,6 +160,10 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
     status: row.status,
     strikes: row.strikes,
     buyInPaid: row.buy_in_paid,
+    buyInPaidAt: row.buy_in_paid_at,
+    // Fail OPEN. A member row read before 0011 is applied has no such column,
+    // and the wrong answer there is to take practice away from everyone at once.
+    showPreseason: row.show_preseason ?? true,
     eliminatedWeek: row.eliminated_week,
     history,
     currentPick,
@@ -306,10 +320,36 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     if (Array.isArray(hidden)) hiddenPickUserIds = hidden as string[];
   }
 
-  // The practice round, built only while entry is still open. Once Week 1 kicks
-  // off this stays null and preseason disappears from the UI on its own.
+  /*
+   * Is the practice round switched on for THIS viewer?
+   *
+   * Fail open, for the reason toMember does: before 0011 is applied the column
+   * is absent and every member reads undefined, and taking practice away from
+   * the entire league because one migration is late is far worse than showing it
+   * to someone an admin meant to exclude.
+   */
+  const practiceEnabled =
+    (memberRows ?? []).find((m) => m.user_id === user.id)?.show_preseason ?? true;
+
+  /*
+   * The practice round, built only while entry is still open AND only for a
+   * viewer who has it switched on. Once Week 1 kicks off this stays null and
+   * preseason disappears from the UI on its own.
+   *
+   * This one condition is the whole of the per-member preseason feature on the
+   * read side: `practice` being null already removes the preseason chips from
+   * the week strip (weekStripOptions takes it as input) and the practice grid
+   * from Standings, and MyPicksClient already falls back to the live regular
+   * week when a selected preseason week leaves the strip. Nothing downstream
+   * needed changing.
+   *
+   * Note it does NOT filter anyone out of the round for OTHER viewers:
+   * derivePractice still folds over every member, so a switched-off player keeps
+   * their line on an admin's practice table. The flag gates your access to the
+   * round, not your existence in it.
+   */
   let practice: PracticeData | null = null;
-  if (phase === "preseason") {
+  if (phase === "preseason" && practiceEnabled) {
     const derived = derivePractice({
       games: (preGameRows ?? []).map(rowToGame),
       picks: (prePickRows ?? []).map((p) => ({
@@ -349,6 +389,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       phase,
       hiddenPickUserIds,
       practice,
+      practiceEnabled,
     },
   };
 });

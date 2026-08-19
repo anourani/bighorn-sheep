@@ -236,7 +236,10 @@ export const GROUP: Group = {
 };
 
 /** Full-name seed rows; first/last/avatar are derived below so this stays terse. */
-type SeedMember = Omit<Member, "firstName" | "lastName" | "favoriteAnimal" | "buyInPaid" | "phone">;
+type SeedMember = Omit<
+  Member,
+  "firstName" | "lastName" | "favoriteAnimal" | "buyInPaid" | "buyInPaidAt" | "showPreseason" | "phone"
+>;
 
 const SEED_MEMBERS: SeedMember[] = [
   {
@@ -361,6 +364,10 @@ export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
     // Everyone in the demo league has settled up; the interesting states for
     // buy-in live in the admin modal, not here.
     buyInPaid: true,
+    buyInPaidAt: "2025-08-20T15:00:00.000Z",
+    // The demo league is mid-regular-season, where practice no longer exists for
+    // anyone regardless of this flag. True so the seed doesn't imply otherwise.
+    showPreseason: true,
   };
 });
 

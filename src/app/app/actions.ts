@@ -70,9 +70,19 @@ export async function submitPick(input: {
       .single();
     if (!group) return { ok: false, error: "group_not_found" };
 
+    /*
+     * `select("*")`, not `select("status, show_preseason")`.
+     *
+     * PostgREST raises 42703 on an unknown column rather than returning
+     * undefined, and migrations here are applied to production BY HAND. Naming
+     * 0011's column before 0011 lands would make `membership` null and turn
+     * EVERY pick in the app into `not_a_member` — one late migration escalating
+     * from "an admin panel is broken" to "nobody can play". A star select cannot
+     * 42703, and the flag below falls open.
+     */
     const { data: membership } = await supabase
       .from("group_members")
-      .select("status")
+      .select("*")
       .eq("group_id", input.groupId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -85,6 +95,24 @@ export async function submitPick(input: {
     // preseason rows are still in the database but are nobody's live game.
     if (seasonType === "pre" && phase !== "preseason") {
       return { ok: false, error: "practice_closed" };
+    }
+
+    /*
+     * Practice is per-member, and gating it in the UI alone would not gate it:
+     * an exported Server Action is a reachable HTTP endpoint. `load.ts` drops the
+     * whole practice round for a switched-off viewer, which is what hides the
+     * weeks; this is what stops one being picked anyway.
+     *
+     * Fails OPEN (`?? true`) for the reason above — before 0011 is applied the
+     * column is absent from the row, and the answer must be "carry on", not
+     * "practice is closed for the entire league".
+     *
+     * Ordered AFTER practice_closed deliberately: when practice is over for
+     * everyone, saying "your admin hasn't enabled this" would be a false
+     * explanation of a true refusal.
+     */
+    if (seasonType === "pre" && !(membership.show_preseason ?? true)) {
+      return { ok: false, error: "practice_not_enabled" };
     }
 
     // Scoped to one season_type: mixing them would let an August preseason
@@ -429,6 +457,206 @@ export async function setGroupBuyIn(input: {
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
     return { ok: true };
+  });
+}
+
+/**
+ * Rename a league. Admin-only, and deliberately allowed at any point in the
+ * season.
+ *
+ * Through the `set_group_name` RPC (0011) rather than a `.update()`, for the two
+ * reasons `setGroupBuyIn` gives below: 0001's "groups update by admin
+ * (unlocked)" policy refuses EVERY `groups` write once the season starts — which
+ * is precisely the case this feature exists to fix — and RLS cannot restrict
+ * which columns an update writes, so a client-side one would hand the browser
+ * `invite_code` and the rules columns too. The RPC writes `name` and nothing
+ * else.
+ */
+export async function setGroupName(input: {
+  groupId: string;
+  name: string;
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const name = input.name.trim();
+    if (name.length === 0) return { ok: false, error: "name_required" };
+    if (name.length > 60) return { ok: false, error: "name_too_long" };
+
+    const { error } = await supabase.rpc("set_group_name", {
+      p_group_id: input.groupId,
+      p_name: name,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      // A missing function means 0011 has not been applied to this database.
+      // Its own code, because the symptom is otherwise indistinguishable from a
+      // permissions problem — same reasoning as 0007's and 0010's.
+      const reason = msg.includes("not_admin")
+        ? "not_admin"
+        : msg.includes("name_required")
+          ? "name_required"
+          : msg.includes("name_too_long")
+            ? "name_too_long"
+            : msg.includes("group_not_found")
+              ? "group_not_found"
+              : "name_update_failed";
+      console.error("[setGroupName] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    // The league name is chrome: it is on the header and Standings, not just the
+    // page that changed it.
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Change how the game is played. Admin-only, and frozen once the season starts —
+ * the half of the split that `setGroupName` above deliberately isn't.
+ *
+ * The lock lives in the RPC, not here, and it tests TWO things: `settings_locked_at`
+ * and `entry_closes_at <= now()`. Nothing in this project has ever written the
+ * former, so on its own it would never fire and rules would stay editable in
+ * Week 12. See 0011.
+ */
+export async function setGroupRules(input: {
+  groupId: string;
+  eliminationType: "single" | "two_time";
+  tieRule: "push" | "loss";
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("set_group_rules", {
+      p_group_id: input.groupId,
+      p_elimination_type: input.eliminationType,
+      p_tie_rule: input.tieRule,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      const reason = msg.includes("not_admin")
+        ? "not_admin"
+        : msg.includes("settings_locked")
+          ? "settings_locked"
+          : msg.includes("bad_elimination_type")
+            ? "bad_elimination_type"
+            : msg.includes("bad_tie_rule")
+              ? "bad_tie_rule"
+              : msg.includes("group_not_found")
+                ? "group_not_found"
+                : "rules_update_failed";
+      console.error("[setGroupRules] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    // Rules feed the elimination engine, so every screen that renders a result
+    // is downstream of this.
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Turn the preseason practice round on or off for one member. Admin only.
+ *
+ * Through `set_member_preseason` (0011) for the same reason as
+ * `setMemberBuyIn`: `group_members` has no UPDATE policy at all, so a direct
+ * update from the client reports success having changed nothing.
+ *
+ * Read side is `load.ts`, which simply stops building `practice` for a
+ * switched-off viewer; write side is `submitPick`, which refuses a preseason
+ * pick from one. Their existing picks are untouched either way — the round is
+ * derived at read time, so turning this off hides history rather than deleting
+ * it.
+ *
+ * Refuses to move at all once the season starts (`preseason_closed`). Practice
+ * ends at the first Week 1 kickoff and never comes back, so there is no Week 11
+ * in which this could be switched back on — the RPC enforces that, and the UI
+ * disables the switch to match.
+ */
+export async function setMemberPreseason(input: {
+  groupId: string;
+  userId: string;
+  show: boolean;
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("set_member_preseason", {
+      p_group_id: input.groupId,
+      p_user_id: input.userId,
+      p_show: input.show,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      const reason = msg.includes("not_admin")
+        ? "not_admin"
+        : msg.includes("preseason_closed")
+          ? "preseason_closed"
+          : msg.includes("member_not_found")
+            ? "member_not_found"
+            : "preseason_update_failed";
+      console.error("[setMemberPreseason] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    // The member's own picker and standings change, not the admin's.
+    revalidatePath("/app");
+    revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Read the scorer's last-run record for the Data Feed tab. Admin only.
+ *
+ * A read behind a Server Action rather than part of `loadLeague`, on purpose:
+ * the admin modal is mounted for admins alone and most of them never open this
+ * tab, so putting it in the loader would buy every Standings render an extra
+ * query for a number almost nobody looks at. Called on the tab's mount instead.
+ *
+ * Returns the raw jsonb; `mapFeedStatus` in src/lib/league/feed.ts is what gives
+ * it a shape, and it tolerates anything.
+ */
+export async function getFeedStatus(input: {
+  groupId: string;
+}): Promise<ActionResult<unknown>> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { data, error } = await supabase.rpc("feed_status_for_admin", {
+      p_group_id: input.groupId,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      const reason = msg.includes("not_admin") ? "not_admin" : "feed_status_unavailable";
+      console.error("[getFeedStatus] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    return { ok: true, data };
   });
 }
 
