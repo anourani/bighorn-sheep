@@ -89,14 +89,24 @@ const config: Config = {
           dark: "#A5ACAF", // the spec's "border-dark" — the picks hero's inert strips
           alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
         },
-        // The week strip's selected chip, straight from the spec.
+        // "This is your selection", across both pick surfaces: the week strip's
+        // filled chip (`bg-selected`) and the team grid's picked card
+        // (`ring-selected`). One token for one meaning — a second green 6% away
+        // with no difference of meaning is exactly the near-duplicate family the
+        // comments here keep arguing against.
         //
-        // Deliberately NOT the `alive` hue below, despite both being green: that
-        // family is desaturated on purpose so it reads as instrumentation, and
-        // this is the opposite job — the one saturated, decorative fill in the
-        // app, marking where you are on the week axis. Folding the two together
-        // would either dull this chip or brighten every status dot with it.
-        selected: "#0F9400",
+        // No longer a bespoke hue. It takes the design library's
+        // `Semantic/Success Green - Dark`, which is the same value `result.win`
+        // below carries — deliberately, since the strip's filled chip and its
+        // "you got through this week" ink are the same green by design. They
+        // never co-occur on one chip: a selected chip's numeral takes the `-lit`
+        // pair instead.
+        //
+        // Still deliberately NOT the `alive` hue below, despite both being
+        // green: that family is desaturated on purpose so it reads as
+        // instrumentation, and this is the opposite job — the one saturated,
+        // decorative fill in the app, marking where you are on the week axis.
+        selected: "#0C6F28",
         /**
          * The account page's buy-in badge, from the mock-ups' semantic ramp.
          * Each pair is a fill and the hairline that sits on it.
@@ -111,6 +121,33 @@ const config: Config = {
           "paid-line": "#0C6F28",
           due: "#CD1411",
           "due-line": "#A71930",
+        },
+        /**
+         * Outcome ink for a played week on the week strip: what colour the
+         * corner numeral takes once the picked team's game has gone final.
+         *
+         * `win` and `loss` are the same two hexes as `badge-paid-line` /
+         * `badge-due-line` and are deliberately NOT aliased to them. Those are
+         * hairlines under the account page's buy-in badge; these are text
+         * reporting a result, and they are the design library's
+         * `Semantic/Success Green - Dark` and `Semantic/Error Red - Dark` in
+         * their own right. Retuning one family must not silently repaint the
+         * other.
+         *
+         * The `-lit` pair has no counterpart anywhere else: the same two
+         * semantics lifted to survive on the SELECTED chip's dark green fill,
+         * where the dark pair would read as a smudge. Figma calls them
+         * "-Extra Light".
+         *
+         * Not folded into `alive` / `out` either: those are the standings
+         * palette's desaturated hues, painted as a wash BEHIND a logo. These are
+         * saturated ink painted ON one.
+         */
+        result: {
+          win: "#0C6F28", // Semantic/Success Green - Dark
+          "win-lit": "#7BE170", // Semantic/Success Green - Extra Light
+          loss: "#A71930", // Semantic/Error Red - Dark
+          "loss-lit": "#F8787A", // Semantic/Error Red - Extra Light
         },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },

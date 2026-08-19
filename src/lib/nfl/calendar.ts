@@ -118,7 +118,7 @@ export interface WeekOption {
   /** Full name — "Week 5", "Preseason 2". The chip's accessible name. */
   label: string;
   /**
-   * What a 50px chip prints: "01".."18" for the regular season, and
+   * What a 52px chip prints: "01".."18" for the regular season, and
    * `weekShortLabel`'s "HOF"/"P1" for the preseason.
    *
    * Zero-padded because the strip is a row of fixed-width squares and a
