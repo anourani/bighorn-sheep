@@ -219,9 +219,13 @@ client root — which is `<div className="stagger space-y-N">` in all three
 *child* it would shift every existing `.stagger` delay by 55ms and give the bar an
 entrance animation it shouldn't have.
 
-**Full-bleed.** `main` is `flex-1 px-4 pb-28 pt-5` (`src/app/app/layout.tsx:15`),
-so a first child would be inset 16px, pushed down 20px, and its border would stop
-short of the shell edges. The bar therefore self-applies **`-mx-4 -mt-5 mb-5`**.
+**Full-bleed.** `main` is `flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16`
+(`src/app/app/layout.tsx`), so a first child would be inset 16px, pushed down
+40px (64 from `lg`), and its border would stop short of the shell edges. The bar
+therefore self-applies **`-mx-4 -mt-5 mb-5`**. (The vertical half of that never
+shipped: `StatusReport` ended up a child of `StandingsClient` with `-mx-4
+lg:mx-0` and no negative top margin. Nothing in `src/` cancels `main`'s vertical
+padding.)
 `main`'s content box is 968px inside a 1000px border box, so `-mx-4` puts the
 bar's edges exactly on the shell's — the same width as `AppHeader`, its sibling in
 that flex column. `main` is untouched.

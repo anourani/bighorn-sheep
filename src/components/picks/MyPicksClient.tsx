@@ -259,7 +259,15 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   }
 
   return (
-    <div className="stagger space-y-4">
+    /* No `space-y-*` here, and that is the point: PickHero's own `py-10 lg:py-12`
+       is the entire gap between the week strip and the module, per the mockup. A
+       root `space-y-4` stacked 16px on top of it and made that seam 56/64px.
+
+       So every OTHER block carries its own `mt-4`, which is the same trade
+       StandingsClient makes for the same reason — `space-y-*` compiles to
+       `> * + *` at a specificity a child's `mt-*` cannot override, so it is
+       all-or-nothing rather than something one child can opt out of. */
+    <div className="stagger">
       {/* `selectedKey`, not raw `viewKey` — a week that has dropped out of the
           options must not stay selected. See the sanitising above. */}
       <WeekStrip
@@ -274,7 +282,10 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       />
 
       {isPreseason ? (
-        <div className="rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
+        /* `my-4`, not `mt-4`: this sits between the week strip and the module,
+           so a top-only margin would collapse the banner onto the module and move
+           a second seam. */
+        <div className="my-4 rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
           <Label className="text-[#8A4A24]">Pre-season</Label>
           <p className="mt-1 text-sm leading-relaxed text-ink">
             The season kicks off{" "}
@@ -294,13 +305,13 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       />
 
       {pickError ? (
-        <div className="flex items-start gap-2 rounded-control border border-out/30 bg-out-wash px-3 py-2.5 text-sm text-[#8A2C2C]">
+        <div className="mt-4 flex items-start gap-2 rounded-control border border-out/30 bg-out-wash px-3 py-2.5 text-sm text-[#8A2C2C]">
           <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{pickError}</span>
         </div>
       ) : null}
 
-      <div>
+      <div className="mt-4">
         {/* Replaces the visible "Schedule" heading the week strip absorbed, so
             heading-jump navigation still reaches the grid. */}
         <h2 className="sr-only">Schedule</h2>

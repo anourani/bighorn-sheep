@@ -217,10 +217,19 @@ function NoPickHero({
 // `max-w-shell` (1000px) inside a `px-4` gutter. It is also where WeekStrip and
 // StandingsGrid change shape, so the page turns over at one width.
 
-/** Outer frame: the eyebrow, and the row/lock split below it. */
+/**
+ * Outer frame: the eyebrow, and the row/lock split below it.
+ *
+ * `py-10 lg:py-12` and `space-y-2 lg:space-y-3` are the Figma's four numbers, and
+ * together they are the module's height: 40 + 15 + 8 + 92 + 8 + 39 + 40 = 242 on a
+ * phone, and 48 + 17.6 + 12 + 132 + 48 = 258 from `lg`, where the lock copy sits
+ * beside the row rather than under it and so adds nothing. Both frames land
+ * exactly. A wrong number here shows up as a few pixels rather than as anything
+ * obviously broken, so check the arithmetic before adjusting either by eye.
+ */
 function Shell({ weekName, children }: { weekName: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2 py-8 lg:border-b lg:border-shell-line">
+    <section className="space-y-2 py-10 lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12">
       <Label className="lg:text-base lg:leading-[1.1]">Your {weekName} Pick</Label>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {children}

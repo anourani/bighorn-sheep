@@ -17,7 +17,10 @@ import { JoinByCode } from "@/components/account/JoinByCode";
  */
 export function NoLeagueState() {
   return (
-    <div className="stagger mx-auto max-w-md space-y-4 py-6">
+    /* No vertical padding of its own — `main` in app/layout.tsx owns the page
+       rhythm (40/80 on a phone, 64/128 from `lg`) and every page root inherits
+       it. This carried a `py-6` that quietly added 24px on top. */
+    <div className="stagger mx-auto max-w-md space-y-4">
       <Panel className="p-card text-center">
         <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-brand-sheen text-white">
           <UsersIcon className="h-6 w-6" />
