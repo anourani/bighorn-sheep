@@ -213,28 +213,65 @@ for every future preview and branch deploy:
 https://**--bighorn-sheep.netlify.app/**
 ```
 
+**Production and previews live on different hosts now, and the allowlist needs
+both.** Production is `https://sheepwithglasses.com`; previews, branch deploys
+and deploy permalinks are all still on `*.netlify.app`, because that is Netlify's
+domain and nothing about a custom domain moves them. So the redirect allowlist
+legitimately carries `https://sheepwithglasses.com/**` *and* the `netlify.app`
+wildcard above, and the wildcard is not leftover cruft to tidy away — deleting it
+breaks sign-in on every future preview. The Site URL is the custom domain alone.
+
 **The magic-link sender lives only in Auth → Emails → SMTP Settings.**
 `signInWithOtp()` has no sender parameter, so no code change can affect it. The
-sender must be a domain verified with the SMTP provider — a `@gmail.com` sender
-is rejected by every transactional provider and surfaces as **HTTP 500** on
-`/auth/v1/otp`.
+sender is `noreply@sheepwithglasses.com`, relayed through Resend.
+
+**Two unrelated things both surface as HTTP 500 on `/auth/v1/otp`, and the
+symptom does not tell them apart.** The app renders "Our sign-in service is
+having trouble" for either — `errorMessage()` in `src/lib/errors.ts` maps every
+`status >= 500` to that one string, and nothing in it mentions email. The causes:
+
+- **The sender's domain isn't verified with the provider.** A `@gmail.com`
+  sender is rejected by every transactional provider.
+- **The API key is authorised for a different domain.** Resend scopes a key to
+  one domain, and a key issued for another project refuses to send as this one.
+  This is not hypothetical: the key in Supabase was scoped to `timeline.academy`,
+  so the first sign-in attempt after the domain cutover failed exactly this way
+  with the sender, host, port and username all correct.
+
+**Read Resend → Logs before touching any field.** It is the only place the real
+reason appears — `API key not authorized for this domain` in the second case —
+and the fixes are completely different. A rejected send is logged there with its
+request body; a send that never arrives at all points at the credentials instead.
+Guessing between the two costs a round trip each time.
 
 **`NEXT_PUBLIC_*` values are inlined at build time.** Changing one in the Netlify
 dashboard does nothing until the site is rebuilt.
 
 The one that bites is `NEXT_PUBLIC_APP_URL`, which builds invite links in
-`WhosIn.tsx` and `AdminSettingsDrawer.tsx`. Being a build-time constant, it holds
-the *same* host in every context unless it's scoped per deploy context — so a
-deploy preview hands out **production** invite links, and "Copy link" looks wrong
-while nothing is actually broken.
+`WhosIn.tsx`, `AdminSettingsDrawer.tsx` and `MoreSection.tsx`. It is scoped
+*"Different value for each deploy context"* in Netlify: production holds
+`https://sheepwithglasses.com`, and **previews, branch deploys, Preview Servers
+and Local development are deliberately blank.** Nothing in the repo sets it —
+it's absent from `netlify.toml`.
 
-It **is** set in the Netlify environment (verified Aug 2026), but as *"Same value
-in all deploy contexts"*, which is exactly the failure above. Nothing in the repo
-sets it — it's absent from `netlify.toml` — so the fallback in
-`StandingsClient.tsx` (`?? "https://bighorn.example"`, a domain that does not
-exist) is what ships anywhere the variable is missing. To fix the preview case,
-switch it to *"Different value for each deploy context"* in Netlify and give each
-context its own origin.
+**Blank outside production is the intended state, not a misconfiguration.** It
+was once "Same value in all deploy contexts", which is why previews used to hand
+out *production* invite links — a link that looks wrong while nothing errors.
+Each context now answers "which site am I?" for itself.
+
+**Every consumer therefore resolves it as `appUrl || window.location.origin` —
+`||`, never `??`.** A Netlify variable left blank inlines as `""`, not
+`undefined`, and `??` passes an empty string straight through: the link comes out
+as a relative `/login?invite=…`, which is not something anyone can paste into a
+message. `MoreSection.tsx` used `??` and had exactly this bug latent in it.
+
+**`InviteCta` resolves the origin inside the click handler, not in render.**
+`AdminSettingsDrawer` can do it in render because the drawer never renders on the
+server (`open` starts false), but `InviteCta` is on `/app/standings`, which
+builds as `ƒ` — server-rendered on demand. Reading `window` in its render body
+would break the server pass. A handler only ever runs in the browser, and nothing
+renders the link itself (the card shows `group.inviteCode`), so there is no
+hydration concern either.
 
 ---
 
@@ -348,14 +385,13 @@ live site can't be fetched from here. The user has to run browser checks.
 
 ## Open issues
 
-**Two entries here were wrong for months and cost real debugging time. Verify an
-environment claim against Netlify or the database before repeating it — this
-file is not evidence.** Both are corrected below; the pattern is the lesson.
+**Entries here have been wrong for months at a time and cost real debugging
+time. Verify an environment claim against Netlify, Resend or the database before
+repeating it — this file is not evidence.** Resolved below, the
+`SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` entries are the ones that were
+*false*; the others were true and have since been fixed. Both kinds are worth
+reading, but only the first kind is the lesson.
 
-- The magic-link sender is still another project's domain. Needs a domain owned
-  by this app, verified with the SMTP provider.
-- `NEXT_PUBLIC_APP_URL` is set, but shared across all deploy contexts, so
-  previews hand out production invite links. See the Supabase traps section.
 - `poll-scores` runs `*/5 * * * *` all year, including February. The code comment
   says to narrow it to Thu/Sun/Mon game windows in production; nobody has. Costs
   function minutes, not correctness.
@@ -364,6 +400,19 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
 
 ### Resolved — do not re-open
 
+- ~~The magic-link sender is still another project's domain.~~ It is
+  `noreply@sheepwithglasses.com` as of Aug 2026, on a domain verified with
+  Resend. Worth knowing *how* this was settled, because the entry sat here as a
+  suspicion for months: **Resend → Logs** showed `SMTP v1.0.0` requests
+  returning 200 for days beforehand, which proved Resend was always the relay
+  and only the sender's domain was another project's (`timeline.academy`). The
+  log is the check to repeat — the Supabase SMTP screen alone tells you what is
+  configured, not what is actually being sent.
+- ~~`NEXT_PUBLIC_APP_URL` is shared across all deploy contexts, so previews hand
+  out production invite links.~~ Scoped per deploy context as of Aug 2026:
+  production holds the custom domain, every other context is blank on purpose.
+  The code change that made blank safe is in the Supabase traps section — the
+  `||` vs `??` note, which is the part that is easy to undo by accident.
 - ~~`SUPABASE_SERVICE_ROLE_KEY` is not set, so `poll-scores` no-ops.~~ **It is
   set** (verified in the Netlify dashboard, Aug 2026), the schedule is loaded,
   and the scorer polls and writes on schedule. The claim survived because
@@ -690,9 +739,11 @@ file is not evidence.** Both are corrected below; the pattern is the lesson.
     design at both widths — not a slip waiting to be unified.
   - **The invite row hides once entry closes**, matching `InviteCta` on
     Standings: the code still exists but `join_by_invite` refuses it. Its link is
-    built from `NEXT_PUBLIC_APP_URL ?? window.location.origin`, not
-    `StandingsClient`'s `?? "https://bighorn.example"`, which is a domain that
-    does not exist.
+    built from `NEXT_PUBLIC_APP_URL || window.location.origin`, which is now
+    what every invite-link call site does. It once read `??` here and
+    `?? "https://bighorn.example"` on Standings — a domain that does not exist —
+    and both were wrong in the same way once the variable started being blank
+    outside production.
 
   Two consequences worth knowing:
   - **The 160px avatar portrait is gone from this page.** It is not in either

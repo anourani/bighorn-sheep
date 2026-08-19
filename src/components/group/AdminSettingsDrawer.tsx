@@ -804,7 +804,7 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
   const [copied, setCopied] = useState(false);
   // `appUrl` is inlined at build time and may simply be absent; falling back to
   // the current origin matches /app/account. Safe from a hydration mismatch
-  // because this modal never renders on the server — `open` starts false.
+  // because this drawer never renders on the server — `open` starts false.
   const origin = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
   const inviteLink = `${origin}/login?invite=${group.inviteCode}`;
   const entryClosed = new Date(group.entryClosesAt).getTime() <= Date.now();
