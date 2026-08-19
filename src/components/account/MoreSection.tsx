@@ -51,12 +51,12 @@ export function MoreSection({
 
   async function copy() {
     if (!group) return;
-    // `NEXT_PUBLIC_APP_URL` is inlined at build time and is currently set to the
-    // same value in every Netlify deploy context, so a preview hands out
-    // production links (see CLAUDE.md). Falling back to the origin the visitor
-    // is actually on is strictly better than this file's neighbours' fallback,
-    // `https://bighorn.example`, which is a domain that does not exist.
-    const origin = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+    // `NEXT_PUBLIC_APP_URL` is inlined at build time and is set per deploy
+    // context, deliberately blank outside production so a preview hands out its
+    // own links rather than production's. `||`, not `??`: a Netlify variable
+    // left blank inlines as "", which `??` passes straight through — the link
+    // would come out as a relative `/login?invite=...` that nobody can paste.
+    const origin = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     try {
       await navigator.clipboard.writeText(`${origin}/login?invite=${group.inviteCode}`);
       setCopied(true);

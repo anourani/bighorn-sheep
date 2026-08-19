@@ -66,11 +66,20 @@ export function WhosIn({ members, preseason }: { members: Member[]; preseason: b
  */
 export function InviteCta({ group, appUrl, now }: { group: Group; appUrl: string; now: Date }) {
   const [copied, setCopied] = useState(false);
-  const inviteLink = `${appUrl}/login?invite=${group.inviteCode}`;
 
   async function copy() {
+    // `appUrl` is inlined at build time and is deliberately unset outside
+    // production, so it is often "" — building the link from it raw produced a
+    // relative `/login?invite=...`, which is not a link anyone can paste.
+    //
+    // Resolved here rather than in render, unlike `AdminSettingsModal`: that
+    // modal never renders on the server (`open` starts false), but this CTA
+    // does, so reading `window` in the render body would break the server pass.
+    // A handler only ever runs in the browser. Nothing renders the link — the
+    // card shows `group.inviteCode` — so there is no hydration concern either.
+    const origin = appUrl || window.location.origin;
     try {
-      await navigator.clipboard.writeText(inviteLink);
+      await navigator.clipboard.writeText(`${origin}/login?invite=${group.inviteCode}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
