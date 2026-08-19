@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { canonicalNetlifyHost, publicOrigin } from "@/lib/deploy-origin";
+import { canonicalOrigin, publicOrigin } from "@/lib/deploy-origin";
 import {
   exchangeFailureReason,
   hasVerifierCookie,
@@ -42,14 +42,14 @@ export async function GET(request: Request) {
   // verifier IS here the handshake started here too and completes fine, so
   // leave it alone: the redirect allowlist permits signing in from a permalink,
   // and bouncing would move the code to an origin that has no verifier at all.
-  const canonicalHost = canonicalNetlifyHost(host);
-  if (canonicalHost && !hasVerifierCookie(cookieNames)) {
+  const canonicalSite = canonicalOrigin(host);
+  if (canonicalSite && !hasVerifierCookie(cookieNames)) {
     console.error(
       `[auth/callback] link landed on deploy permalink ${host} with no verifier; ` +
-        `forwarding to ${canonicalHost}. Sign-in should not start on a permalink — see ` +
+        `forwarding to ${canonicalSite}. Sign-in should not start on a permalink — see ` +
         `src/lib/deploy-origin.ts.`,
     );
-    return NextResponse.redirect(`https://${canonicalHost}${pathname}${search}`);
+    return NextResponse.redirect(`${canonicalSite}${pathname}${search}`);
   }
 
   const invite = searchParams.get("invite");
