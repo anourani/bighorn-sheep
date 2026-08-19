@@ -29,13 +29,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   const ranked = useMemo(() => rankMembers(data.members), [data.members]);
   /*
    * Empty string, not "https://bighorn.example" — a domain that does not exist,
-   * so the old fallback handed out invite links nobody could open. The modal
-   * falls back to `window.location.origin`, matching /app/account.
+   * so the old fallback handed out invite links nobody could open.
    *
-   * This fixes the MISSING case only. NEXT_PUBLIC_* is inlined at build time and
-   * this one is set as "same value in all deploy contexts", so a deploy preview
-   * still hands out production links — that is a Netlify dashboard setting, not
-   * something code can reach (see CLAUDE.md).
+   * "" is the expected value outside production, not a failure: the Netlify
+   * variable is scoped per deploy context and left blank on previews and branch
+   * deploys, so each one hands out its own links instead of production's. Every
+   * consumer therefore resolves it as `appUrl || window.location.origin` —
+   * `InviteCta` and `AdminSettingsModal` here, `MoreSection` on /app/account.
+   * Passing it down raw is what made a preview's link a relative path.
    */
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const isPreseason = phase === "preseason";
