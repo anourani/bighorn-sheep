@@ -41,16 +41,9 @@ const HEADING = "Select a week";
  * 52×52 clears the 44px `.tap-target` floor on both axes, so no `.tap-target`
  * here. Both transitioned properties are named: `transition-colors` alone would
  * snap the radius change on hover while easing the fill.
- *
- * `isolate` is for the selected chip's `mix-blend-darken` logo below: it makes
- * this button the blend's stacking context, so the logo can only ever darken
- * against the chip's own fill and never against whatever the strip is sitting
- * on. It renders identically today either way — the fill is opaque and covers
- * the logo — which is exactly why it is worth pinning down rather than leaving
- * to the next ancestor that grows a `transform` or an `opacity`.
  */
 const CHIP =
-  "relative isolate flex h-[52px] w-[52px] shrink-0 select-none flex-col items-center " +
+  "relative flex h-[52px] w-[52px] shrink-0 select-none flex-col items-center " +
   "justify-center px-1 transition-[background-color,border-radius] duration-150";
 
 /**
@@ -262,18 +255,13 @@ function Chip({
               `img { max-width: 100% }` can't letterbox it. 30px inside 44px of
               inner width is clear on both counts.
 
-              `mix-blend-darken` on the filled chip is the spec's. It takes the
-              per-channel minimum against the fill, so a logo comes out as a dark
-              silhouette and anything lighter than the green — white, silver —
-              disappears into it entirely. That crush is the intent (a watermark
-              under the numeral), not an oversight. Transparency is untouched:
-              alpha 0 leaves the backdrop alone, so the artwork's surround is
-              fine. It rides on the CDN-failure tile too, which is acceptable. */}
-          <TeamLogo
-            teamId={pick.teamId}
-            size={30}
-            className={selected ? "mix-blend-darken" : undefined}
-          />
+              The logo is untreated in EVERY state, selected included. The Figma
+              spec draws `mix-blend-darken` on the filled chip; it shipped, and it
+              erased the light-marked teams — `darken` takes the per-channel
+              minimum against the fill, so New Orleans' gold landed on `#0C6F28`
+              exactly and the Colts' white horseshoe came back as an outline.
+              Don't re-add it from the spec. */}
+          <TeamLogo teamId={pick.teamId} size={30} />
           {/* right-[4px] resolves against the padding box — with no border, the
               border box — so this is the spec's 4px from the chip's edge and the
               chip's own px-1 does not double it. No `text-right`: an absolutely
