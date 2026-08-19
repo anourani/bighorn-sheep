@@ -1171,7 +1171,7 @@ export function AdminSettingsDrawer({
       open={open}
       onClose={onClose}
       eyebrow="Admin"
-      title="Group Settings"
+      title="Control Center"
       aside={<GroupNameSection group={group} />}
       subheader={
         <Tabs

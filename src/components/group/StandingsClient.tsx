@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
-import { AdminSettingsDrawer } from "@/components/group/AdminSettingsDrawer";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta, WhosIn } from "@/components/group/WhosIn";
@@ -21,9 +20,6 @@ export function StandingsClient({ data }: { data: LeagueData }) {
     data;
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const idx = useMemo(() => buildGameIndex(data.games), [data.games]);
-  const me = data.members.find((m) => m.id === data.viewer.id);
-  const isAdmin = me?.role === "admin";
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
 
   const ranked = useMemo(() => rankMembers(data.members), [data.members]);
@@ -35,7 +31,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
    * variable is scoped per deploy context and left blank on previews and branch
    * deploys, so each one hands out its own links instead of production's. Every
    * consumer therefore resolves it as `appUrl || window.location.origin` —
-   * `InviteCta` and `AdminSettingsDrawer` here, `MoreSection` on /app/account.
+   * `InviteCta` here, `MoreSection` and `AdminSettingsDrawer` on /app/account.
    * Passing it down raw is what made a preview's link a relative path.
    */
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -143,9 +139,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           members={data.members}
           currentWeek={currentWeek}
           phase={phase}
-          isAdmin={isAdmin}
           onOpenRules={() => setRulesOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         {/* The two mockups space this differently and both are reproduced here.
@@ -239,21 +233,6 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         group={group}
         members={data.members}
       />
-
-      {/* `isAdmin ? … : null` rather than `settingsOpen && …`: the drawer holds the
-          active tab in its own state and `Drawer` unmounts only its subtree when
-          closed, so this component staying mounted is what makes the tab survive
-          close and reopen. */}
-      {isAdmin ? (
-        <AdminSettingsDrawer
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          group={group}
-          members={data.members}
-          appUrl={appUrl}
-          phase={phase}
-        />
-      ) : null}
     </>
   );
 }

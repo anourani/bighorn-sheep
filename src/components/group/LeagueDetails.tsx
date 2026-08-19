@@ -1,7 +1,6 @@
 "use client";
 
 import { Label } from "@/components/ui/Label";
-import { GearIcon } from "@/components/icons";
 import { survivorCounts } from "@/lib/league/view";
 import type { Group, Member } from "@/lib/league/types";
 import type { SeasonPhase } from "@/lib/game/season";
@@ -39,48 +38,29 @@ function Value({ children }: { children: React.ReactNode }) {
  * mockup gives that slot to the week, and the pick is still a tab away on My
  * Picks and in the row the standings table highlights for you.
  *
- * There is no section heading here any more. The mockup opens the page on the
- * tiles themselves, which is why the admin gear — previously the heading's right
- * slot, and still the only way into `AdminSettingsDrawer` anywhere in the app —
- * now sits on its own row above them.
+ * There is no section heading here any more, and no admin gear either. The
+ * mockup opens the page on the tiles themselves, and the way into
+ * `AdminSettingsDrawer` is now the Admin Control Center row on /app/account —
+ * a labelled card rather than an unlabelled glyph on a page about standings.
  */
 export function LeagueDetails({
   group,
   members,
   currentWeek,
   phase,
-  isAdmin,
   onOpenRules,
-  onOpenSettings,
 }: {
   group: Group;
   members: Member[];
   currentWeek: number;
   phase: SeasonPhase;
-  isAdmin: boolean;
   onOpenRules: () => void;
-  onOpenSettings: () => void;
 }) {
   const isPreseason = phase === "preseason";
   const { alive, total } = survivorCounts(members);
 
   return (
     <section>
-      {/* Admin-only, so a player sees the tiles flush against the header exactly
-          as the mockup draws them. */}
-      {isAdmin ? (
-        <div className="mb-2 flex justify-end">
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Group settings"
-            className="grid h-9 w-9 place-items-center rounded-control text-ink-mute transition-colors hover:bg-[#F1F2F5] hover:text-ink"
-          >
-            <GearIcon className="h-5 w-5" />
-          </button>
-        </div>
-      ) : null}
-
       {/* Four across from `lg`, not `sm`: inside the 1000px `max-w-shell` that
           lands each tile on the mockup's 236px, and `lg` is the one breakpoint
           the rest of this page already turns on (the table and the survivor

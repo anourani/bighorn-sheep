@@ -8,10 +8,12 @@ import { CommonGood } from "@/components/account/CommonGood";
 import { MoreSection } from "@/components/account/MoreSection";
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { JoinByCode } from "@/components/account/JoinByCode";
+import { AdminSettingsDrawer } from "@/components/group/AdminSettingsDrawer";
 import { AccountSection, CARD, PAGE_TITLE } from "@/components/account/surfaces";
 import { SPEC_BUTTON_DARK } from "@/components/account/spec";
 import { cn } from "@/lib/cn";
 import type { AccountData } from "@/lib/league/load";
+import type { Member } from "@/lib/league/types";
 
 /**
  * The account page.
@@ -25,20 +27,42 @@ import type { AccountData } from "@/lib/league/load";
  *   one place. Below it everything stacks full-bleed-ish at the phone's 361px.
  * - **Blocks are 32px apart on a phone and 48px on a desktop**, uniformly, in
  *   both mock-ups.
- * - **DOM order is not visual order.** The phone puts Log Out above More; the
- *   desktop puts it below. One flex column and two `order` classes, rather than
- *   rendering the button twice and letting the two copies drift.
+ * - **DOM order is not visual order.** The phone puts Log Out above Additional
+ *   Settings; the desktop puts it below. One flex column and two `order` classes,
+ *   rather than rendering the button twice and letting the two copies drift.
  *
  * `.stagger` animates `> *` on `:nth-child`, which `order` leaves alone — so the
  * entrance runs in DOM order on both, and the four children sit well inside its
  * eight defined delay slots.
  */
-export function AccountClient({ account, now }: { account: AccountData; now: string }) {
+export function AccountClient({
+  account,
+  adminMembers,
+  now,
+}: {
+  account: AccountData;
+  /**
+   * The active league's roster, loaded by the server component only when the
+   * viewer administers it — and null otherwise. It is both the drawer's data and
+   * the answer to "is this viewer an admin", so the row and the panel behind it
+   * cannot disagree. See `app/account/page.tsx` for why it fails closed.
+   */
+  adminMembers: Member[] | null;
+  now: string;
+}) {
   const { viewer, leagues, activeGroupId } = account;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
+  const admin = activeLeague && adminMembers ? { league: activeLeague, members: adminMembers } : null;
+
+  // Inlined at build time and blank outside production on purpose, so a preview
+  // hands out its own invite links. The drawer's invite field resolves it as
+  // `appUrl || window.location.origin` — `||`, never `??`, since a blank Netlify
+  // variable inlines as "" and `??` would pass it straight through.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
     <>
@@ -84,6 +108,8 @@ export function AccountClient({ account, now }: { account: AccountData; now: str
         <div className="order-4 lg:order-3">
           <MoreSection
             group={activeLeague?.group ?? null}
+            isAdmin={admin !== null}
+            onOpenSettings={() => setSettingsOpen(true)}
             onDelete={() => setDeleteOpen(true)}
             now={now}
           />
@@ -91,7 +117,8 @@ export function AccountClient({ account, now }: { account: AccountData; now: str
       </div>
 
       {/* Outside `.stagger`: as a child of it, opening a sheet inherited a 220ms
-          entrance delay on top of the modal's own animation. */}
+          entrance delay on top of the modal's own animation. The drawer is the
+          worse case of the same bug — its own 320ms slide plays invisibly. */}
       <EditProfileModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
@@ -99,6 +126,21 @@ export function AccountClient({ account, now }: { account: AccountData; now: str
         currentPhone={account.phone}
       />
       <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+
+      {/* `admin ? … : null` rather than `settingsOpen && …`: the drawer holds the
+          active tab in its own state and `Drawer` unmounts only its subtree when
+          closed, so this component staying mounted is what makes the tab survive
+          close and reopen. */}
+      {admin ? (
+        <AdminSettingsDrawer
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          group={admin.league.group}
+          members={admin.members}
+          appUrl={appUrl}
+          phase={admin.league.phase}
+        />
+      ) : null}
     </>
   );
 }

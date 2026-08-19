@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/Button";
 import { isEntryOpen } from "@/lib/game/season";
 import { cn } from "@/lib/cn";
 import { SPEC_BUTTON_LIGHT } from "./spec";
-import { AccountSection, VALUE } from "./surfaces";
+import { AccountSection, BODY, VALUE } from "./surfaces";
 import type { Group } from "@/lib/league/types";
 
 /**
- * One 64px row of the "More" block.
+ * One 64px row of the "Additional Settings" block.
  *
  * `rounded-control` (8px), where the cards above are 4px. That is the design at
  * both widths, not a slip — these read as list rows, not as cards.
@@ -24,20 +24,61 @@ function MoreRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 /**
- * "More": share the league, or leave it.
+ * The way into `AdminSettingsDrawer` — the only one in the app, since the gear
+ * on Standings came off.
  *
- * The invite row disappears once entry closes, matching `InviteCta` on
- * Standings — the code still exists but `join_by_invite` refuses it, so offering
- * it would be a dead end. That can empty this section down to the Danger Zone
- * alone, which is fine and is the mid-season shape.
+ * Same fill and same 8px radius as `MoreRow`, and deliberately NOT the same row:
+ * `p-4` with a content-driven height rather than `h-16`, because the second line
+ * of copy is what makes the mock-up's card 80px at 656 and 102px at 361. Pinning
+ * a height would clip the wrap at the phone width.
+ *
+ * `items-start`, not `items-center`: the 40px button is shorter than the text
+ * stack in both frames and the design tops them out together.
+ */
+function AdminControlCenterRow({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="flex items-start gap-6 rounded-control bg-fill-soft p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className={VALUE}>Admin Control Center</span>
+        <p className={cn(BODY, "text-shell-mute")}>Manage league settings in the control center.</p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className={cn(SPEC_BUTTON_LIGHT, "min-w-[100px] shrink-0")}
+        onClick={onEnter}
+      >
+        Enter
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * "Additional Settings": run the league, share it, or leave it.
+ *
+ * The admin row is the only one gated on who you are; the invite row disappears
+ * once entry closes, matching `InviteCta` on Standings — the code still exists
+ * but `join_by_invite` refuses it, so offering it would be a dead end. That can
+ * empty this section down to the Danger Zone alone for a mid-season player, which
+ * is fine and is the shape it ships in.
  */
 export function MoreSection({
   group,
+  isAdmin,
+  onOpenSettings,
   onDelete,
   now,
 }: {
   /** Null when the viewer belongs to no league — then there is no code to share. */
   group: Group | null;
+  /**
+   * Whether to offer the control center. Resolved by `AccountClient` against the
+   * roster the drawer itself needs, so the row and the panel behind it cannot
+   * disagree about who is an admin.
+   */
+  isAdmin: boolean;
+  onOpenSettings: () => void;
   onDelete: () => void;
   /**
    * Resolved by the server component, not `new Date()` here: a clock read during
@@ -67,8 +108,10 @@ export function MoreSection({
   }
 
   return (
-    <AccountSection title="More">
+    <AccountSection title="Additional Settings">
       <div className="flex flex-col gap-3">
+        {isAdmin ? <AdminControlCenterRow onEnter={onOpenSettings} /> : null}
+
         {showInvite ? (
           <MoreRow label="Invite Link">
             <Button
