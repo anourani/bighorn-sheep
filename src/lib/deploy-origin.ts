@@ -81,9 +81,26 @@ export function canonicalNetlifyUrl(url: URL): URL | null {
  * nothing here anyway: if the host is a permalink we already know the canonical
  * form, and if it is not, it is already right.
  *
- * The one case this does not cover is a custom domain — `<id>--site.netlify.app`
- * would canonicalise to `site.netlify.app` rather than the custom host. Revisit
- * if this app ever gets one; today it does not.
+ * **The custom domain is the case this does not cover, and it now exists.**
+ * Production is `sheepwithglasses.com`, but `<id>--bighorn-sheep.netlify.app`
+ * still canonicalises to `bighorn-sheep.netlify.app` — the netlify.app host, not
+ * the custom one. Previews and permalinks genuinely still live on netlify.app,
+ * so the regex is right; it is only the *destination* that is now second-best.
+ *
+ * Today that is cosmetic: someone who opens `/login` on a permalink is sent to
+ * the netlify.app host and signs in there — wrong host, working sign-in — because
+ * `https://bighorn-sheep.netlify.app/**` is still on the Supabase redirect
+ * allowlist.
+ *
+ * **Remove that allowlist entry and this path breaks.** The redirect still lands
+ * on netlify.app, `emailRedirectTo` is built from that origin, GoTrue rejects it
+ * and falls back to the Site URL (`sheepwithglasses.com`), and the PKCE verifier
+ * cookie is then on the wrong origin — a good link reporting itself expired,
+ * which is precisely the failure this whole file exists to prevent. So either
+ * keep the entry, or fix this first: prefer `NEXT_PUBLIC_APP_URL` when it is set
+ * and fall back to the canonical netlify host otherwise. That is correct in
+ * production and leaves previews alone, since the permalink regex deliberately
+ * does not match them.
  */
 export function publicOrigin(url: URL): string {
   const canonical = canonicalNetlifyHost(url.host);

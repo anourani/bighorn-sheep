@@ -130,19 +130,24 @@ settings above **differently**:
 
 | Key | Value |
 | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | your production origin, e.g. `https://bighorn-sheep.netlify.app` — no trailing slash, no path |
+| `NEXT_PUBLIC_APP_URL` | `https://sheepwithglasses.com` — no trailing slash, no path. Scope it *"Different value for each deploy context"* and set **production only**; leave previews, branch deploys, Preview Servers and Local development **blank**, so each hands out its own links instead of production's |
 
 - **Contains secret values:** leave it *unchecked*. Anything named `NEXT_PUBLIC_*`
   is compiled into the browser bundle by definition, so marking it secret only
   hides it from you.
-- **Values:** here you *do* want **Different value for each deploy context** —
-  give each context its own origin. It builds the invite links, and being a
-  `NEXT_PUBLIC_*` value it is frozen into the bundle at build time, so a single
-  shared value means a deploy preview hands out production invite links.
+- **Values:** here you *do* want **Different value for each deploy context**.
+  It builds the invite links, and being a `NEXT_PUBLIC_*` value it is frozen into
+  the bundle at build time, so a single shared value means a deploy preview hands
+  out production invite links.
 
-Nothing in the repo sets this variable, and the code falls back to
-`https://bighorn.example` — a domain that doesn't exist. If invite links are
-currently showing that host, this is why. Note that adding it does nothing until
+  **Set production only and leave every other context blank.** Blank is not an
+  oversight — every call site reads `NEXT_PUBLIC_APP_URL || window.location.origin`,
+  so an empty value resolves to whatever origin the visitor is actually on, which
+  is exactly right for a preview, a branch deploy or a local dev server. Giving
+  those contexts a hardcoded origin is how the bug got introduced in the first
+  place.
+
+Nothing in the repo sets this variable. Note that adding it does nothing until
 the site rebuilds (2d).
 
 ### 2c-bis · Point Supabase at the site
@@ -157,7 +162,7 @@ Still in Supabase: **Authentication → URL Configuration**.
   address like `https://6a7f9b1f91786e00086f40d4--bighorn-sheep.netlify.app` — that
   long hex prefix is a deploy id, and the URL is a permanent link to *that one
   build*, not to your site. It is a bare origin with no path, so it looks like it
-  obeys the rule above. Use `https://bighorn-sheep.netlify.app`.
+  obeys the rule above. Use `https://sheepwithglasses.com`.
 
   **And don't hand that address to players either.** The wildcard entry below
   matches it, so signing in from a deploy permalink is *permitted* — the emailed
@@ -169,15 +174,19 @@ Still in Supabase: **Authentication → URL Configuration**.
 
   ```
   http://localhost:3000/**
-  https://bighorn-sheep.netlify.app/**
+  https://sheepwithglasses.com/**
   https://**--bighorn-sheep.netlify.app/**
   ```
 
-  The third covers deploy previews and branch deploys. It is a separate entry
-  because the allowlist globs `.` and `/` as separators — the second line's
-  wildcard spans paths, not subdomains, so it will not match
-  `deploy-preview-12--bighorn-sheep.netlify.app`. Skip it and signing in from a
-  preview silently signs you into production instead.
+  **The custom domain is production only.** Previews, branch deploys and deploy
+  permalinks are all still on `*.netlify.app` — that is Netlify's own domain, and
+  adding a custom domain does not move them. So the third entry keeps the
+  `netlify.app` host on purpose and is not stale.
+
+  It is a separate entry because the allowlist globs `.` and `/` as separators —
+  a wildcard spans paths, not subdomains, so `https://sheepwithglasses.com/**`
+  will not match `deploy-preview-12--bighorn-sheep.netlify.app`. Skip it and
+  signing in from a preview silently signs you into production instead.
 
 These are Supabase settings, so they apply immediately — no redeploy needed.
 
@@ -201,8 +210,8 @@ Step 3 will report the secret as unset.
 One link, opened in a browser. It fetches all ~320 games from ESPN and saves them. You
 do this once; after that the site refreshes itself every five minutes.
 
-1. Find your site's address on the Netlify site overview — either
-   `something.netlify.app` or your own domain.
+1. Use the site's address — `https://sheepwithglasses.com`, or the
+   `bighorn-sheep.netlify.app` host, which still serves the same site.
 2. Build the link below, swapping in your address and the `CRON_SECRET` from 2b.
    **Do the preview first** — `&dry=1` means "show me what you'd load, save nothing."
 
@@ -306,6 +315,7 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | Header counts down to next week, not September | The entry deadline is the stale `create_group` default. Re-open the loader link — it repairs this. |
 | An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. |
 | Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) | Someone opened `/login` on a deploy permalink, so the link was addressed back there. Check the `redirect_to` in the emailed link: if it still ends in `/auth/callback`, Supabase honoured what was asked and the host came from the browser — share the site's own address. If `redirect_to` is a bare origin with the path stripped, **Site URL** is wrong instead; see 2c-bis. |
+| "Our sign-in service is having trouble. Try again in a minute." when requesting a link | An HTTP 500 on `/auth/v1/otp` — the email could not be sent. The app cannot say more than this: `errorMessage()` maps every `status >= 500` to that one string. **Go to Resend → Logs**, which is the only place the real reason shows. Two causes look identical from the app: the sender's domain is not verified with Resend, or the API key is scoped to a *different* domain (`API key not authorized for this domain`). For the second, issue a key with sending access for this domain and paste it into Supabase's SMTP **Password** field — nothing else needs changing. |
 | "Expired or already used" on a link that is genuinely fresh | Read Netlify → Logs → **Functions** for the `[auth/callback]` line — it now carries GoTrue's own `error_code`. `otp_expired` means the token really is spent or timed out (a mail scanner following the link in transit will do this); `verifier_missing` means it was opened in a different browser or device from the one that requested it. |
 | Sign-in says the link only works in the browser that asked for it | Exactly what it says: the link was requested on one device and opened on another (a common one — requesting on a phone and tapping through on a laptop). Request a fresh link on the device you'll open it on. |
 
