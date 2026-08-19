@@ -613,7 +613,8 @@ reading, but only the first kind is the lesson.
   `AdminSettingsDrawer.tsx` (was `AdminSettingsModal.tsx`) renders
   `ui/Drawer.tsx`. Three tabs — Members (roster, two switches per row, invite),
   Rules (game rules **and** the buy-in amount), Data Feed — with the league name
-  above them. Eight things are load-bearing:
+  above them. It opens as **ADMIN / Control Center**, matching the row that opens
+  it. Eight things are load-bearing:
   - **`Drawer` is a second primitive, and `Modal` is untouched.** Every geometry
     decision inverts between them (`max-w-app` → full bleed, `sm:items-center` →
     always `items-end`, `max-h-[92vh]` → `max-h-[90dvh]`), and a shared `variant`
@@ -842,8 +843,9 @@ reading, but only the first kind is the lesson.
     and 48px on a desktop; the two columns are 32px apart stacked and 12px apart
     side by side, which is a real difference in the mock-ups and not rounding.
   - **DOM order is not visual order.** Log Out carries `order-3 lg:order-4` and
-    More `order-4 lg:order-3`, rather than the button being rendered twice.
-    `.stagger` animates on `:nth-child`, which `order` leaves alone.
+    Additional Settings `order-4 lg:order-3`, rather than the button being
+    rendered twice. `.stagger` animates on `:nth-child`, which `order` leaves
+    alone.
   - **`variant="primary"` cannot be repainted black**, which is why
     `SPEC_BUTTON_DARK` in `src/components/account/spec.ts` pairs with
     `variant="ghost"`. `bg-brand-sheen` is a background *image*, so a background
@@ -861,8 +863,8 @@ reading, but only the first kind is the lesson.
   - **The unpaid buy-in card wears a 5px `#A71930` cap and squares its top
     corners; the paid one has neither.** That cap is the only thing that
     distinguishes the two states from across the page.
-  - **The "More" rows are 8px radius where every card above them is 4px.** In the
-    design at both widths — not a slip waiting to be unified.
+  - **The "Additional Settings" rows are 8px radius where every card above them
+    is 4px.** In the design at both widths — not a slip waiting to be unified.
   - **The invite row hides once entry closes**, matching `InviteCta` on
     Standings: the code still exists but `join_by_invite` refuses it. Its link is
     built from `NEXT_PUBLIC_APP_URL || window.location.origin`, which is now
@@ -879,6 +881,36 @@ reading, but only the first kind is the lesson.
     who belongs to none gets "Join an Existing League" in the Common Good column
     instead, on `!activeLeague` alone. `/app` and `/app/standings` offer the same
     `JoinByCode` through `NoLeagueState`; three entry points is intentional.
+
+- **The way into the admin drawer is a labelled row on the account page, and the
+  gear on Standings is gone.** `LeagueDetails` no longer takes `isAdmin` or
+  `onOpenSettings`, `StandingsClient` no longer mounts `AdminSettingsDrawer`, and
+  the section formerly titled "More" is now **Additional Settings** with an Admin
+  Control Center row above Invite Link. Four things are load-bearing:
+  - **The roster is loaded for admins only, and null means "no control center".**
+    The drawer needs `Member[]`, and `loadAccount()` deliberately carries
+    `aliveCount`/`memberCount` instead — so `app/account/page.tsx` calls
+    `loadLeague(activeGroupId)` (seven queries against `loadAccount`'s four)
+    *only* when `active.role === "admin"`, and passes the result down as
+    `adminMembers`. A non-admin, an unresolved league and a failed load all
+    collapse to the same null, which fails CLOSED. That is the opposite of
+    `accountClosed()` next door, on purpose: hiding one admin control costs an
+    admin a trip to the SQL editor, where the same error failing closed there
+    would lock the whole league out of the app.
+  - **`AccountClient` derives `isAdmin` from that roster, not from
+    `activeLeague.role`.** Both are true statements about the same membership,
+    but only one of them is also the drawer's data — gating the row on the role
+    and the panel on the roster is how you get a row that opens an empty drawer.
+  - **The drawer is a sibling of the two modals, outside `.stagger`**, and mounts
+    on `admin ? … : null` rather than on `settingsOpen && …` — the same two rules
+    `StandingsClient` followed, for the same reasons (a `.stagger` child sits at
+    opacity 0 for 220ms while its own 320ms slide plays invisibly; unmounting on
+    close would throw away the active tab).
+  - **The row is `p-4` with a content-driven height where `MoreRow` is `h-16`.**
+    Same `bg-fill-soft`, same `rounded-control`, deliberately not the same row:
+    the second line of copy is what makes the mock-up's card 80px at 656 and
+    102px at 361, and a pinned height would clip the wrap at the phone width.
+    Measured at both: 656x79.2 and 361x100.8.
 
 - **The header's account button wears a red dot while the viewer's buy-in is
   unpaid**, and `AppHeader` is `async` for it. That is the one piece of league
