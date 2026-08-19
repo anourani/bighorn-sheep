@@ -7,6 +7,7 @@ import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { GRID_LAYOUTS, GRID_SORTS } from "@/components/picks/team-grid";
+import { buildChipPicks } from "@/components/picks/week-strip";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { InfoIcon } from "@/components/icons";
@@ -134,18 +135,29 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // left the banner contradicting the schedule underneath it.
   const pickTeam = pickForWeek(viewRef, serverPicks, pendingPicks);
 
-  // What the strip draws inside each chip. Built here rather than in WeekStrip
-  // so this stays the only component that knows how server truth and the
-  // optimistic overlay combine — and so a pick lights its own chip the instant
-  // it's made, before the server has answered.
-  const pickedByWeek = useMemo(() => {
-    const byWeek = new Map<string, TeamId>();
-    for (const option of weekOptions) {
-      const team = pickForWeek(option.ref, serverPicks, pendingPicks);
-      if (team) byWeek.set(option.key, team);
-    }
-    return byWeek;
-  }, [weekOptions, serverPicks, pendingPicks]);
+  // What the strip draws inside each chip: the team spent that week, and how it
+  // went. Built here rather than in WeekStrip so this stays the only component
+  // that knows how server truth and the optimistic overlay combine — and so a
+  // pick lights its own chip the instant it's made, before the server answers.
+  const pickedByWeek = useMemo(
+    () =>
+      buildChipPicks({
+        options: weekOptions,
+        pickFor: (ref) => pickForWeek(ref, serverPicks, pendingPicks),
+        // Per CHIP, not per view. `activeIdx` below follows the week you are
+        // LOOKING at, and the strip draws both phases at once — so routing on it
+        // would resolve every chip of the other phase against the wrong
+        // schedule by bare week number and paint confident green and red off
+        // the wrong games. That is the same collision the two indexes above
+        // exist to prevent, and nothing in the types can catch it.
+        gameFor: (ref, teamId) => {
+          const index = ref.seasonType === "pre" ? practiceIdx : idx;
+          return index?.gameForTeam(ref.week, teamId) ?? null;
+        },
+        rules: group.rules,
+      }),
+    [weekOptions, serverPicks, pendingPicks, idx, practiceIdx, group.rules],
+  );
 
   const games = useMemo(() => {
     const source = viewingPractice && practice ? practice.games : data.games;

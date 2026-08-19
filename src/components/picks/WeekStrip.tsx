@@ -4,12 +4,12 @@ import { useEffect, useRef } from "react";
 import { Label } from "@/components/ui/Label";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { cn } from "@/lib/cn";
-import { getTeam, type TeamId } from "@/lib/nfl/teams";
+import { getTeam } from "@/lib/nfl/teams";
 import type { WeekOption } from "@/lib/nfl/calendar";
-import { nextIndex, scrollLeftFor } from "./week-strip";
+import { chipName, nextIndex, scrollLeftFor, type ChipOutcome, type ChipPick } from "./week-strip";
 
 /**
- * The My Picks week selector: an eyebrow over a filmstrip of 50px chips that
+ * The My Picks week selector: an eyebrow over a filmstrip of 52px chips that
  * scrolls sideways, one per week of the season.
  *
  * This replaced a native `<select>` worn under a "Week 4" heading. The dropdown
@@ -18,7 +18,7 @@ import { nextIndex, scrollLeftFor } from "./week-strip";
  * which is the point of the redesign, and the reason the option list is no
  * longer forward-only (see `weekStripOptions`).
  *
- * The week's *name* is not repeated here. A 50px square only fits "04", and
+ * The week's *name* is not repeated here. A 52px square only fits "04", and
  * `PickHero` directly below already reads "Your Week 4 Pick", so the full name
  * stays on screen without this component competing for it. Every chip still
  * carries its name as its accessible name — see `chipName` below.
@@ -27,6 +27,10 @@ import { nextIndex, scrollLeftFor } from "./week-strip";
  * with a "· current" suffix. That distinction survives in two places rather than
  * three: each chip's accessible name, and the prose in `MyPicksClient` that
  * appears precisely when you are looking at some other week.
+ *
+ * A week you have already played reads its result off the corner numeral's
+ * colour — green if you got through it, red if you didn't, grey while it is
+ * still open. The outcome is derived in `buildChipPicks`; see `ChipOutcome`.
  */
 
 /** Named once: the visible eyebrow and the tablist's accessible name are the
@@ -34,13 +38,36 @@ import { nextIndex, scrollLeftFor } from "./week-strip";
 const HEADING = "Select a week";
 
 /**
- * 50×50 clears the 44px `.tap-target` floor on both axes, so no `.tap-target`
+ * 52×52 clears the 44px `.tap-target` floor on both axes, so no `.tap-target`
  * here. Both transitioned properties are named: `transition-colors` alone would
  * snap the radius change on hover while easing the fill.
+ *
+ * `isolate` is for the selected chip's `mix-blend-darken` logo below: it makes
+ * this button the blend's stacking context, so the logo can only ever darken
+ * against the chip's own fill and never against whatever the strip is sitting
+ * on. It renders identically today either way — the fill is opaque and covers
+ * the logo — which is exactly why it is worth pinning down rather than leaving
+ * to the next ancestor that grows a `transform` or an `opacity`.
  */
 const CHIP =
-  "relative flex h-[50px] w-[50px] shrink-0 select-none flex-col items-center " +
+  "relative isolate flex h-[52px] w-[52px] shrink-0 select-none flex-col items-center " +
   "justify-center px-1 transition-[background-color,border-radius] duration-150";
+
+/**
+ * The corner numeral's ink, by outcome and by whether the chip is filled.
+ *
+ * A table rather than a chain of conditional fragments because all six values
+ * land in tailwind-merge's ONE text-colour group: emit two and the later
+ * silently deletes the earlier, with the winner decided by argument order. One
+ * lookup, one class, nothing to reason about.
+ *
+ * The `undecided` row is what every chip printed before the redesign.
+ */
+const CORNER_INK: Record<ChipOutcome, { off: string; on: string }> = {
+  undecided: { off: "text-shell-mute", on: "text-white" },
+  win: { off: "text-result-win", on: "text-result-win-lit" },
+  loss: { off: "text-result-loss", on: "text-result-loss-lit" },
+};
 
 export function WeekStrip({
   options,
@@ -51,8 +78,15 @@ export function WeekStrip({
   options: WeekOption[];
   /** `weekKey(ref)` of the selected option. */
   value: string;
-  /** Team picked per `weekKey`. An absent key means no pick that week. */
-  picked: ReadonlyMap<string, TeamId>;
+  /**
+   * What each week's chip draws — the team picked and how it went — per
+   * `weekKey`. An absent key means no pick that week.
+   *
+   * One map to a record rather than a second map keyed the same way: an
+   * outcome only exists where a pick does, and two maps can be given different
+   * dependency lists and drift apart. Same shape as `usedByTeam` next door.
+   */
+  picked: ReadonlyMap<string, ChipPick>;
   onChange: (key: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -135,13 +169,22 @@ export function WeekStrip({
         className="-mx-4 overflow-x-auto py-1.5 scroll-none lg:-mx-1"
       >
         {/* w-max so the row sizes to its chips and actually overflows; without it
-            it would be capped at the scroller's width and never scroll. */}
+            it would be capped at the scroller's width and never scroll.
+
+            The 2px gutter is the spec's, and it is now measured rather than
+            loose: 18 chips come to 18×52 + 17×2 = 970px against the 968px this
+            row has on desktop (`max-w-shell` 1000 less the shell's `px-4`, plus
+            and minus the 4px `lg:-mx-1`/`lg:px-1` pair below, which cancel).
+            So the regular season overhangs by exactly 2px and the row is
+            technically scrollable all year — imperceptible, and the scroller
+            absorbs it. Anything further added here (a border, a ring, row
+            padding, a wider gap) comes straight off that budget. */}
         <div
           role="tablist"
           aria-label={HEADING}
           aria-orientation="horizontal"
           onKeyDown={handleKeyDown}
-          className="flex w-max items-center gap-px px-4 lg:px-1"
+          className="flex w-max items-center gap-0.5 px-4 lg:px-1"
         >
           {options.map((option, i) => (
             <Chip
@@ -150,7 +193,7 @@ export function WeekStrip({
                 chips.current[i] = el;
               }}
               option={option}
-              team={picked.get(option.key)}
+              pick={picked.get(option.key)}
               selected={i === selectedIndex}
               onSelect={() => onChange(option.key)}
             />
@@ -161,32 +204,21 @@ export function WeekStrip({
   );
 }
 
-/**
- * The chip's accessible name. The chip prints "04", which on its own names
- * nothing — so the numeral is hidden and this is supplied instead.
- */
-function chipName(option: WeekOption, teamName: string | null): string {
-  const parts = [option.label];
-  if (teamName) parts.push(`picked ${teamName}`);
-  if (option.isCurrent) parts.push("current week");
-  return parts.join(", ");
-}
-
 function Chip({
   ref,
   option,
-  team,
+  pick,
   selected,
   onSelect,
 }: {
   ref: (el: HTMLButtonElement | null) => void;
   option: WeekOption;
-  /** The team picked this week, if any — the chip then shows its logo. */
-  team: TeamId | undefined;
+  /** This week's pick, if any — the chip then shows its logo and its result. */
+  pick: ChipPick | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const meta = team ? getTeam(team) : undefined;
+  const meta = pick ? getTeam(pick.teamId) : undefined;
   const teamName = meta ? `${meta.location} ${meta.name}` : null;
 
   return (
@@ -198,34 +230,59 @@ function Chip({
       // aria-label rather than the visible text: it replaces the name computed
       // from the contents outright, so the bare numeral and the corner number
       // are never read, and TeamLogo's own alt text cannot double up.
-      aria-label={chipName(option, teamName)}
+      aria-label={chipName(option, teamName, pick?.outcome)}
       // Roving tabindex: one tab stop for the whole strip, not twenty-two. Arrow
       // keys move within it — see handleKeyDown above.
       tabIndex={selected ? 0 : -1}
       onClick={onSelect}
       className={cn(
         CHIP,
+        // #F3F3F3 and #D9D9D9 against the spec's #F2F2F2 and #DADADA: one point
+        // apart, below anything anyone can see, and both tokens are load-bearing
+        // across the app. A third near-identical grey would leave this chip a
+        // different grey from every other flat tile on the page. Deliberate.
         selected ? "bg-selected" : "bg-fill-soft",
-        // The radius grows only on a bare selected chip. A chip showing a logo
-        // keeps the 2px corner in every state — the spec draws it tight there so
-        // a round logo isn't fighting a rounded box.
-        selected && !team ? "rounded-control" : "rounded-sm",
+        // 2 → 4 → 6 as the state escalates, and the ladder now runs in EVERY
+        // variant. It used to stop at 2px on any chip showing a logo, on the
+        // grounds that a round logo shouldn't fight a rounded box; the updated
+        // spec draws the same corner growth either way. Don't put the gate back.
+        selected ? "rounded-md" : "rounded-sm",
         // Gated on a real pointer. Tailwind v3 does not gate `hover:` behind
         // `@media (hover: hover)` unless `future.hoverOnlyWhenSupported` is set,
         // and it isn't here — so a plain `hover:` sticks on touch after a tap,
         // leaving the last week you touched shaded as though it were focused.
         !selected && "[@media(hover:hover)]:hover:bg-shell-line",
-        !selected && !team && "[@media(hover:hover)]:hover:rounded",
+        !selected && "[@media(hover:hover)]:hover:rounded",
       )}
     >
-      {team ? (
+      {pick ? (
         <>
-          <TeamLogo teamId={team} size={28} />
+          {/* `size`, never a class: TeamLogo writes an inline width/height that a
+              Tailwind utility can't reach, and carries `max-w-none` so preflight's
+              `img { max-width: 100% }` can't letterbox it. 30px inside 44px of
+              inner width is clear on both counts.
+
+              `mix-blend-darken` on the filled chip is the spec's. It takes the
+              per-channel minimum against the fill, so a logo comes out as a dark
+              silhouette and anything lighter than the green — white, silver —
+              disappears into it entirely. That crush is the intent (a watermark
+              under the numeral), not an oversight. Transparency is untouched:
+              alpha 0 leaves the backdrop alone, so the artwork's surround is
+              fine. It rides on the CDN-failure tile too, which is acceptable. */}
+          <TeamLogo
+            teamId={pick.teamId}
+            size={30}
+            className={selected ? "mix-blend-darken" : undefined}
+          />
+          {/* right-[4px] resolves against the padding box — with no border, the
+              border box — so this is the spec's 4px from the chip's edge and the
+              chip's own px-1 does not double it. No `text-right`: an absolutely
+              positioned box with no width shrink-wraps, so it would be a no-op. */}
           <span
             className={cn(
-              "pointer-events-none absolute right-[2px] top-[2px] text-[10px] font-semibold",
+              "pointer-events-none absolute right-[4px] top-[2px] text-[10px] font-semibold",
               "leading-[0.9] tracking-[-0.05em] tabular-nums",
-              selected ? "text-white" : "text-shell-mute",
+              CORNER_INK[pick.outcome][selected ? "on" : "off"],
             )}
           >
             {option.chipLabel}
@@ -236,11 +293,15 @@ function Chip({
           className={cn(
             // tabular-nums so "11" and "18" are the same width; Inter's default
             // proportional figures make a column of them visibly ragged.
-            "w-full text-center font-semibold leading-[0.9] tracking-[-0.05em] tabular-nums",
-            // The spec's -1.4px at 28px is -0.05em, written as the ratio so the
-            // preseason step-down below stays proportionally right.
+            "w-full text-center font-semibold leading-[1.2] tracking-[-0.02em] tabular-nums",
+            // The library's H3 Desktop metrics. Its -0.56px at 28px is -0.02em,
+            // written as the ratio so the preseason step-down below stays
+            // proportionally right — note this no longer matches the corner
+            // numeral's -0.05em, which is its own value in the spec. leading-1.2
+            // doesn't move the glyph: a 33.6px line box inside a 52px
+            // justify-center column grows symmetrically.
             //
-            // "HOF" at 28px measures wider than the 42px the chip has to give.
+            // "HOF" at 28px measures wider than the 44px the chip has to give.
             // The spec only ever draws two-digit numerals, so this is the
             // preseason case it doesn't cover.
             option.chipLabel.length > 2 ? "text-[18px]" : "text-[28px]",
