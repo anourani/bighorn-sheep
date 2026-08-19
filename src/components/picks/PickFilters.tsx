@@ -13,8 +13,12 @@ import {
  * The Layout and Sort filters above the pick surface.
  *
  * Plain text, not a segmented pill: the design sets the live option in page ink
- * at 20px and the rest in the muted grey, with no track behind them.
- * `ui/Segmented` is the pill and would be the wrong shape here.
+ * and the rest in the muted grey, with no track behind them. `ui/Segmented` is
+ * the pill and would be the wrong shape here.
+ *
+ * The option text is responsive, not one fixed size: 20px on a phone, 28px
+ * from `lg` — the mockups step it up along with everything else that turns
+ * over at that breakpoint, tracking included (-0.8px mobile, -0.56px desktop).
  *
  * Both groups are real radio inputs behind an `sr-only` class rather than styled
  * buttons, which is what gets arrow-key navigation, a single tab stop per group
@@ -46,7 +50,7 @@ export function PickFilters({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-start gap-x-6 gap-y-3", className)}>
+    <div className={cn("flex flex-wrap items-start gap-x-5 gap-y-3 lg:items-center lg:gap-x-6", className)}>
       <FilterGroup
         label="Layout"
         name="picks-layout"
@@ -91,13 +95,15 @@ function FilterGroup<T extends string>({
   return (
     // The label sits above its options on a phone and beside them from lg —
     // the one place the page turns over, same as everything else here.
+    // items-start, not items-center: the mockups top-align the 12px label
+    // with the option row rather than centering it against the taller text.
     <div
       role="radiogroup"
       aria-label={label}
-      className="flex flex-col gap-2 lg:flex-row lg:items-center"
+      className="flex flex-col gap-2 lg:flex-row lg:items-start"
     >
       <Label>{label}</Label>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 lg:gap-2">
         {options.map((option) => (
           <label key={option} className="cursor-pointer">
             <input
@@ -109,7 +115,7 @@ function FilterGroup<T extends string>({
             />
             <span
               className={cn(
-                "block rounded-[2px] text-[20px] font-semibold leading-[1.2] tracking-[-0.8px] transition-colors",
+                "block rounded-[2px] text-[20px] font-semibold leading-[1.2] tracking-[-0.8px] transition-colors lg:text-[28px] lg:tracking-[-0.56px]",
                 "text-shell-mute peer-checked:text-shell-ink",
                 "peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/70 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-bg",
                 // Tailwind v3 doesn't gate `hover:` on a real pointer, and an
