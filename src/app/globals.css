@@ -84,6 +84,34 @@
     display: none;
   }
 
+  /* Pick cards wipe upward from their own bottom edge as their row nears the
+     bottom of the viewport — `use-card-reveal.ts` drives it with GSAP, and this
+     is the state each card starts in.
+
+     The masked state is HERE rather than set from JS on mount so the
+     server-rendered HTML already carries it. Set from an effect, every cold load
+     would flash a fully drawn grid in the window between the SSR paint and
+     hydration. The hook then takes over with an inline `clip-path`, which
+     outranks this rule.
+
+     The class doubles as the hook's query target, so a card carries one new
+     token rather than two.
+
+     The reduce override is NOT redundant with the hook's own matchMedia check.
+     The block above only zeroes durations, which does nothing to a clip-path
+     that is a static property here and an inline style there — and this one also
+     covers the window before the JS runs, so a reduced-motion visitor never sees
+     a masked card at all. */
+  .reveal-clip {
+    clip-path: inset(100% 0% 0% 0%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-clip {
+      clip-path: none;
+    }
+  }
+
   /* Staggered entrance helper — delays applied by child position. */
   .stagger > * {
     animation: reveal-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;

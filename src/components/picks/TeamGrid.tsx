@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import { cn } from "@/lib/cn";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { weekKey, type WeekRef } from "@/lib/nfl/calendar";
@@ -15,6 +17,7 @@ import {
   type GridCard,
   type GridSort,
 } from "@/components/picks/team-grid";
+import { useCardReveal } from "@/components/picks/use-card-reveal";
 import type { UsedPick } from "@/components/picks/WeekSchedule";
 
 /**
@@ -60,6 +63,28 @@ export function TeamGrid({
   records: Map<TeamId, TeamRecord>;
   onSelect: (teamId: TeamId) => void;
 }) {
+  const grid = useRef<HTMLDivElement>(null);
+
+  // Hoisted above the empty-week return below, and that is not a style choice:
+  // a hook placed after a conditional return stops being called the moment you
+  // select a week whose schedule hasn't been released, which React reports as
+  // "rendered fewer hooks than expected" and `/app/error.tsx` catches as a
+  // broken screen. Building 32 bye cards for an empty week costs nothing —
+  // `buildGridCards` loops TEAMS either way.
+  const cards = buildGridCards({ games, usedByTeam, selectedTeam, interactive, now });
+  const order = orderGridTeams(cards, sort, (id) => records.get(id) ?? { w: 0, l: 0, t: 0 });
+
+  // The reveal rebuilds when the rendered ORDER changes, and this key is the
+  // order itself rather than the inputs to it. Sorting is the obvious case; the
+  // week matters twice over, because `record` ranks on records and records move
+  // with the week, AND because the notes above the grid change height with it.
+  //
+  // Deliberately NOT keyed on the pick: `orderGridTeams` passes
+  // `groupUnavailable: false`, which skips the actionable-first branch, so the
+  // comparator reads records and kickoffs only and the order does not move when
+  // you tap a team. Keying on `cards` would rebuild 32 timelines on every pick.
+  useCardReveal(grid, `${weekKey(weekRef)}|${order.join(",")}`);
+
   // A week with no schedule is not 32 byes — say so, exactly as the matchup
   // layout does, rather than drawing a full grid of dead cards.
   if (games.length === 0) {
@@ -70,8 +95,6 @@ export function TeamGrid({
     );
   }
 
-  const cards = buildGridCards({ games, usedByTeam, selectedTeam, interactive, now });
-  const order = orderGridTeams(cards, sort, (id) => records.get(id) ?? { w: 0, l: 0, t: 0 });
   const groupName = `${weekKey(weekRef)}-grid-pick`;
 
   return (
@@ -79,7 +102,10 @@ export function TeamGrid({
     // preflight resets, and it will happily push a grid past its column.
     <fieldset className="min-w-0">
       <legend className="sr-only">Pick your {weekName} team</legend>
-      <div className="-mx-4 grid grid-cols-3 gap-1 px-1 min-[480px]:grid-cols-4 md:grid-cols-5 lg:mx-0 lg:grid-cols-6 lg:gap-2 lg:px-0">
+      <div
+        ref={grid}
+        className="-mx-4 grid grid-cols-3 gap-1 px-1 min-[480px]:grid-cols-4 md:grid-cols-5 lg:mx-0 lg:grid-cols-6 lg:gap-2 lg:px-0"
+      >
         {order.map((teamId) => {
           const card = cards.get(teamId);
           if (!card) return null;
@@ -116,6 +142,9 @@ function TeamCard({
   return (
     <label
       className={cn(
+        // `reveal-clip` is both the masked start state and how `useCardReveal`
+        // finds the cards — a direct child of the grid div above.
+        "reveal-clip",
         "group relative flex aspect-square flex-col items-center px-1 pb-2 lg:px-2 lg:pb-3",
         "transition-[background-color,border-radius,box-shadow] duration-150",
         selectable ? "cursor-pointer" : "cursor-not-allowed",

@@ -612,6 +612,75 @@ reading, but only the first kind is the lesson.
   card must not move merely because you spent it. "ABCs" needs no sort key of its
   own: `TEAMS` is already alphabetical by city and then nickname.
 
+- **Both pick surfaces' cards wipe in on scroll, and GSAP is in the bundle for
+  it.** `use-card-reveal.ts` gives every card its own ScrollTrigger starting at
+  `top bottom-=100`, and a 1.2s `clip-path: inset(100% 0 0 0)` -> `inset(0)`
+  tween on `cubic-bezier(0.4, 0, 0.2, 1)` (registered through CustomEase, whose
+  SVG path form `M0,0 C0.4,0 0.2,1 1,1` is that curve exactly — `power2.inOut`
+  is a near neighbour, not the same). `toggleActions: "play none none reverse"`,
+  so scrolling back up un-wipes a row. It costs **+49KB gzipped on `/app` alone**
+  (11 -> 60KB route, 127 -> 176KB First Load; the shared chunk is untouched), and
+  the same effect is expressible in CSS + one IntersectionObserver — the
+  dependency was chosen deliberately, not by default. The arithmetic lives in the
+  pure `card-reveal.ts` beside it, because there is still no jsdom here. Seven
+  things are load-bearing:
+  - **The masked state is in CSS (`.reveal-clip` in `globals.css`), not set from
+    JS on mount.** `/app` is server-rendered, so a mask applied in an effect
+    flashes a fully drawn grid on every cold load in the window before hydration.
+    The stated cost: if the client JS ever fails to load, the pick grid renders
+    blank rather than visible-but-inert. The class doubles as the hook's query
+    target, so a card carries one new token rather than two.
+  - **The stagger modulus is READ, never hardcoded.** The brief said
+    `(index % 5)`; neither grid is five columns. `TeamGrid` steps 3/4/5/6 across
+    `min-[480px]`, `md` and `lg`, and `WeekSchedule` is
+    `repeat(auto-fill, minmax(260px,1fr))`, whose count is content-driven and so
+    cannot be derived from breakpoints at all. A fixed 5 lines up with real rows
+    only in the 768-1023px band; everywhere else the cascade drifts diagonally
+    across rows instead of resetting at each one.
+  - **A `<fieldset>` does not report its own grid tracks, and that is why
+    `countColumnsByRow` exists.** `WeekSchedule`'s grid element IS its fieldset,
+    and Chrome hands back the *specified* `repeat(auto-fill, minmax(260px, 1fr))`
+    at every width, fully laid out, with the cards visibly in three columns
+    behind it — a fieldset's grid formatting context lives on its anonymous
+    content box. Measured at 393px and 1280px. So counting the cards that share
+    the first one's top edge is not a defensive fallback that never runs; it is
+    what the matchup layout uses every time. `columnCountFrom` returning 0 rather
+    than miscounting that comma as two tracks is what routes it there.
+  - **Cards are found by class under the grid, never by `.children`.** That same
+    fieldset's first DOM child is its `<legend>`, so `.children` would shift
+    every index by one, put the cascade permanently out of phase with the rows,
+    and mask a screen-reader-only element. It also sidesteps `TeamGrid`'s
+    `if (!card) return null`, where a React index can disagree with the rendered
+    position — and it is the rendered position that decides which row a card is
+    in.
+  - **`.stagger`'s 12px is observable here, and one refresh fixes it.** The hook
+    builds in a layout effect, i.e. while `reveal-up`'s `translateY(12px)` is
+    still applied, so every trigger start is measured 12px low — and ScrollTrigger
+    caches starts rather than recomputing them on scroll. Measured at 393x852:
+    starts moved -492 to -504 after a refresh, and **three cards sitting above
+    the trigger line stayed masked indefinitely** without one. Hence the
+    `animationend` listener on `closest(".stagger > *")`, target-guarded because
+    animationend bubbles.
+  - **The order key is narrow on purpose, and a rebuild must not re-wipe.**
+    `MyPicksClient` re-renders both surfaces on every tap, and `revertOnUpdate`
+    strips the inline clip-path — so a key that moved with the pick would re-wipe
+    all 32 cards each time you picked. `TeamGrid` keys on the week plus
+    `order.join(",")`, which is safe precisely because `orderGridTeams` passes
+    `groupUnavailable: false` and so never reorders on `selectedTeam`. On the
+    rebuilds that do happen (a sort toggle, a breakpoint crossing), cards already
+    above the trigger line are jumped to `progress(1)` instead of replayed.
+  - **`prefers-reduced-motion` needs a manual check here, unlike everywhere
+    else.** The global rule in `globals.css` clamps CSS animation and transition
+    *durations*; a GSAP tween is neither, and nor is a static `clip-path` start
+    state. The hook reads `matchMedia` itself, exactly as `WeekStrip`'s
+    programmatic scroll does — and `.reveal-clip` carries its own `clip-path:
+    none` override so a reduced-motion visitor never sees a masked card even
+    before the JS runs.
+
+  `tailwind.config.ts`'s `reveal-mask` is still there, still unused, and wipes
+  the OTHER way (`inset(0 0 100% 0)`, downward, plus an opacity fade). Don't
+  reach for it.
+
 - **The My Picks pick module is no longer a team-coloured card.** The team's
   colour is three vertical gradient strips behind the logo — `stripGradient` in
   `src/components/picks/pick-hero.ts`, a fixed .25 -> .80 alpha ramp, alternating
