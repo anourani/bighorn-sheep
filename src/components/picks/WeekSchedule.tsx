@@ -124,37 +124,66 @@ function GameCard({
   const order: TeamId[] = [game.home, game.away];
 
   return (
-    <div className="reveal-clip overflow-hidden rounded-control border border-line bg-white">
-      {/* items-start, not items-center: the full kickoff line ("Sunday, September
-          14th at 12:00 PM EDT") wraps to two lines on a narrow card, and centring
-          would then drag the status badge down off the first line. */}
-      <div className="flex items-start justify-between gap-2 px-3 pt-2.5">
+    // `reveal-clip` sits on this wrapper and NOT on the card below it. That is
+    // load-bearing: `useCardReveal` queries `:scope > .reveal-clip`, i.e. direct
+    // children of the fieldset only. Push the class down onto the card and the
+    // query matches nothing, the hook returns early before writing a single
+    // clip-path, and `globals.css` leaves every card at `inset(100% 0 0 0)` —
+    // a permanently blank matchup grid, with nothing thrown and both typecheck
+    // and the test suite still green.
+    //
+    // So the kickoff line rides inside the mask along with the card, which is
+    // also the honest reading: the two are one module and wipe in together.
+    <div className="reveal-clip">
+      {/* The kickoff sits ABOVE the card now, on the page background — date on
+          the left, clock (and the lock badge once it applies) on the right.
+          `items-baseline` puts the two halves on one line; `flex-wrap` lets the
+          clock drop to a second line on a narrow column rather than crushing
+          the date, which is the case the old single-line format hit constantly. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 pb-2">
         <LocalTime
           iso={game.kickoff}
-          mode="long"
+          mode="weekdaydate"
           className="text-[11px] font-semibold leading-snug tabular-nums text-ink-mute"
         />
-        {kicked ? (
-          <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase leading-[1.45] tracking-wide text-ink-mute">
-            <LockIcon className="h-3 w-3" />
-            {game.status === "final" ? "Final" : game.status === "in_progress" ? "Live" : "Locked"}
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-1.5 divide-y divide-line/70">
-        {order.map((teamId) => (
-          <TeamOption
-            key={teamId}
-            teamId={teamId}
-            game={game}
-            groupName={groupName}
-            used={usedByTeam.get(teamId)}
-            selected={selectedTeam === teamId}
-            interactive={interactive}
-            kicked={kicked}
-            onSelect={onSelect}
+        {/* `items-center`, NOT `items-baseline`: the badge is an inline-flex box
+            whose 14.5px line-height baseline sits below the clock's 15.125px one,
+            which grew this header by 2.25px and pushed the grey card 2.25px below
+            its badge-less neighbours in the same grid row. Measured, not reasoned
+            about — 23.13 / 25.38 / 23.13px across three cards. */}
+        <span className="flex shrink-0 items-center gap-1.5">
+          <LocalTime
+            iso={game.kickoff}
+            mode="clockzone"
+            className="text-[11px] font-semibold leading-snug tabular-nums text-ink-mute"
           />
-        ))}
+          {kicked ? (
+            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase leading-[1.45] tracking-wide text-ink-mute">
+              <LockIcon className="h-3 w-3" />
+              {game.status === "final" ? "Final" : game.status === "in_progress" ? "Live" : "Locked"}
+            </span>
+          ) : null}
+        </span>
+      </div>
+
+      {/* No top padding of its own: the header left the card, so the rows' own
+          `py-2.5` is the whole inset. */}
+      <div className="overflow-hidden rounded-control border border-line bg-[#F6F6F6]">
+        <div className="divide-y divide-line/70">
+          {order.map((teamId) => (
+            <TeamOption
+              key={teamId}
+              teamId={teamId}
+              game={game}
+              groupName={groupName}
+              used={usedByTeam.get(teamId)}
+              selected={selectedTeam === teamId}
+              interactive={interactive}
+              kicked={kicked}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -220,7 +249,7 @@ function TeamOption({
     <label
       className={cn(
         "flex items-center gap-3 px-3 py-2.5 transition-colors",
-        selectable ? "cursor-pointer hover:bg-[#FAFAFB]" : "cursor-not-allowed",
+        selectable ? "cursor-pointer hover:bg-[#EFEFEF]" : "cursor-not-allowed",
         selected && "bg-brand-wash",
       )}
     >
@@ -234,7 +263,7 @@ function TeamOption({
         aria-label={label}
       />
 
-      <TeamLogo teamId={teamId} size="sm" className={cn(used && "opacity-40")} />
+      <TeamLogo teamId={teamId} size="md" className={cn(used && "opacity-40")} />
 
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
