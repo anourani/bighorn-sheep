@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { PickHero } from "@/components/picks/PickHero";
 import { PickFilters } from "@/components/picks/PickFilters";
 import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { GRID_LAYOUTS, GRID_SORTS } from "@/components/picks/team-grid";
+import { IDLE_QUEUE, settlePick, tapPick, type PickQueue } from "@/components/picks/pick-queue";
 import { buildChipPicks } from "@/components/picks/week-strip";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
@@ -23,7 +24,12 @@ import {
   type WeekRef,
 } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "@/lib/league/games";
-import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "@/lib/league/picks";
+import {
+  pickForWeek,
+  pruneAgreedPicks,
+  viewerPicksByWeek,
+  type PendingPicks,
+} from "@/lib/league/picks";
 import { recordsThroughWeek } from "@/lib/league/records";
 import type { LeagueData } from "@/lib/league/load";
 import { submitPick } from "@/app/app/actions";
@@ -105,7 +111,26 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // painted under a different week's label.
   const [pendingPicks, setPendingPicks] = useState<PendingPicks>(() => new Map());
   const [pickError, setPickError] = useState<string | null>(null);
-  const [saving, startTransition] = useTransition();
+  // The pending boolean is discarded on purpose — the grid must stay tappable
+  // while a pick saves (the overlay above is the acknowledgment; the queue
+  // below is what makes overlapping taps safe). The transition itself is kept
+  // so the revalidated RSC payload applies without blocking paint, the same
+  // trade AdminSettingsDrawer makes.
+  const [, startTransition] = useTransition();
+  // Per-week submit chains — single-flight with a trailing tap, see
+  // pick-queue.ts. A ref, not state: nothing in it drives rendering; the
+  // visible pieces are pendingPicks and pickError above. Keyed by weekKey, so
+  // during preseason the practice week and regular Week 1 (both writable, two
+  // different rows) run independent chains.
+  const queuesRef = useRef(new Map<string, PickQueue>());
+
+  // Retire each overlay entry once the server agrees with it, so a pick changed
+  // from another tab or device is not shadowed for the life of this one. An
+  // entry whose write is still in flight disagrees with the prop it has not
+  // landed in yet, so it survives and the selection never flickers back.
+  useEffect(() => {
+    setPendingPicks((p) => pruneAgreedPicks(p, serverPicks));
+  }, [serverPicks]);
 
   // How this browser likes to look at the week. Deliberately not part of
   // LeagueData: it says nothing about the league, and a profile column would
@@ -229,32 +254,52 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
     // live week while the screen names another one.
     if (!isCurrent) return;
 
-    const forPractice = viewingPractice;
     // Keyed to the live week — the only week submitPick will ever write.
     const key = weekKey(liveRef);
-    const previous = pickForWeek(liveRef, serverPicks, pendingPicks);
-    const set = (team: TeamId | null) =>
-      setPendingPicks((m) => new Map(m).set(key, team));
+    const queue = queuesRef.current.get(key) ?? IDLE_QUEUE;
+    // The revert baseline, read only while the chain is idle: what this tab
+    // believes the server holds. Mid-chain the value on screen is the
+    // optimistic overlay, which is exactly what a revert must not target —
+    // tapPick ignores this argument then and the chain carries its own.
+    const serverValue = pickForWeek(liveRef, serverPicks, pendingPicks);
+    const { state, submit } = tapPick(queue, teamId, serverValue);
+    queuesRef.current.set(key, state);
 
-    set(teamId); // optimistic
+    setPendingPicks((m) => new Map(m).set(key, teamId)); // optimistic, always
     setPickError(null);
+    if (submit !== null) launchPick(key, submit);
+  }
+
+  /**
+   * Run one link of a week's submit chain. Settling releases the trailing tap
+   * (if one arrived mid-flight), which recurses here — so the chain drains
+   * itself, one request in flight at a time.
+   */
+  function launchPick(key: string, teamId: TeamId) {
+    // Derived from the key itself, so it can never disagree with the week the
+    // overlay painted under.
+    const seasonType = parseWeekKey(key)?.seasonType === "pre" ? "pre" : "regular";
     startTransition(async () => {
+      let ok = false;
+      let errText = "Couldn't save that pick. Try again.";
       try {
-        const res = await submitPick({
-          groupId: group.id,
-          teamId,
-          seasonType: forPractice ? "pre" : "regular",
-        });
-        if (!res.ok) {
-          set(previous); // revert on rejection
-          setPickError(PICK_ERROR[res.error] ?? "Couldn't save that pick. Try again.");
-        }
+        const res = await submitPick({ groupId: group.id, teamId, seasonType });
+        ok = res.ok;
+        if (!res.ok) errText = PICK_ERROR[res.error] ?? errText;
       } catch (err) {
         // A deploy landed while this tab was open — reload onto the new build.
+        // The chain is left unsettled on purpose: the reload repaints server
+        // truth, and a queued tap dies with the page it belonged to.
         if (isStaleDeploymentError(err) && reloadOnce()) return;
-        set(previous); // revert on rejection
-        setPickError("Couldn't save that pick. Try again.");
       }
+      const outcome = settlePick(queuesRef.current.get(key) ?? IDLE_QUEUE, ok);
+      queuesRef.current.set(key, outcome.state);
+      if (outcome.revert) {
+        const revertTo = outcome.revert.to;
+        setPendingPicks((m) => new Map(m).set(key, revertTo));
+      }
+      if (outcome.surfaceError) setPickError(errText);
+      if (outcome.submit !== null) launchPick(key, outcome.submit);
     });
   }
 
@@ -375,7 +420,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             games={games}
             usedByTeam={usedByTeam}
             selectedTeam={pickTeam}
-            interactive={isCurrent && !saving}
+            interactive={isCurrent}
             now={now}
             sort={sort}
             records={records}
@@ -388,7 +433,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             games={games}
             usedByTeam={usedByTeam}
             selectedTeam={pickTeam}
-            interactive={isCurrent && !saving}
+            interactive={isCurrent}
             now={now}
             onSelect={handleSelect}
           />
