@@ -617,8 +617,8 @@ reading, but only the first kind is the lesson.
   `top bottom-=100`, and a 1.2s `clip-path: inset(100% 0 0 0)` -> `inset(0)`
   tween on `cubic-bezier(0.4, 0, 0.2, 1)` (registered through CustomEase, whose
   SVG path form `M0,0 C0.4,0 0.2,1 1,1` is that curve exactly — `power2.inOut`
-  is a near neighbour, not the same). `toggleActions: "play none none reverse"`,
-  so scrolling back up un-wipes a row. It costs **+49KB gzipped on `/app` alone**
+  is a near neighbour, not the same). The reveal is ONE-WAY: a card wipes in the
+  first time its row crosses the line and then stays. It costs **+49KB gzipped on `/app` alone**
   (11 -> 60KB route, 127 -> 176KB First Load; the shared chunk is untouched), and
   the same effect is expressible in CSS + one IntersectionObserver — the
   dependency was chosen deliberately, not by default. The arithmetic lives in the
@@ -661,14 +661,49 @@ reading, but only the first kind is the lesson.
     the trigger line stayed masked indefinitely** without one. Hence the
     `animationend` listener on `closest(".stagger > *")`, target-guarded because
     animationend bubbles.
-  - **The order key is narrow on purpose, and a rebuild must not re-wipe.**
-    `MyPicksClient` re-renders both surfaces on every tap, and `revertOnUpdate`
-    strips the inline clip-path — so a key that moved with the pick would re-wipe
-    all 32 cards each time you picked. `TeamGrid` keys on the week plus
-    `order.join(",")`, which is safe precisely because `orderGridTeams` passes
-    `groupUnavailable: false` and so never reorders on `selectedTeam`. On the
-    rebuilds that do happen (a sort toggle, a breakpoint crossing), cards already
-    above the trigger line are jumped to `progress(1)` instead of replayed.
+  - **`once: true` is NOT what stops the replay — `toggleActions` is.** This is
+    the opposite of what the option name suggests, and it is one line of
+    ScrollTrigger: `once && (clipped === 1 ? self.kill(false, 1) : callbacks[toggleState] = 0)`.
+    It nulls the *callback* slot, and self-kills only at `clipped === 1`, which
+    is the `end` boundary — not `onEnter`, and not the tween finishing. The block
+    that runs toggle actions never consults `once` at all, so `once: true` beside
+    `"play none none reverse"` still un-wipes on the way back up. What the hook
+    relies on is `"play none none none"`: nothing on the other three actions, and
+    re-entering calls `play()` on a timeline already at progress 1, which is a
+    no-op. `once` is still set, for the unrelated benefit that its
+    `kill(false, 1)` retires the trigger as the card scrolls past while leaving
+    the tween exactly where it is — where a bare `.kill()` would revert the
+    styles and kill the animation.
+  - **A week change is the ONE thing that animates a card twice**, and the rule
+    lives in `planCardReveal`. On screen when the week turns over, a card wipes
+    away (0.35s) and back (0.6s); below the line it re-masks and takes the
+    ordinary 1.2s scroll reveal; on any other rebuild — a sort toggle, a
+    breakpoint crossing — a revealed card holds and animates nothing. The
+    asymmetry is load-bearing: **the week branch keys on POSITION, every other
+    branch keys on REVEALED-NESS.** They were the same test while the reveal
+    reversed; they stopped being the same the moment it became one-way, because
+    a card revealed on the way down and then scrolled back below the line is
+    still revealed and a positional test would re-mask it.
+  - **The wipe-away needs `immediateRender: false`, and without it the bug comes
+    straight back.** A `fromTo` renders its FROM state at creation by default,
+    even sitting last in a timeline — so the wipe-in stamps the card to hidden
+    before the wipe-away runs, the wipe-away then animates an already-hidden
+    card, and a week change *snaps*. Measured: `inset(100% 0% 0%)` at 0ms, no
+    movement until 400ms. Which is exactly the complaint the replay was built to
+    answer, reintroduced one line further down.
+  - **The order key is narrow on purpose.** `MyPicksClient` re-renders both
+    surfaces on every tap, and `revertOnUpdate` strips the inline clip-path — so
+    a key that moved with the pick would rebuild 32 timelines each time you
+    picked. `TeamGrid` passes `order.join(",")`, which is safe precisely because
+    `orderGridTeams` passes `groupUnavailable: false` and so never reorders on
+    `selectedTeam`. It is separate from `weekKey` because the two mean different
+    things to the reveal: one rebuilds the cascade in silence, the other replays it.
+  - **A week change preserves `TeamGrid`'s cards and replaces `WeekSchedule`'s.**
+    The grid keys on `teamId` and `buildGridCards` loops `TEAMS` every week, so
+    all 32 labels survive; the matchup list keys on `game.id`, which is the ESPN
+    event id and globally unique per game, so React unmounts every card. Nothing
+    to wipe away there — `planCardReveal` returns `wipeOut: false` and those
+    cards simply wipe in. Not a special case, just the honest consequence.
   - **`prefers-reduced-motion` needs a manual check here, unlike everywhere
     else.** The global rule in `globals.css` clamps CSS animation and transition
     *durations*; a GSAP tween is neither, and nor is a static `clip-path` start

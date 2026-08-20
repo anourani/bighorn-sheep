@@ -74,16 +74,17 @@ export function TeamGrid({
   const cards = buildGridCards({ games, usedByTeam, selectedTeam, interactive, now });
   const order = orderGridTeams(cards, sort, (id) => records.get(id) ?? { w: 0, l: 0, t: 0 });
 
-  // The reveal rebuilds when the rendered ORDER changes, and this key is the
-  // order itself rather than the inputs to it. Sorting is the obvious case; the
-  // week matters twice over, because `record` ranks on records and records move
-  // with the week, AND because the notes above the grid change height with it.
+  // Two keys, because the reveal treats the two kinds of change differently: a
+  // new week is the one thing that animates the cards again, while a re-order
+  // only rebuilds the cascade arithmetic in silence.
   //
-  // Deliberately NOT keyed on the pick: `orderGridTeams` passes
+  // `orderKey` is the order itself rather than the inputs to it, so it covers
+  // sorting AND the fact that `record` ranks on records, which move with the
+  // week. Deliberately NOT keyed on the pick: `orderGridTeams` passes
   // `groupUnavailable: false`, which skips the actionable-first branch, so the
   // comparator reads records and kickoffs only and the order does not move when
   // you tap a team. Keying on `cards` would rebuild 32 timelines on every pick.
-  useCardReveal(grid, `${weekKey(weekRef)}|${order.join(",")}`);
+  useCardReveal(grid, { weekKey: weekKey(weekRef), orderKey: order.join(",") });
 
   // A week with no schedule is not 32 byes — say so, exactly as the matchup
   // layout does, rather than drawing a full grid of dead cards.

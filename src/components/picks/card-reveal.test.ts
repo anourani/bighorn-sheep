@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { REVEAL_STEP, columnCountFrom, countColumnsByRow, revealDelay } from "./card-reveal";
+import {
+  REPLAY_IN_DURATION,
+  REPLAY_OUT_DURATION,
+  REVEAL_DURATION,
+  REVEAL_STEP,
+  columnCountFrom,
+  countColumnsByRow,
+  planCardReveal,
+  revealDelay,
+} from "./card-reveal";
 
 // What `getComputedStyle(grid).gridTemplateColumns` actually returns: a list of
 // USED pixel lengths, one per track. These are the four widths TeamGrid draws
@@ -123,5 +132,67 @@ describe("revealDelay", () => {
   it("returns a clean number, because 3 * 0.1 is not 0.3 in binary floating point", () => {
     expect(revealDelay(3, 6)).toBe(0.3);
     expect(revealDelay(7, 8)).toBe(0.7);
+  });
+});
+
+describe("planCardReveal", () => {
+  const plan = (weekChanged: boolean, wasRevealed: boolean, aboveLine: boolean) =>
+    planCardReveal({ weekChanged, wasRevealed, aboveLine });
+
+  // The whole eight-row table, because the rules read as three overlapping
+  // conditions and it is the overlaps that were wrong before.
+  describe("a week change — the one thing that animates a card twice", () => {
+    it("replays a revealed card on screen, wiping it away before wiping it back", () => {
+      expect(plan(true, true, true)).toEqual({ kind: "replay", wipeOut: true });
+    });
+
+    // WeekSchedule keys its cards on `game.id`, which is globally unique per
+    // game, so a week change unmounts every one of them. A card mounted a
+    // moment ago is already masked and has nothing to wipe away.
+    it("replays a freshly mounted card on screen without a wipe-away", () => {
+      expect(plan(true, false, true)).toEqual({ kind: "replay", wipeOut: false });
+    });
+
+    // Out of sight, so there is nothing to animate. It gets the ordinary scroll
+    // reveal on the way down, exactly as on a fresh load.
+    it("arms anything below the line rather than animating it unseen", () => {
+      expect(plan(true, true, false)).toEqual({ kind: "arm" });
+      expect(plan(true, false, false)).toEqual({ kind: "arm" });
+    });
+  });
+
+  describe("any other rebuild — a sort toggle, a breakpoint crossing", () => {
+    // This is the bug the position test used to cause: with a one-way reveal,
+    // a card revealed on the way down and then scrolled back below the line is
+    // STILL revealed, and re-masking it on the next sort toggle would make it
+    // vanish. Revealed-ness is the only thing that can answer here.
+    it("holds a revealed card wherever it now sits on the page", () => {
+      expect(plan(false, true, true)).toEqual({ kind: "hold" });
+      expect(plan(false, true, false)).toEqual({ kind: "hold" });
+    });
+
+    it("arms a card that has never revealed, wherever it sits", () => {
+      expect(plan(false, false, true)).toEqual({ kind: "arm" });
+      expect(plan(false, false, false)).toEqual({ kind: "arm" });
+    });
+  });
+
+  it("never holds on a week change, which is what stranded the first row before", () => {
+    // The first row is revealed and above the line — the exact combination that
+    // used to be snapped to the end instead of played.
+    expect(plan(true, true, true).kind).not.toBe("hold");
+  });
+});
+
+describe("the reveal durations", () => {
+  it("makes the week-change round trip quicker than a first reveal", () => {
+    // A first reveal introduces the grid; a replay only says the week turned
+    // over, and a card that lingers as long the second time reads as sluggish.
+    expect(REPLAY_OUT_DURATION + REPLAY_IN_DURATION).toBeLessThan(REVEAL_DURATION * 2);
+    expect(REPLAY_IN_DURATION).toBeLessThan(REVEAL_DURATION);
+  });
+
+  it("keeps the exit shorter than the entrance, as Drawer does", () => {
+    expect(REPLAY_OUT_DURATION).toBeLessThan(REPLAY_IN_DURATION);
   });
 });
