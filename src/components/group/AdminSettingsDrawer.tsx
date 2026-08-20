@@ -126,7 +126,14 @@ function HintLine({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-start gap-1.5 text-xs leading-relaxed text-ink-mute">
       <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      {children}
+      {/* The whole hint is ONE flex item, and the span is what makes it one. A
+          flex container builds an item out of every child ELEMENT and every run
+          of bare text between them — so a caller embedding a <LocalTime> mid
+          sentence would, without this, have its sentence broken into three
+          items with the icon's gap-1.5 opened up inside the prose. Every hint
+          was plain text until the entry deadline started being printed, which
+          is why nothing caught it earlier. */}
+      <span>{children}</span>
     </p>
   );
 }
@@ -577,10 +584,12 @@ function MembersSection({
   groupId,
   members,
   phase,
+  entryClosesAt,
 }: {
   groupId: string;
   members: Member[];
   phase: SeasonPhase;
+  entryClosesAt: string;
 }) {
   const router = useRouter();
   // Optimistic overlay, keyed by user id: only members whose switch has been
@@ -618,6 +627,13 @@ function MembersSection({
   // Matches set_member_preseason's own condition, so the UI and the database
   // close the window at the same moment.
   const preseasonOpen = phase === "preseason";
+  // WHEN the window shut, not why. All this component knows is that
+  // `entry_closes_at` is in the past — "the first Week 1 kickoff" is an
+  // inference from it, and a deadline left on create_group's `now() + 7 days`
+  // default makes that inference a false claim no one can check from here.
+  // Printing the moment is the same trade the Rules tab already makes beside
+  // "Entry closes", in the same format as the paid stamp one column over.
+  const preseasonClosedStamp = formatMonthDayClock(entryClosesAt);
 
   function toggle(m: Member, field: "paid" | "preseason", next: boolean) {
     const key: PendingKey = `${m.id}:${field}`;
@@ -742,7 +758,9 @@ function MembersSection({
                 label="Show preseason weeks"
                 sub={
                   !preseasonOpen
-                    ? "Preseason is over"
+                    ? preseasonClosedStamp
+                      ? `Preseason closed ${preseasonClosedStamp}`
+                      : "Preseason is over"
                     : preseason
                       ? "Can see and pick preseason"
                       : "Regular season only"
@@ -770,7 +788,13 @@ function MembersSection({
  * a ~130-character measure, which is past the point anyone reads them. In the
  * rail they are about 45.
  */
-function MembersHints({ preseasonOpen }: { preseasonOpen: boolean }) {
+function MembersHints({
+  preseasonOpen,
+  entryClosesAt,
+}: {
+  preseasonOpen: boolean;
+  entryClosesAt: string;
+}) {
   return (
     <div className="space-y-3">
       <HintLine>
@@ -787,7 +811,8 @@ function MembersHints({ preseasonOpen }: { preseasonOpen: boolean }) {
           </>
         ) : (
           <>
-            Preseason ended at the first Week 1 kickoff and these switches are closed for the
+            Preseason ended when entry closed, on{" "}
+            <LocalTime iso={entryClosesAt} mode="full" />, and these switches are closed for the
             season. Practice never carried into the standings, so nothing was lost when it went.
           </>
         )}
@@ -888,7 +913,8 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
       </div>
       {entryClosed ? (
         <HintLine>
-          Entry closed at the first Week 1 kickoff — new members can no longer join this season.
+          Entry closed <LocalTime iso={group.entryClosesAt} mode="full" /> — new members can no
+          longer join this season.
         </HintLine>
       ) : null}
     </section>
@@ -1193,12 +1219,20 @@ export function AdminSettingsDrawer({
           value="members"
           className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-8"
         >
-          <MembersSection groupId={group.id} members={members} phase={phase} />
+          <MembersSection
+            groupId={group.id}
+            members={members}
+            phase={phase}
+            entryClosesAt={group.entryClosesAt}
+          />
           {/* The rail: sharing the invite is membership admin, and the two long
               explanations are unreadable at the full width of this drawer. */}
           <div className="space-y-5">
             <InviteSection group={group} appUrl={appUrl} />
-            <MembersHints preseasonOpen={phase === "preseason"} />
+            <MembersHints
+              preseasonOpen={phase === "preseason"}
+              entryClosesAt={group.entryClosesAt}
+            />
           </div>
         </TabPanel>
       ) : null}
