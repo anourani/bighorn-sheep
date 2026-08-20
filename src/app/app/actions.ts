@@ -120,15 +120,8 @@ export async function submitPick(input: {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
 
-    const { data: group } = await supabase
-      .from("groups")
-      .select("*")
-      .eq("id", input.groupId)
-      .single();
-    if (!group) return { ok: false, error: "group_not_found" };
-
     /*
-     * `select("*")`, not `select("status, show_preseason")`.
+     * `select("*")` on group_members, not `select("status, show_preseason")`.
      *
      * PostgREST raises 42703 on an unknown column rather than returning
      * undefined, and migrations here are applied to production BY HAND. Naming
@@ -136,13 +129,24 @@ export async function submitPick(input: {
      * EVERY pick in the app into `not_a_member` — one late migration escalating
      * from "an admin panel is broken" to "nobody can play". A star select cannot
      * 42703, and the flag below falls open.
+     *
+     * The two reads are independent — one names the league, the other this
+     * member's row in it — so they go out together. Every pick pays this
+     * latency with the grid live under the player's finger, so round trips
+     * that need not be sequential must not be.
      */
-    const { data: membership } = await supabase
-      .from("group_members")
-      .select("*")
-      .eq("group_id", input.groupId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const [{ data: group }, { data: membership }] = await Promise.all([
+      supabase.from("groups").select("*").eq("id", input.groupId).single(),
+      supabase
+        .from("group_members")
+        .select("*")
+        .eq("group_id", input.groupId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+    // `group` first, so a bogus groupId still reads group_not_found rather than
+    // not_a_member — the order the sequential reads answered in.
+    if (!group) return { ok: false, error: "group_not_found" };
     if (!membership) return { ok: false, error: "not_a_member" };
 
     const now = new Date();
@@ -174,20 +178,22 @@ export async function submitPick(input: {
 
     // Scoped to one season_type: mixing them would let an August preseason
     // kickoff decide the regular season's live week, and would match a team to
-    // the wrong game entirely.
-    const { data: gameRows } = await supabase
-      .from("games")
-      .select("*")
-      .eq("season", group.season)
-      .eq("season_type", seasonType);
+    // the wrong game entirely. Independent of the pick history beside it, so
+    // the pair goes out together — same trade as the identity reads above.
+    const [{ data: gameRows }, { data: myPicks }] = await Promise.all([
+      supabase
+        .from("games")
+        .select("*")
+        .eq("season", group.season)
+        .eq("season_type", seasonType),
+      supabase
+        .from("picks")
+        .select("team_id, week, game_id")
+        .eq("group_id", input.groupId)
+        .eq("user_id", user.id)
+        .eq("season_type", seasonType),
+    ]);
     const games = (gameRows ?? []).map(rowToGame);
-
-    const { data: myPicks } = await supabase
-      .from("picks")
-      .select("team_id, week, game_id")
-      .eq("group_id", input.groupId)
-      .eq("user_id", user.id)
-      .eq("season_type", seasonType);
 
     // Which week is live, whether this member may pick at all, and which teams
     // they have already spent — all three answered per phase. For practice the

@@ -76,3 +76,29 @@ export function pickForWeek(ref: WeekRef, server: PicksByWeek, pending: PendingP
   if (pending.has(key)) return pending.get(key) ?? null;
   return server.get(key) ?? null;
 }
+
+/**
+ * Drop the overlay entries the server has caught up with, keeping the rest.
+ *
+ * The overlay exists to cover the gap between the tap and the refreshed props,
+ * and without this nothing ever cleared it — an entry outlived the write that
+ * justified it and shadowed the server for the life of the mounted screen, so a
+ * pick changed from another tab or device could never appear. Pruning on
+ * AGREEMENT rather than on write-success is what makes it safe: an entry whose
+ * write is still in flight disagrees with the prop it has not landed in yet, so
+ * it survives and the selection never flickers back.
+ *
+ * An explicit overlay null against a server map with no entry counts as
+ * agreement, matching pickForWeek's `?? null`. Returns the SAME map when
+ * nothing changed, so the caller's `setState` bails out instead of re-rendering
+ * on every refresh.
+ */
+export function pruneAgreedPicks(pending: PendingPicks, server: PicksByWeek): PendingPicks {
+  if (pending.size === 0) return pending;
+
+  const next = new Map<string, TeamId | null>();
+  for (const [key, team] of pending) {
+    if ((server.get(key) ?? null) !== team) next.set(key, team);
+  }
+  return next.size === pending.size ? pending : next;
+}

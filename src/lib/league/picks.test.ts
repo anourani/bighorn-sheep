@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PRE_WEEK, REGULAR_WEEK, weekKey } from "../nfl/calendar";
 import type { TeamId } from "../nfl/types";
-import { pickForWeek, viewerPicksByWeek, type PendingPicks } from "./picks";
+import { pickForWeek, pruneAgreedPicks, viewerPicksByWeek, type PendingPicks } from "./picks";
 
 const NOTHING_PENDING: PendingPicks = new Map();
 
@@ -125,5 +125,46 @@ describe("pickForWeek", () => {
     const inFlight = pending([[weekKey(REGULAR_WEEK(1)), "kc"]]);
 
     expect(pickForWeek(REGULAR_WEEK(1), new Map(), inFlight)).toBe("kc");
+  });
+});
+
+describe("pruneAgreedPicks", () => {
+  it("drops entries the server has caught up with, keeping the rest", () => {
+    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const overlay = pending([
+      [weekKey(REGULAR_WEEK(2)), "kc"], // landed — server agrees
+      [weekKey(PRE_WEEK(1)), "sea"], // still in flight — server has nothing
+    ]);
+
+    const pruned = pruneAgreedPicks(overlay, server);
+
+    expect(pruned.has(weekKey(REGULAR_WEEK(2)))).toBe(false);
+    expect(pruned.get(weekKey(PRE_WEEK(1)))).toBe("sea");
+  });
+
+  // A reverted pick writes an explicit null; once the server map also has no
+  // entry for that week, the two say the same thing and the null can go.
+  it("treats an explicit null against a server absence as agreement", () => {
+    const overlay = pending([[weekKey(REGULAR_WEEK(2)), null]]);
+
+    expect(pruneAgreedPicks(overlay, new Map()).size).toBe(0);
+  });
+
+  it("keeps an entry that disagrees with a populated server value", () => {
+    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const overlay = pending([[weekKey(REGULAR_WEEK(2)), "sea"]]);
+
+    expect(pruneAgreedPicks(overlay, server)).toBe(overlay);
+  });
+
+  // The setState bail-out: an unchanged result must be the same object, or the
+  // effect that calls this re-renders the screen on every server refresh.
+  it("returns the same map identity when nothing changed", () => {
+    const empty = pending([]);
+    expect(pruneAgreedPicks(empty, new Map())).toBe(empty);
+
+    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const disagreeing = pending([[weekKey(REGULAR_WEEK(2)), "sea"]]);
+    expect(pruneAgreedPicks(disagreeing, server)).toBe(disagreeing);
   });
 });
