@@ -18,11 +18,16 @@ import {
  * instead and no `code` at all. Then, if the link carried an invite, we join the
  * league via the SECURITY DEFINER RPC before dropping the user into the app.
  *
- * Every failure routes back to /login with a stable reason and gets a
- * `console.error` carrying the real detail. That matters more than it sounds:
- * this route used to answer `link_expired` to four unrelated causes while
- * logging nothing, so "the link expired" was the app's guess printed over the
- * top of GoTrue's actual finding. Read the function logs before theorising.
+ * Every failure carries a stable reason and gets a `console.error` with the real
+ * detail. That matters more than it sounds: this route used to answer
+ * `link_expired` to four unrelated causes while logging nothing, so "the link
+ * expired" was the app's guess printed over the top of GoTrue's actual finding.
+ * Read the function logs before theorising.
+ *
+ * WHERE a failure lands depends on whether the session exists yet, and the split
+ * is not cosmetic. Anything up to and including the exchange goes to /login,
+ * where the reader is genuinely signed out. A join failure goes to /app instead
+ * — see `failAfterSignIn`, which explains why /login cannot work for it.
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -60,6 +65,30 @@ export async function GET(request: Request) {
 
   const fail = (reason: CallbackError) =>
     noStore(NextResponse.redirect(`${origin}/login?error=${reason}`));
+
+  /**
+   * A failure AFTER the session exists — which, here, means the join failed.
+   *
+   * It cannot go to /login like every other failure does. `exchangeCodeForSession`
+   * has already written the session cookies onto this response, so middleware
+   * sees a live user the moment the browser follows a /login redirect and bounces
+   * them to /app — blanking the query on the way. The explanation was therefore
+   * thrown away before anything could render it, and the reader landed on the
+   * blank "No league yet" screen with no idea a link had just failed. Three
+   * entries in LoginFlow's ERROR_COPY were unreachable for exactly this reason.
+   *
+   * /app is also where the advice belongs: "request a fresh link below" is the
+   * right thing to tell someone signed out and the wrong thing to tell someone
+   * who has just signed in. JOIN_NOTICE_COPY is the copy for this side.
+   */
+  const failAfterSignIn = (reason: CallbackError) => {
+    // `next` is already guarded to an /app path above. Build it with URL rather
+    // than string concatenation so a `next` that ever grows a query of its own
+    // gets `&notice=` instead of a second `?`.
+    const target = new URL(next, origin);
+    target.searchParams.set("notice", reason);
+    return noStore(NextResponse.redirect(target.toString()));
+  };
 
   // GoTrue rejected the token before we ever saw a code. It said why; say that
   // rather than guessing, and log its exact words.
@@ -99,7 +128,7 @@ export async function GET(request: Request) {
     if (joinError) {
       const reason = joinFailureReason(joinError.message);
       console.error(`[auth/callback] join_by_invite failed as ${reason}`, joinError.message);
-      return fail(reason);
+      return failAfterSignIn(reason);
     }
   }
 

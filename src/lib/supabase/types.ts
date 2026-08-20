@@ -368,6 +368,16 @@ export interface Database {
         Returns: Database["public"]["Tables"]["group_members"]["Row"];
       };
       /**
+       * Admin-only removal of a player and their picks (0013). Refused once
+       * `entry_closes_at` has passed, and never for an admin or for yourself.
+       * Raises `not_admin`, `cannot_remove_self`, `group_not_found`,
+       * `entry_closed`, `cannot_remove_admin`, `member_not_found`.
+       */
+      remove_member: {
+        Args: { p_group_id: string; p_user_id: string };
+        Returns: void;
+      };
+      /**
        * The scorer's write path (0011). Granted to `service_role` only — the
        * browser must never reach it. Kept here so the shape is documented.
        */

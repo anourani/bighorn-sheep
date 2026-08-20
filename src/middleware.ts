@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
 import { canonicalNetlifyHost } from "@/lib/deploy-origin";
+import { normalizeInviteCode } from "@/lib/league/join";
 
 /**
  * Auth boundary for the app.
@@ -96,22 +97,49 @@ export async function middleware(request: NextRequest) {
   }
 
   // Signed-in visitor on the front door → send them into the product.
+  //
+  // Carrying `invite` across is the whole of one bug fix. Invite links are
+  // `/login?invite=CODE`, so a signed-in visitor who follows one used to be
+  // bounced here with the query string blanked below — the code never reached
+  // `LoginFlow`, `join_by_invite` was never called, and NOTHING said so. They
+  // simply arrived in the app not having joined. It bit hardest on the one
+  // person the link most needed to work for: someone signed in but in no league,
+  // sent a fresh link to fix exactly that.
+  //
+  // /app reads it from here and does the join (see JoinOutcome). The code is put
+  // through `normalizeInviteCode` first: `URLSearchParams` would encode it
+  // regardless, but this is a redirect *we* build out of a value a stranger
+  // supplied, so it carries a bounded character class or it carries nothing.
   if (user && (pathname === "/" || pathname === "/login")) {
-    return redirectPreservingCookies(request, response, "/app");
+    const invite = pathname === "/login" ? normalizeInviteCode(searchParams.get("invite")) : null;
+    return redirectPreservingCookies(
+      request,
+      response,
+      "/app",
+      invite ? `?invite=${encodeURIComponent(invite)}` : "",
+    );
   }
 
   return response;
 }
 
-/** Redirect while carrying over any auth cookies refreshed onto `response`. */
+/**
+ * Redirect while carrying over any auth cookies refreshed onto `response`.
+ *
+ * `search` defaults to "" because dropping the query is right for almost every
+ * redirect here — a signed-out visitor bounced off /app has no business keeping
+ * whatever params they arrived with. The one exception passes an invite through;
+ * see the call site.
+ */
 function redirectPreservingCookies(
   request: NextRequest,
   response: NextResponse,
   pathname: string,
+  search = "",
 ) {
   const target = request.nextUrl.clone();
   target.pathname = pathname;
-  target.search = "";
+  target.search = search;
   // Same reason as the callback: never hand back a deploy-permalink URL, or the
   // cookies carried below arrive at an origin that does not recognise them.
   const canonicalHost = canonicalNetlifyHost(target.host);

@@ -18,7 +18,9 @@ import {
   setGroupRules,
   setMemberBuyIn,
   setMemberPreseason,
+  removeMember,
 } from "@/app/app/actions";
+import { isEntryOpen } from "@/lib/game/season";
 import { formatMoney } from "@/lib/money";
 import { formatMonthDayClock } from "@/lib/time";
 import {
@@ -47,6 +49,10 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   not_authenticated: "Your session expired — sign in again.",
   member_not_found: "That member is no longer in the league.",
   group_not_found: "That league is gone.",
+  entry_closed: "Entry has closed — the roster is locked for the season.",
+  cannot_remove_self: "You can't remove yourself.",
+  cannot_remove_admin: "Admins can't be removed.",
+  remove_failed: "Couldn't remove that member. Try again.",
   name_required: "Give the league a name.",
   name_too_long: "That name is too long — 60 characters max.",
   settings_locked: "The season has started, so the rules are frozen.",
@@ -537,7 +543,7 @@ function toCents(input: string): number | null {
 }
 
 /** Which switch on which row is mid-flight. */
-type PendingKey = `${string}:${"paid" | "preseason"}`;
+type PendingKey = `${string}:${"paid" | "preseason" | "remove"}`;
 
 /**
  * Drop the overrides the server has caught up with, keeping the rest.
@@ -634,6 +640,45 @@ function MembersSection({
   // Printing the moment is the same trade the Rules tab already makes beside
   // "Entry closes", in the same format as the paid stamp one column over.
   const preseasonClosedStamp = formatMonthDayClock(entryClosesAt);
+  // remove_member (0013) refuses after entry_closes_at, for the same reason
+  // set_member_preseason does: the window in which a player can be un-joined is
+  // exactly the window in which they could have joined. Read from the same
+  // helper every other consumer uses, so the button and the database close
+  // together. Derived separately from `preseasonOpen` above even though the two
+  // almost always agree — `seasonPhase` has a third answer ("ended") that this
+  // question does not, and collapsing them would make that coincidence load-bearing.
+  //
+  // `new Date()` in a render body is a hydration mismatch anywhere else in this
+  // app; it is safe here because the drawer never renders on the server (`open`
+  // starts false), which is the same licence `formatMonthDayClock` takes below.
+  const removalOpen = isEntryOpen(new Date(entryClosesAt), new Date());
+
+  // Which row is mid-"are you sure?". One at a time: a roster full of armed
+  // delete buttons is how the wrong one gets pressed. Cleared on every success,
+  // failure and cancel.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  function remove(m: Member) {
+    const key: PendingKey = `${m.id}:remove`;
+    if (pending.has(key)) return;
+    setError(null);
+    setPending((p) => new Set(p).add(key));
+    startTransition(async () => {
+      const err = await runAction(() => removeMember({ groupId, userId: m.id }));
+      // No optimistic override here, unlike the two switches. Those overlay a
+      // boolean on a row that stays put; this one removes the row, and a list
+      // that drops an entry before the server has agreed has nothing to restore
+      // it from if the write fails. The refresh is the update.
+      if (err) setError(err);
+      else router.refresh();
+      setConfirmingId(null);
+      setPending((p) => {
+        const nextSet = new Set(p);
+        nextSet.delete(key);
+        return nextSet;
+      });
+    });
+  }
 
   function toggle(m: Member, field: "paid" | "preseason", next: boolean) {
     const key: PendingKey = `${m.id}:${field}`;
@@ -686,12 +731,13 @@ function MembersSection({
           every roster. Hidden below `lg`, where each row still labels itself. */}
       <div
         aria-hidden
-        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px]"
+        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px_88px]"
       >
         <Label className="text-ink-mute">Member</Label>
         <span />
         <Label className="text-ink-mute">Paid</Label>
         <Label className="text-ink-mute">Preseason</Label>
+        <span />
       </div>
 
       <ul className="divide-y divide-line rounded-control border border-line">
@@ -707,7 +753,7 @@ function MembersSection({
           return (
             <li
               key={m.id}
-              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px] lg:items-center lg:gap-x-4 lg:space-y-0"
+              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px_88px] lg:items-center lg:gap-x-4 lg:space-y-0"
             >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
                 <span className="min-w-0 flex-1 lg:min-w-0">
@@ -770,12 +816,95 @@ function MembersSection({
                 onChange={(next) => toggle(m, "preseason", next)}
                 a11y={`Show preseason weeks — ${m.name}`}
               />
+              <RemoveControl
+                member={m}
+                open={removalOpen}
+                confirming={confirmingId === m.id}
+                pending={pending.has(`${m.id}:remove`)}
+                onArm={() => {
+                  setError(null);
+                  setConfirmingId(m.id);
+                }}
+                onCancel={() => setConfirmingId(null)}
+                onConfirm={() => remove(m)}
+              />
             </li>
           );
         })}
       </ul>
       {error ? <ErrorLine>{error}</ErrorLine> : null}
     </section>
+  );
+}
+
+/**
+ * The per-row Remove button, and its "are you sure?".
+ *
+ * The confirmation is a label swap in place rather than a dialog, which is the
+ * same trade `MoreSection` makes for Delete Account's first step. A `Modal`
+ * inside `Drawer` would be two focus traps and two `body { overflow: hidden }`
+ * owners racing each other on close — and the thing being confirmed is one row
+ * of a list that is already on screen, so a panel that covers the list would
+ * hide the very fact the admin is checking.
+ *
+ * ADMINS RENDER NOTHING, and that is deliberately different from the disabled
+ * state below. `remove_member` refuses an admin outright and there is no demote
+ * control to make it possible later, so this is a category and not a phase — a
+ * greyed button would imply a condition that could change. Entry closing IS a
+ * phase, so that one greys out and says when, exactly as the preseason switch
+ * one column over does.
+ */
+function RemoveControl({
+  member,
+  open,
+  confirming,
+  pending,
+  onArm,
+  onCancel,
+  onConfirm,
+}: {
+  member: Member;
+  open: boolean;
+  confirming: boolean;
+  pending: boolean;
+  onArm: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (member.role === "admin") return <span className="hidden lg:block" />;
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5 lg:justify-self-start">
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={pending}
+          onClick={onConfirm}
+          aria-label={`Confirm removing ${member.name} from the league`}
+        >
+          {pending ? "…" : "Remove"}
+        </Button>
+        <Button variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lg:justify-self-start">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={!open}
+        onClick={onArm}
+        className={open ? "text-[#8A2C2C]" : undefined}
+        aria-label={`Remove ${member.name} from the league`}
+      >
+        Remove
+      </Button>
+    </div>
   );
 }
 
@@ -790,9 +919,11 @@ function MembersSection({
  */
 function MembersHints({
   preseasonOpen,
+  removalOpen,
   entryClosesAt,
 }: {
   preseasonOpen: boolean;
+  removalOpen: boolean;
   entryClosesAt: string;
 }) {
   return (
@@ -814,6 +945,22 @@ function MembersHints({
             Preseason ended when entry closed, on{" "}
             <LocalTime iso={entryClosesAt} mode="full" />, and these switches are closed for the
             season. Practice never carried into the standings, so nothing was lost when it went.
+          </>
+        )}
+      </HintLine>
+      <HintLine>
+        {removalOpen ? (
+          <>
+            Remove takes a player out of the league along with their picks. It is the undo for a
+            wrong join — anyone holding the invite code can use it — and it closes when entry does,
+            on <LocalTime iso={entryClosesAt} mode="full" />. After that the roster is part of the
+            season&apos;s record. Admins can&apos;t be removed.
+          </>
+        ) : (
+          <>
+            Removing members closed with entry, on <LocalTime iso={entryClosesAt} mode="full" /> —
+            the roster is the season&apos;s record now. An eliminated player still shows as Out
+            rather than disappearing, which is the point.
           </>
         )}
       </HintLine>
@@ -1231,6 +1378,10 @@ export function AdminSettingsDrawer({
             <InviteSection group={group} appUrl={appUrl} />
             <MembersHints
               preseasonOpen={phase === "preseason"}
+              // Derived from the deadline rather than from `phase`, matching
+              // `MembersPanel`: `seasonPhase` answers "ended" once the season is
+              // over, and removal has no third state.
+              removalOpen={isEntryOpen(new Date(group.entryClosesAt), new Date())}
               entryClosesAt={group.entryClosesAt}
             />
           </div>
