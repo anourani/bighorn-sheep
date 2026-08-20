@@ -255,13 +255,21 @@ New members can now join right up until the season actually starts.
 year); preseason around 49 across 4 weeks, with week 1 holding just the single Hall of
 Fame game; first kickoff in early August, last in early January.
 
-**About that last block.** `create_group` sets a league's entry deadline to "seven days
-from now", because when a league is created there's no schedule to read a real date from.
-That's a problem: once the deadline passes, `join_by_invite` refuses every new member
-permanently, and there's no way to reopen it from the app. So the loader now repairs it —
-it points every league's deadline at the real first Week 1 kickoff.
+**About that last block.** A league's entry deadline is supposed to be the first Week 1
+kickoff, and until 0012 `create_group` set it to "seven days from now" instead — there was
+no schedule to read a real date from at the moment a league was created. Once that deadline
+passes, `join_by_invite` refuses every new member permanently, with no way to reopen it
+from the app. So the loader repairs it: it points every league's deadline at the real first
+Week 1 kickoff.
 
-It only ever does this while Week 1 is still in the future. Once the season has genuinely
+**0012 fixes new leagues; this still matters for the ones already created.** Since that
+migration, `create_group` reads the deadline out of the loaded schedule and refuses
+outright if it can't. But any league created before it — including this project's first
+one, which lost joining, practice and the rules editor to exactly this — still carries the
+old value until the loader runs. The loader is also what re-aligns every league if the NFL
+moves the opener, so it is not redundant with the migration.
+
+The loader only ever does this while Week 1 is still in the future. Once the season has genuinely
 started, deadlines are left alone; moving one forward then would reopen entry on a league
 in progress. If it reports *"left alone — Week 1 has already kicked off"* or *"no
 regular-season Week 1 games loaded yet"*, that's it declining on purpose, not failing.
@@ -311,9 +319,10 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | `Cannot load the schedule: SUPABASE_SERVICE_ROLE_KEY…` | Same for the other key. |
 | "Schedule not yet released" on every week | Step 3 hasn't succeeded yet; the `games` table is empty. |
 | `No games returned` | ESPN returned nothing. Usually temporary. If it persists, their feed may have changed shape. |
+| `entry_deadline_unknown` when creating a league | 0012 declining to guess: no regular-season Week 1 game is loaded for that season. Run Step 3 first, or pass `p_entry_closes_at` explicitly. |
 | Scores never update after a game ends | The five-minute job isn't running. Check `SUPABASE_SERVICE_ROLE_KEY` is set and the site has redeployed since. |
-| Header counts down to next week, not September | The entry deadline is the stale `create_group` default. Re-open the loader link — it repairs this. |
-| An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. |
+| Header counts down to next week, not September | The entry deadline is the stale `create_group` default, on a league created before migration 0012. Re-open the loader link — it repairs this. |
+| An invite link says entry is closed, before the season | Same cause. The deadline lapsed, so `join_by_invite` is refusing. Re-open the loader link and the invite works again. The admin drawer prints the deadline itself, so you can confirm it before and after. |
 | Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) | Someone opened `/login` on a deploy permalink, so the link was addressed back there. Check the `redirect_to` in the emailed link: if it still ends in `/auth/callback`, Supabase honoured what was asked and the host came from the browser — share the site's own address. If `redirect_to` is a bare origin with the path stripped, **Site URL** is wrong instead; see 2c-bis. |
 | "Our sign-in service is having trouble. Try again in a minute." when requesting a link | An HTTP 500 on `/auth/v1/otp` — the email could not be sent. The app cannot say more than this: `errorMessage()` maps every `status >= 500` to that one string. **Go to Resend → Logs**, which is the only place the real reason shows. Two causes look identical from the app: the sender's domain is not verified with Resend, or the API key is scoped to a *different* domain (`API key not authorized for this domain`). For the second, issue a key with sending access for this domain and paste it into Supabase's SMTP **Password** field — nothing else needs changing. |
 | "Expired or already used" on a link that is genuinely fresh | Read Netlify → Logs → **Functions** for the `[auth/callback]` line — it now carries GoTrue's own `error_code`. `otp_expired` means the token really is spent or timed out (a mail scanner following the link in transit will do this); `verifier_missing` means it was opened in a different browser or device from the one that requested it. |

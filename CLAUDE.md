@@ -37,7 +37,7 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
 `0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
 `0009_public_standings` → `0010_account_closure_and_league_buy_in` →
-`0011_admin_settings`.
+`0011_admin_settings` → `0012_create_group_entry_deadline`.
 
 **0010 is what the redesigned account page reads and writes**, and until it is
 applied that page shows a $0 buy-in and Delete Account fails with
@@ -92,6 +92,36 @@ raises `42703` on an unknown column rather than returning undefined, so
 `membership` null and turned *every pick in the app* into `not_a_member` — one
 late migration escalating from "an admin panel is broken" to "nobody can play".
 It uses `select("*")` and reads `?? true`.
+
+**0012 is what stops a new league locking itself out, and it exists because one
+already did.** `create_group` defaulted `entry_closes_at` to
+`now() + interval '7 days'`, which is not the "first kickoff of Week 1" every
+consumer reads it as. The inaugural league was created 2026-08-08 without
+`p_entry_closes_at` and shut its own entry on 2026-08-15 — six weeks before Week
+1 — taking `join_by_invite`, the preseason practice round and the rules editor
+with it. It surfaced four days later as an admin asking why the preseason
+switches were greyed out under "Preseason is over", which is the *least*
+informative of the four symptoms. Replayable; no backfill. Four things:
+
+- **It derives, then refuses — it never guesses.** `coalesce(p_entry_closes_at,
+  min(kickoff) where season_type = 'regular' and week = 1)`, then
+  `raise 'entry_deadline_unknown'` if that is still null. A wrong deadline is
+  silent and, from inside the app, permanent; an error lands in front of whoever
+  is in the SQL editor. Same asymmetry as `cron-auth.ts` failing closed.
+- **`season_type = 'regular' and week = 1`, never the earliest game of the
+  season.** A full load's first kickoff is the Hall of Fame game in early
+  August, so the whole-schedule minimum would set a deadline already in the past
+  and close entry the instant the league was created. `sim-advance.ts` fell into
+  exactly this and carries a comment about it.
+- **The signature is deliberately unchanged.** Making `p_entry_closes_at`
+  required is what you actually want, and Postgres forbids a non-defaulted
+  parameter after a defaulted one — `p_season` is in front of it. Requiring it
+  would mean reordering, hence `drop function`, hence breaking the positional
+  call in `docs/dry-run.md`. Holding the five parameters also means
+  `src/lib/supabase/types.ts` needs no edit.
+- **It does NOT retire `alignEntryDeadlines`.** 0012 fixes leagues at birth; the
+  loader's align pass fixes the ones born earlier and re-aligns everything if
+  the NFL moves the opener, which no create-time default can do.
 
 **0009 needs a second, separate statement.** Applying it publishes nothing; the
 landing page stays in its no-data state until a row is inserted into

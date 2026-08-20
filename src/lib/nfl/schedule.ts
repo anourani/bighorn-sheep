@@ -266,15 +266,23 @@ export interface AlignDeadlinesResult {
  * Point every league's entry deadline at the real first Week 1 kickoff.
  *
  * `groups.entry_closes_at` is documented as "first kickoff of Week 1"
- * (0001_init.sql:54) and relied on as that throughout — but `create_group` defaults
- * it to `now() + interval '7 days'` and nothing ever corrected it. A league created
+ * (0001_init.sql:54) and relied on as that throughout — but `create_group` defaulted
+ * it to `now() + interval '7 days'` and nothing corrected it. A league created
  * in August therefore closed its own entry a week later, and `join_by_invite`
  * (0002:74) refuses outright once that moment passes: nobody can join, ever, with no
  * override in the app. It also ends the preseason practice round early and swaps the
- * roster screen for an empty standings grid.
+ * roster screen for an empty standings grid. That is not a hypothetical: it is what
+ * happened to the inaugural league, created 2026-08-08 and shut on 2026-08-15.
  *
  * Called by the schedule loader, which is the moment the correct value becomes
  * knowable. Re-running it re-aligns, so an NFL change to the opener is self-healing.
+ *
+ * **0012 does NOT make this redundant, and the split is worth knowing.** That
+ * migration teaches `create_group` to read the same three columns this function
+ * reads (`season_type = 'regular'`, `week = 1`, earliest `kickoff`) and to refuse
+ * rather than guess — so leagues are now born correct. This repairs the ones born
+ * before it, and re-aligns EVERY league whenever the opener moves, which no
+ * create-time default can do. Deleting it would strand both cases.
  *
  * TWO THINGS THIS MUST GET RIGHT:
  *

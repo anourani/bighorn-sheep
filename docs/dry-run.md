@@ -75,8 +75,17 @@ select * from public.create_group(
 
 `create_group` reads `auth.uid()`, so it raises `not_authenticated` without those
 two `set local` lines — the SQL editor is otherwise an unauthenticated session.
-Passing `p_entry_closes_at` matters: the fallback is `now() + 7 days`, which
-would close entry a week later and lock everyone out permanently.
+
+**`p_entry_closes_at` is optional, and what happens when you omit it changed in
+0012.** It now derives the deadline from the schedule already in the database —
+the earliest `season_type = 'regular'`, `week = 1` kickoff — which is exactly
+what the column means. If no such game is loaded it raises
+`entry_deadline_unknown` and creates nothing, rather than inventing a date.
+
+So either load the schedule first and omit the argument, or pass it as above.
+What you can no longer do is omit it and get a league quietly configured to close
+entry a week from now: that was the old fallback, and it locked the inaugural
+league out of joining, practice and the rules editor six weeks before Week 1.
 
 The returned row includes your **invite code**. You land in the league as admin;
 **Standings → the gear → invite** (or the roster panel) shows the code again.

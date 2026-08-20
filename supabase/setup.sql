@@ -13,6 +13,11 @@
 --   supabase/migrations/0006_preseason_picks.sql
 --   supabase/migrations/0007_profile_extras_and_buy_in.sql
 --   supabase/migrations/0008_private_profile_fields.sql
+--   supabase/migrations/0009_public_standings.sql
+--   supabase/migrations/0010_account_closure_and_league_buy_in.sql
+--   supabase/migrations/0011_admin_settings.sql
+--   supabase/migrations/0012_create_group_entry_deadline.sql (also folded into
+--     create_group below, for the same reason as 0005)
 -- Edit those, not this file. Run once on a fresh project.
 -- ============================================================================
 
@@ -398,7 +403,29 @@ declare
   g        public.groups;
   code     text;
   v_season int         := coalesce(p_season, extract(year from now())::int);
-  v_entry  timestamptz := coalesce(p_entry_closes_at, now() + interval '7 days');
+  -- The first kickoff of Week 1, which is what this column MEANS — not a week
+  -- from now, which is what it used to hold.
+  --
+  -- `season_type = 'regular' and week = 1` is load-bearing, not decoration. A
+  -- full season load's earliest game is the Hall of Fame game in early August,
+  -- so the earliest kickoff of the whole schedule would set a deadline already
+  -- in the past and close entry the instant the league was created. This is the
+  -- same trap alignEntryDeadlines documents and the one sim-advance.ts actually
+  -- fell into; the two must agree, so they read the same three columns.
+  --
+  -- Null when the schedule has not been loaded for this season. The body refuses
+  -- in that case; it does not substitute a date.
+  --
+  -- v_season is declared above, and PL/pgSQL evaluates DECLARE initialisers in
+  -- order, so a later one may read an earlier one. Nothing in this function
+  -- needed that before; it does now, so don't reorder the block.
+  v_entry  timestamptz := coalesce(
+                            p_entry_closes_at,
+                            (select min(kickoff)
+                               from public.games
+                              where season      = v_season
+                                and season_type = 'regular'
+                                and week        = 1));
   attempts int         := 0;
 begin
   if uid is null then
@@ -414,13 +441,25 @@ begin
     raise exception 'bad_tie_rule' using errcode = 'P0001';
   end if;
 
+  -- Refuse rather than invent. Deliberately AFTER the checks above, so
+  -- not_authenticated and the rule validations still win — this is the least
+  -- interesting reason a call can fail and should not mask the others.
+  --
+  -- Reaching this means: no explicit deadline was passed AND no regular-season
+  -- Week 1 game is loaded for this season. Load the schedule first, or pass
+  -- p_entry_closes_at. Note that a mid-season creation is NOT an error: the
+  -- derived kickoff is simply in the past, entry is closed from the start, and
+  -- that is a true statement about a season already underway.
+  if v_entry is null then
+    raise exception 'entry_deadline_unknown' using errcode = 'P0001';
+  end if;
+
   -- A short, human-friendly invite code. Retry on the (rare) collision.
+  -- gen_random_uuid() is pg_catalog (core since PG13) and cryptographically
+  -- random — deliberately NOT pgcrypto's gen_random_bytes, which this function's
+  -- search_path cannot reach on Supabase. See 0005.
   loop
     attempts := attempts + 1;
-    -- gen_random_uuid() is pg_catalog (core since PG13) and cryptographically
-    -- random. Deliberately NOT pgcrypto's gen_random_bytes: pgcrypto lives in
-    -- the `extensions` schema on Supabase, which this function's
-    -- `search_path = public` cannot reach. See migration 0005.
     code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
     exit when not exists (select 1 from public.groups where invite_code = code);
     if attempts > 10 then
@@ -441,6 +480,9 @@ begin
 end;
 $$;
 
+-- Replay these WITH the body. A function pasted without its grants fails with
+-- 42501, which rpcErrorCode (src/app/app/actions.ts) reports as
+-- migration_missing — indistinguishable from the function not existing at all.
 revoke all on function public.create_group(text, text, text, int, timestamptz) from public;
 grant execute on function public.create_group(text, text, text, int, timestamptz) to authenticated;
 
