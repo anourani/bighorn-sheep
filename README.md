@@ -140,6 +140,23 @@ of it ran — the name is 0007's. The two `groups` columns beside it do, since t
 land in the same file. If they are MISSING, the account page shows a $0 buy-in and
 "UNPAID" with no date, and Delete Account fails with `close_failed`.
 
+`create_group` has the same problem and no such tell, because 0012 redefines it
+and adds no column to check. It is also the one migration whose absence you will
+not notice until you create a league — at which point it silently sets the entry
+deadline a week out instead of to the first Week 1 kickoff, which shuts joining,
+the preseason practice round and the rules editor. Ask the function itself
+whether 0012 ran:
+
+```sql
+select pg_get_functiondef(oid) like '%entry_deadline_unknown%' as has_0012
+from pg_proc
+where proname = 'create_group'
+  and pronamespace = 'public'::regnamespace;
+```
+
+`true` means 0012 is applied. `false` means the old `now() + interval '7 days'`
+default is still live.
+
 `public_league` being PRESENT only means 0009 ran. It does **not** mean the
 landing page is showing anything — publishing is a separate, deliberate step:
 
