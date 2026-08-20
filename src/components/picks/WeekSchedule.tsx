@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import { cn } from "@/lib/cn";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { TeamLogo } from "@/components/ui/TeamLogo";
@@ -8,6 +10,7 @@ import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import { isKickedOff, type Game } from "@/lib/nfl/types";
 import { weekKey, type WeekRef } from "@/lib/nfl/calendar";
 import { isHome } from "@/lib/league/view";
+import { useCardReveal } from "@/components/picks/use-card-reveal";
 
 /**
  * A team already spent, and the week it went. Only the week is needed — a pick
@@ -49,6 +52,18 @@ export function WeekSchedule({
   now: Date;
   onSelect: (teamId: TeamId) => void;
 }) {
+  // The fieldset below IS the grid, so that is what the reveal measures — and
+  // its first DOM child is the `<legend>`, which is why `useCardReveal` finds
+  // cards by class rather than by walking `.children`. Above the early return,
+  // because hooks are.
+  const grid = useRef<HTMLFieldSetElement>(null);
+  // Keyed by game id, which is what the cards below are keyed by — so this
+  // changes exactly when React replaces the children, and a new week replaces
+  // every one of them. Length alone would not: two weeks can carry the same
+  // number of games, and every ScrollTrigger would then be pointing at a
+  // detached element.
+  useCardReveal(grid, games.map((game) => game.id).join(","));
+
   if (games.length === 0) {
     return (
       <div className="rounded-control border border-dashed border-line bg-[#FAFAFB] px-3 py-8 text-center text-sm text-ink-mute">
@@ -59,7 +74,10 @@ export function WeekSchedule({
 
   const groupName = `${weekKey(weekRef)}-pick`;
   return (
-    <fieldset className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+    <fieldset
+      ref={grid}
+      className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]"
+    >
       <legend className="sr-only">Pick your {weekName} team</legend>
       {games.map((game) => (
         <GameCard
@@ -99,7 +117,7 @@ function GameCard({
   const order: TeamId[] = [game.home, game.away];
 
   return (
-    <div className="overflow-hidden rounded-control border border-line bg-white">
+    <div className="reveal-clip overflow-hidden rounded-control border border-line bg-white">
       {/* items-start, not items-center: the full kickoff line ("Sunday, September
           14th at 12:00 PM EDT") wraps to two lines on a narrow card, and centring
           would then drag the status badge down off the first line. */}
