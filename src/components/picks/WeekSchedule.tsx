@@ -57,12 +57,19 @@ export function WeekSchedule({
   // cards by class rather than by walking `.children`. Above the early return,
   // because hooks are.
   const grid = useRef<HTMLFieldSetElement>(null);
-  // Keyed by game id, which is what the cards below are keyed by — so this
-  // changes exactly when React replaces the children, and a new week replaces
-  // every one of them. Length alone would not: two weeks can carry the same
-  // number of games, and every ScrollTrigger would then be pointing at a
-  // detached element.
-  useCardReveal(grid, games.map((game) => game.id).join(","));
+  // `orderKey` is the game ids, which is what the cards below are keyed by — so
+  // it changes exactly when React replaces the children. Length alone would not:
+  // two weeks can carry the same number of games, and every ScrollTrigger would
+  // then be pointing at a detached element.
+  //
+  // Those ids are globally unique per game, so a week change replaces every card
+  // node here where `TeamGrid` keeps all 32 of its labels. The reveal handles
+  // that — a card mounted a moment ago has nothing to wipe away, so on this
+  // surface a week change wipes in without wiping out first.
+  useCardReveal(grid, {
+    weekKey: weekKey(weekRef),
+    orderKey: games.map((game) => game.id).join(","),
+  });
 
   if (games.length === 0) {
     return (

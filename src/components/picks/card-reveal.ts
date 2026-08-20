@@ -31,8 +31,17 @@ export const REVEAL_HIDDEN = "inset(100% 0% 0% 0%)";
  */
 export const REVEAL_SHOWN = "inset(0% 0% 0% 0%)";
 
-/** Seconds for one card's wipe. */
+/** Seconds for one card's wipe, the first time it crosses the scroll line. */
 export const REVEAL_DURATION = 1.2;
+
+/**
+ * The week-change replay is a quicker round trip than a first reveal: the cards
+ * are already familiar and the point is to show the week turning over, not to
+ * introduce them again. Exit shorter than entrance, the same trade `Drawer`
+ * makes at 0.32s in / 0.28s out.
+ */
+export const REPLAY_OUT_DURATION = 0.35;
+export const REPLAY_IN_DURATION = 0.6;
 
 /** Seconds between one card in a row and the next. */
 export const REVEAL_STEP = 0.1;
@@ -139,4 +148,57 @@ export function revealDelay(index: number, columns: number): number {
   const cols = Math.max(1, Math.floor(columns));
   const at = Math.max(0, Math.floor(index));
   return Math.round((at % cols) * REVEAL_STEP * 1000) / 1000;
+}
+
+/**
+ * What to do with one card on a given build.
+ *
+ * `replay` carries `wipeOut` rather than always wiping, because there is not
+ * always something on screen to wipe away — see `planCardReveal`.
+ */
+export type CardPlan =
+  | { kind: "replay"; wipeOut: boolean }
+  | { kind: "hold" }
+  | { kind: "arm" };
+
+/**
+ * Which of the three things happens to a card when the reveal (re)builds.
+ *
+ * The reveal is ONE-WAY: a card wipes in the first time its row crosses the
+ * trigger line and then stays. Scrolling back up and down again must not replay
+ * it. The single exception is a week change, which is the one moment the grid is
+ * saying something new and should animate to say it — every card on screen wipes
+ * away and back, the first row included.
+ *
+ * The asymmetry in the rules below is the load-bearing part. **A week change
+ * keys on POSITION; every other rebuild keys on REVEALED-NESS.** They used to be
+ * the same test, because while the reveal reversed on scroll-up, "above the
+ * line" and "has been revealed" were the same fact. They no longer are: a card
+ * revealed on the way down and then scrolled back below the line is still
+ * revealed, so a positional test would re-mask it on the next sort toggle.
+ *
+ * Taken in order:
+ *
+ * - **Week changed, and the card is above the line.** Replay it. `wipeOut` is
+ *   whether it was actually showing — `TeamGrid` keeps its 32 labels across a
+ *   week (`key={teamId}`) so they were, but `WeekSchedule` keys on `game.id`,
+ *   which is globally unique per game, so every card there is a node mounted a
+ *   moment ago with nothing to wipe away. Those just wipe in.
+ * - **Week changed, and the card is below the line.** Arm it. It is out of
+ *   sight, so it gets the ordinary scroll reveal on the way down, exactly as on
+ *   a fresh load.
+ * - **Anything else, and it was revealed.** Hold: put it back and animate
+ *   nothing. This is a sort toggle or a breakpoint crossing, and revealed is
+ *   terminal.
+ * - **Otherwise.** Arm it and wait for the line.
+ */
+export function planCardReveal(input: {
+  weekChanged: boolean;
+  wasRevealed: boolean;
+  aboveLine: boolean;
+}): CardPlan {
+  if (input.weekChanged) {
+    return input.aboveLine ? { kind: "replay", wipeOut: input.wasRevealed } : { kind: "arm" };
+  }
+  return input.wasRevealed ? { kind: "hold" } : { kind: "arm" };
 }

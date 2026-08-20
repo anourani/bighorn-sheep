@@ -6,6 +6,8 @@ import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { CustomEase } from "gsap/CustomEase";
 import {
+  REPLAY_IN_DURATION,
+  REPLAY_OUT_DURATION,
   REVEAL_DURATION,
   REVEAL_EASE,
   REVEAL_HIDDEN,
@@ -13,6 +15,7 @@ import {
   REVEAL_START,
   columnCountFrom,
   countColumnsByRow,
+  planCardReveal,
   revealDelay,
 } from "@/components/picks/card-reveal";
 
@@ -88,24 +91,40 @@ function readColumns(grid: HTMLElement, cards: readonly HTMLElement[]): number {
  * index could disagree with the rendered position — and it is the rendered
  * position, not the array position, that decides which row a card is in.
  *
+ * The reveal is ONE-WAY. A card wipes in the first time its row crosses the
+ * trigger line and then stays: scrolling back up and down again must not replay
+ * it. `planCardReveal` in `card-reveal.ts` owns the three-way decision, and the
+ * one exception is a week change — see there.
+ *
  * @param gridRef   The element carrying `display: grid`. Its direct
  *                  `.reveal-clip` children are the cards.
- * @param orderKey  A string that changes exactly when the rendered ORDER or
- *                  MEMBERSHIP of those cards changes — which is exactly when
- *                  `index % columns` stops describing the DOM. Keep it to that:
- *                  `MyPicksClient` re-renders both surfaces on every tap, and a
- *                  key that moved with the pick would rebuild 32 timelines each
- *                  time.
+ * @param weekKey   Changes only when the viewed week changes. This is the ONE
+ *                  thing that makes a card animate a second time.
+ * @param orderKey  Changes when the rendered ORDER or MEMBERSHIP of the cards
+ *                  changes — which is exactly when `index % columns` stops
+ *                  describing the DOM. Rebuilds the cascade, animates nothing.
+ *                  Keep it to that: `MyPicksClient` re-renders both surfaces on
+ *                  every tap, and a key that moved with the pick would rebuild
+ *                  32 timelines each time.
  */
 export function useCardReveal(
   gridRef: RefObject<HTMLElement | null>,
-  orderKey: string,
+  { weekKey, orderKey }: { weekKey: string; orderKey: string },
 ) {
   // Bumped only when a resize actually changes the column count, which is what
   // forces a rebuild with the new cascade. The value itself is never read.
   const [columnEpoch, setColumnEpoch] = useState(0);
   const columns = useRef(0);
-  const built = useRef(false);
+
+  // Which cards have already wiped in. Read rather than derived from position,
+  // because with a one-way reveal the two are no longer the same fact — a card
+  // revealed on the way down and then scrolled back below the line is still
+  // revealed. A WeakSet rather than a Set: `WeekSchedule` replaces every card
+  // node on a week change, and a Set would hold the detached ones forever.
+  const revealed = useRef(new WeakSet<Element>());
+
+  // Null until the first build, which is what makes a mount not a week change.
+  const lastWeek = useRef<string | null>(null);
 
   useGSAP(
     () => {
@@ -133,32 +152,115 @@ export function useCardReveal(
       const cols = readColumns(grid, cards);
       columns.current = cols;
 
-      // A REBUILD must not replay the cascade on a card the eye has already
-      // watched arrive: `revertOnUpdate` strips the inline clip-path, so
-      // without this, re-sorting the grid or crossing a breakpoint would wipe
-      // every visible card again. Read every rect before creating any timeline,
-      // so 32 measurements cost one layout flush rather than 32.
-      const rebuild = built.current;
-      built.current = true;
+      const weekChanged = lastWeek.current !== null && lastWeek.current !== weekKey;
+      lastWeek.current = weekKey;
+
+      // Both snapshots are taken BEFORE the loop, for two different reasons.
+      //
+      // Membership, because ScrollTrigger evaluates position at creation and
+      // fires `onEnter` synchronously for a card already past the line — so
+      // reading the set inside the loop would mark a card "already revealed"
+      // during the very build that is revealing it for the first time.
+      //
+      // Rects, because the branches below write inline styles, and interleaving
+      // reads with writes turns one layout flush into 32.
+      const wasRevealed = cards.map((card) => revealed.current.has(card));
       const line = window.innerHeight - 100; // matches REVEAL_START
-      const alreadyIn = rebuild
-        ? cards.map((card) => card.getBoundingClientRect().top <= line)
-        : [];
+      const aboveLine = cards.map((card) => card.getBoundingClientRect().top <= line);
 
       cards.forEach((card, index) => {
-        const timeline = gsap
+        const at = revealDelay(index, cols);
+        const plan = planCardReveal({
+          weekChanged,
+          wasRevealed: wasRevealed[index] ?? false,
+          aboveLine: aboveLine[index] ?? false,
+        });
+
+        if (plan.kind === "hold") {
+          // Revealed is terminal, so this one is given no trigger at all: a
+          // rebuild after a full scroll-through arms nothing. (Without a
+          // rebuild, `once` retires each trigger only as its card passes the
+          // trigger's `end`, so some outlive the wipe — measured at 2 to 11
+          // still live across the four widths.)
+          gsap.set(card, { clipPath: REVEAL_SHOWN });
+          return;
+        }
+
+        if (plan.kind === "replay") {
+          const timeline = gsap.timeline({ delay: at });
+
+          if (plan.wipeOut) {
+            // `revertOnUpdate` has already stripped the inline clip-path by the
+            // time this callback runs, so without putting it back the wipe-away
+            // would animate hidden -> hidden. Safe here and nowhere else: this
+            // is a layout effect, so no paint falls between the revert and the
+            // set. It cleans itself up too — a `gsap.set` inside a `useGSAP`
+            // callback is a zero-duration Tween on the context, so the next
+            // revert removes the property again.
+            //
+            // An explicit forward tween rather than `timeline.reverse()`:
+            // reversing a tween reverses its easing curve as well, which is the
+            // same argument `tailwind.config.ts` makes for `drawer-down` being
+            // its own keyframe.
+            gsap.set(card, { clipPath: REVEAL_SHOWN });
+            timeline.to(card, {
+              clipPath: REVEAL_HIDDEN,
+              duration: REPLAY_OUT_DURATION,
+              ease: REVEAL_EASE,
+            });
+          }
+
+          // `immediateRender: false` is the whole wipe-away. A `fromTo` renders
+          // its FROM state at creation by default, even sitting last in a
+          // timeline — so without this the card is stamped to hidden before the
+          // tween above ever runs, the wipe-away plays invisibly against an
+          // already-hidden card, and a week change snaps instead of animating.
+          // Which is the bug this replay exists to fix, reintroduced one line
+          // further down. Measured: the card read `inset(100% 0% 0%)` at 0ms and
+          // did not move until 400ms.
+          timeline.fromTo(
+            card,
+            { clipPath: REVEAL_HIDDEN },
+            {
+              clipPath: REVEAL_SHOWN,
+              duration: REPLAY_IN_DURATION,
+              ease: REVEAL_EASE,
+              immediateRender: false,
+            },
+          );
+
+          // No ScrollTrigger: it is on screen and ends revealed either way.
+          revealed.current.add(card);
+          return;
+        }
+
+        // Armed: masked, waiting for its row to cross the line.
+        revealed.current.delete(card);
+        gsap
           .timeline({
             scrollTrigger: {
               trigger: card,
               start: REVEAL_START,
-              toggleActions: "play none none reverse",
+              // THIS is what stops the replay, not `once` below. ScrollTrigger's
+              // toggle-action block never consults `once` — with
+              // "play none none reverse" a card un-wipes on the way back up and
+              // re-wipes on the way down, `once` or not. With nothing on the
+              // other three actions, scrolling up does nothing and re-entering
+              // calls `play()` on a timeline already at progress 1, which is a
+              // no-op. (The default is `"play"`, i.e. the same thing; it is
+              // spelled out so the change from the old value is legible.)
+              toggleActions: "play none none none",
+              // `once` earns its place for a different reason: it retires the
+              // trigger as the card scrolls past, and its `kill(false, 1)`
+              // passes revert=false and allowAnimation=truthy, so the tween is
+              // left exactly where it is. A bare `.kill()` does the opposite —
+              // it reverts the styles and kills the animation.
+              once: true,
+              onEnter: () => revealed.current.add(card),
             },
           })
-          // The stagger is a POSITION in the timeline, not a tween `delay`: a
-          // child placed at `t` is unambiguous about surviving `reverse`, where
-          // a delay on a trigger-driven tween is not. Reversing walks back
-          // through the wipe and then through empty time, which is what you
-          // want — the card is already hidden by the time the delay is reached.
+          // The stagger is a POSITION in the timeline, not a tween `delay`, so
+          // it survives however the timeline is later driven.
           //
           // `fromTo`, not `to`, because Chrome's computed clip-path collapses
           // `inset(100% 0 0 0)` to a three-value shorthand. Both ends are
@@ -167,16 +269,11 @@ export function useCardReveal(
             card,
             { clipPath: REVEAL_HIDDEN },
             { clipPath: REVEAL_SHOWN, duration: REVEAL_DURATION, ease: REVEAL_EASE },
-            revealDelay(index, cols),
+            at,
           );
-
-        // `progress(1)`, not `play()`: ScrollTrigger has already played this one
-        // if it is past the line, and what we want is for it to be *finished*.
-        // Same layout effect as the revert above, so no paint sees the gap.
-        if (alreadyIn[index]) timeline.progress(1);
       });
     },
-    { scope: gridRef, dependencies: [columnEpoch, orderKey], revertOnUpdate: true },
+    { scope: gridRef, dependencies: [columnEpoch, weekKey, orderKey], revertOnUpdate: true },
   );
 
   // A breakpoint crossing changes how many cards share a row, and therefore
