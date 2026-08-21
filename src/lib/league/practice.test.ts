@@ -59,6 +59,9 @@ function slateAsOf(now: Date): Game[] {
 
 const AFTER_PRESEASON = new Date("2026-09-01T00:00:00.000Z");
 
+/** Week 1 (Aug 14) played, week 2 (Aug 21) still to kick off. */
+const MID_PRESEASON = new Date("2026-08-15T12:00:00.000Z");
+
 /** Every preseason game played — the state the practice round ends in. */
 const SLATE: Game[] = slateAsOf(AFTER_PRESEASON);
 
@@ -103,20 +106,52 @@ describe("derivePractice", () => {
     expect(state.currentWeek).toBe(3);
   });
 
-  it("eliminates on a losing practice pick — practice is played for real", () => {
+  /*
+   * The rule this whole module turns on. A losing practice pick is counted, so the
+   * table means something — but it ends nobody's run, and `PracticeMember` has no
+   * `status` to say otherwise.
+   *
+   * Read at MID_PRESEASON rather than after the whole slate: at AFTER_PRESEASON the
+   * two unplayed weeks are missed picks past their deadline and count as losses
+   * too, which is correct (see "still counts a missed week...") but would make this
+   * a test of three different things at once.
+   */
+  it("counts a losing practice pick without ending anyone's run", () => {
     const state = derivePractice({
-      games: SLATE,
+      games: slateAsOf(MID_PRESEASON),
       picks: [pick(1, "phi")], // phi lost
       memberIds: ["u1"],
       rules: SINGLE,
-      now: AFTER_PRESEASON,
+      now: MID_PRESEASON,
     })!;
 
-    expect(state.members.u1).toMatchObject({
-      status: "eliminated",
-      strikes: 1,
-      eliminatedWeek: 1,
-    });
+    expect(state.members.u1).toMatchObject({ strikes: 1 });
+    // The single-elimination allowance is 1, so this is precisely the member the
+    // old fold declared eliminated — and submitPick then refused every remaining
+    // practice pick for. There is no longer any such field to carry that.
+    expect(state.members.u1).not.toHaveProperty("status");
+    expect(state.members.u1).not.toHaveProperty("eliminatedWeek");
+  });
+
+  /*
+   * The reported bug, end to end. Lose your preseason week 1 pick, and week 2 is
+   * still yours to play: nothing about the returned bundle refuses it, and the
+   * team you lost with is the only one spent.
+   */
+  it("leaves the next practice week open after a loss", () => {
+    const state = derivePractice({
+      games: slateAsOf(MID_PRESEASON),
+      picks: [pick(1, "phi")], // phi lost in week 1
+      memberIds: ["u1"],
+      rules: SINGLE,
+      now: MID_PRESEASON,
+    })!;
+
+    expect(state.currentWeek).toBe(2);
+    expect(state.members.u1!.currentPick).toBeNull();
+    expect(practiceUsedTeams(state.members.u1, { excludeWeek: 2 })).toEqual([
+      { teamId: "phi" },
+    ]);
   });
 
   it("keeps a winner alive", () => {
@@ -128,16 +163,26 @@ describe("derivePractice", () => {
       now: AFTER_PRESEASON,
     })!;
 
-    expect(state.members.u1).toMatchObject({ status: "alive", strikes: 0 });
+    expect(state.members.u1).toMatchObject({ strikes: 0 });
     // Week 3 is the live week (currentWeek caps at the last preseason week), so it
     // sits in currentPick rather than settled history — the same split the regular
-    // season uses. Its result still counts toward elimination.
+    // season uses. Its result still counts toward the loss tally.
     expect(state.members.u1!.history.map((h) => h.result)).toEqual(["win", "win"]);
     expect(state.members.u1!.currentPick).toMatchObject({ week: 3, teamId: "gb" });
   });
 
-  it("honours the group's strike allowance", () => {
-    const losing = [pick(1, "phi"), pick(2, "dal")];
+  /*
+   * The group's strike allowance is a REGULAR-SEASON setting and has no bearing
+   * here — practice has no allowance to spend, because it never eliminates.
+   *
+   * This also pins the reason `countStrikes` exists rather than a flag on
+   * `computeStatus`: that fold `break`s the moment it eliminates someone, so under
+   * `single` it would report 1 for both members below instead of 3. A capped count
+   * looks entirely plausible and is wrong, and it would then order the practice
+   * table wrongly too.
+   */
+  it("counts every practice loss, whatever the group's strike allowance", () => {
+    const losing = [pick(1, "phi"), pick(2, "dal")]; // both lost; week 3 then missed
     const single = derivePractice({
       games: SLATE,
       picks: losing,
@@ -153,8 +198,8 @@ describe("derivePractice", () => {
       now: AFTER_PRESEASON,
     })!;
 
-    expect(single.members.u1!.eliminatedWeek).toBe(1);
-    expect(twoTime.members.u1!.eliminatedWeek).toBe(2);
+    expect(single.members.u1!.strikes).toBe(3);
+    expect(twoTime.members.u1!.strikes).toBe(3);
   });
 
   // A member who has not picked in a week that hasn't finished must not be struck
@@ -168,7 +213,7 @@ describe("derivePractice", () => {
       now: new Date("2026-08-13T00:00:00.000Z"), // before week 1's kickoff
     })!;
 
-    expect(state.members.u1).toMatchObject({ status: "alive", strikes: 0 });
+    expect(state.members.u1).toMatchObject({ strikes: 0 });
   });
 
   it("gives every member an entry, including those who never picked", () => {
@@ -182,7 +227,6 @@ describe("derivePractice", () => {
 
     expect(Object.keys(state.members).sort()).toEqual(["u1", "u2"]);
     expect(state.members.u2).toMatchObject({
-      status: "alive",
       strikes: 0,
       participating: false,
     });
@@ -190,13 +234,12 @@ describe("derivePractice", () => {
 
   /*
    * Preseason has no entry deadline — `entry_closes_at` gates the regular season
-   * only — so folding every preseason week would strike a member for weeks that
+   * only — so folding every preseason week would charge a member for weeks that
    * finished before they ever signed up. With the Hall of Fame game played in early
-   * August, a brand-new account was derived `eliminated` on arrival and submitPick
-   * refused every practice pick with "You're eliminated": the practice round was
-   * unusable for exactly the newcomers it exists for.
+   * August, a brand-new account would arrive already carrying losses it had no way
+   * to avoid, and sit last on a table it had just been shown.
    */
-  it("does not retroactively eliminate someone who joins mid-preseason", () => {
+  it("does not retroactively strike someone who joins mid-preseason", () => {
     const state = derivePractice({
       games: SLATE,
       // Never picked in weeks 1-2 (both long finished); starts practising in week 3.
@@ -207,7 +250,6 @@ describe("derivePractice", () => {
     })!;
 
     expect(state.members.u1).toMatchObject({
-      status: "alive",
       strikes: 0,
       participating: true,
     });
@@ -216,14 +258,15 @@ describe("derivePractice", () => {
   it("still counts a missed week once you are in the practice round", () => {
     const state = derivePractice({
       games: SLATE,
-      // In from week 1, then skipped week 2 — which has finished.
+      // In from week 1 (won), then skipped weeks 2 and 3 — both finished.
       picks: [pick(1, "kc")],
       memberIds: ["u1"],
       rules: SINGLE,
       now: AFTER_PRESEASON,
     })!;
 
-    expect(state.members.u1).toMatchObject({ status: "eliminated", eliminatedWeek: 2 });
+    // Two missed deadlines, two losses — and still no run ended by either.
+    expect(state.members.u1!.strikes).toBe(2);
   });
 
   it("exposes the live week's pick separately from settled history", () => {
@@ -245,9 +288,9 @@ describe("derivePractice", () => {
 
 describe("the Week 1 reset", () => {
   /*
-   * The requirement: preseason is played for real, but at Week 1 everyone comes
-   * back alive with 0 strikes and all 32 teams available, and preseason leaves the
-   * standings.
+   * The requirement: preseason counts losses for its own table, but at Week 1
+   * everyone comes back with 0 strikes and all 32 teams available, and preseason
+   * leaves the standings.
    *
    * There is no reset code to test, and that is the point. Practice standing is
    * derived from `season_type = 'pre'` rows and lives nowhere else — group_members
@@ -255,7 +298,7 @@ describe("the Week 1 reset", () => {
    * the loader ceasing to build this object. These pin the two halves of that.
    */
 
-  it("derives eliminated in practice and alive in the real league from the same rows", () => {
+  it("counts practice losses against a slice the real league never sees", () => {
     const practice = derivePractice({
       games: SLATE,
       picks: [pick(1, "phi")],
@@ -264,8 +307,9 @@ describe("the Week 1 reset", () => {
       now: AFTER_PRESEASON,
     })!;
 
-    // Practice: gone.
-    expect(practice.members.u1!.status).toBe("eliminated");
+    // A losing week 1 pick, then two missed weeks. All of it lives on this object
+    // and nowhere else, which is what makes the reset free.
+    expect(practice.members.u1!.strikes).toBe(3);
 
     // The regular season asks the same question of a regular-season slice, which
     // these preseason picks are not part of at all.

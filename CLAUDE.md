@@ -548,6 +548,48 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The preseason practice round no longer eliminates anyone.** A losing practice
+  pick is counted and shown; only the regular season ends a run. It used to work the
+  other way, and the failure was ugly out of proportion to the rule: one losing
+  preseason pick in a single-elimination league derived `eliminated`, `submitPick`'s
+  `canPick` guard then refused *every* later practice pick, and because the pick
+  surfaces never read status at all (`interactive={isCurrent}`, nothing more) the tap
+  painted optimistically and snapped back to "No Pick Made" a moment later. The
+  practice round shut itself down for exactly the people using it, and the only
+  visible explanation was one line of error copy under the hero. Five things:
+  - **`countStrikes` exists because `computeStatus` CANNOT answer this question.**
+    That fold `break`s the moment it eliminates someone, so it reports 1 for a
+    member who lost three times in a `single` league. Correct where elimination ends
+    the run and the rest is moot; wrong for a round that never ends anyone. Calling
+    `computeStatus` and overriding `status` afterwards is the obvious-looking fix and
+    it silently caps the practice loss count at the allowance — a plausible number,
+    a wrong one, and one that then orders the practice table wrongly too. There is a
+    test pinning both answers side by side.
+  - **`PracticeMember` carries no `status` and no `eliminatedWeek`**, rather than
+    pinning them to `"alive"`/`null`. A field that can only hold one value gets read
+    as a real one eventually. The two consumers supply the constants instead —
+    `StandingsClient`'s merge and `submitPick` — and deleting the fields is what made
+    the compiler enumerate those two consumers in the first place.
+  - **`submitPick` assigns `memberStatus = "alive"` for a `pre` pick; it does not
+    just drop the line.** `memberStatus` is initialised from `membership.status`,
+    the REAL row, so deleting the practice assignment would silently couple practice
+    to regular-season elimination — the exact leak the comment above it promises
+    cannot happen. Same shape as the `entryOpen: true` beside it: a guard input
+    answered by the round's rules rather than by this member's record.
+  - **The practice table prints a loss tally (`showLosses` on `StandingsGrid`), and
+    that is not decoration.** `rankMembers` still orders practice on losses, but no
+    practice row wears an "Out" chip any more and `StrikePips` is rendered nowhere,
+    so without the tally two rows sit in a deliberate order with nothing on screen
+    explaining it. The real standings leave it off — there the order is legible from
+    the "Out" chip and the washed cells.
+  - **The `firstPickWeek` clamp stays, on a new argument.** Its original one was that
+    a mid-preseason joiner derived `eliminated` on arrival, which cannot happen now.
+    It survives because a practice record is a claim about what you did, and the Hall
+    of Fame game in early August would otherwise hand a brand-new account three
+    losses it was never present for. `AdminSettingsDrawer` has said "nobody is
+    eliminated by a preseason loss" all along; that copy was wrong when it shipped
+    and is right now.
+
 - **`main` no longer carries a flat `pt-5 pb-12`.** It predated the mockups; the page
   frame is now `px-4 pb-20 pt-10 lg:pb-32 lg:pt-16` and every route inherits it.
   `NoLeagueState` lost the `py-6` that had it sitting 24px below every other screen.

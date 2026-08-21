@@ -196,10 +196,13 @@ export async function submitPick(input: {
     const games = (gameRows ?? []).map(rowToGame);
 
     // Which week is live, whether this member may pick at all, and which teams
-    // they have already spent — all three answered per phase. For practice the
-    // member's standing is DERIVED from preseason results, never read from
-    // group_members, so a regular-season elimination can't block practice and a
-    // practice elimination can't touch the real league.
+    // they have already spent — all three answered per phase.
+    //
+    // Practice and the real league cannot reach each other in either direction.
+    // A regular-season elimination can't block practice, because `memberStatus`
+    // below is not read for a 'pre' pick; and a practice loss can't touch the real
+    // league, because nothing about practice is stored — `group_members.status` is
+    // written only by `recomputeSeason`, which filters to `season_type = 'regular'`.
     let week: number;
     let memberStatus = membership.status;
     let usedHistory: { teamId: string }[];
@@ -220,7 +223,14 @@ export async function submitPick(input: {
       if (!practice) return { ok: false, error: "no_practice_schedule" };
       week = practice.currentWeek;
       const me = practice.members[user.id];
-      memberStatus = me?.status ?? "alive";
+      // NOTHING ELIMINATES IN PRACTICE, so the guard's status test is satisfied
+      // outright — same shape as the `entryOpen: true` below it, and for the same
+      // kind of reason: the condition is answered by the round's rules rather than
+      // by this member's record. `PracticeMember` has no `status` to read.
+      //
+      // This is the whole fix for the bug where a losing preseason pick refused
+      // every later practice pick with "You're eliminated, so picks are closed."
+      memberStatus = "alive";
       usedHistory = practiceUsedTeams(me, { excludeWeek: week });
     } else {
       week = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });

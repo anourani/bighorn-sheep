@@ -46,6 +46,7 @@ const PICK_ERROR: Record<string, string> = {
   entry_closed: "Entry for this league has closed.",
   not_a_member: "You're not a member of this league.",
   practice_closed: "Preseason practice is over — the regular season has started.",
+  practice_not_enabled: "Your admin hasn't turned on preseason practice for you.",
   no_practice_schedule: "There's no preseason schedule loaded to practise against.",
   unexpected_error: "Something went wrong on our end. Try again in a moment.",
 };

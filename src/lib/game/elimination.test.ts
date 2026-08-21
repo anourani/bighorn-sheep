@@ -4,6 +4,7 @@ import type { GroupRules } from "../league/types";
 import {
   canPick,
   computeStatus,
+  countStrikes,
   evaluateTeamPick,
   evaluateWeek,
   seasonState,
@@ -231,24 +232,42 @@ describe("seasonState", () => {
   });
 });
 
-describe("the preseason practice reset", () => {
+describe("countStrikes", () => {
   /*
-   * Preseason is played for real, but nothing survives into Week 1: strikes clear,
-   * eliminated players come back, and every team is available again.
+   * The practice round's counter. It exists because `computeStatus` cannot answer
+   * this question: that fold `break`s as soon as it eliminates someone, so it stops
+   * counting at the allowance. Preseason eliminates nobody and therefore has no
+   * allowance to stop at — see `src/lib/league/practice.ts`.
+   */
+
+  it("counts every damaging week, with no allowance to stop at", () => {
+    expect(countStrikes(["loss", "loss", "loss"])).toBe(3);
+
+    // The same three results through the regular season's fold report ONE strike,
+    // because the run ended at the first. Both answers are right for their own
+    // question; reusing this one for practice is what printed a capped, plausible,
+    // wrong number.
+    expect(computeStatus(single, ["loss", "loss", "loss"], [1, 2, 3]).strikes).toBe(1);
+  });
+
+  it("ignores wins, pushes and unplayed weeks", () => {
+    expect(countStrikes(["win", "push", "no_pick", "pending"])).toBe(0);
+    expect(countStrikes([])).toBe(0);
+  });
+});
+
+describe("preseason results never reach the regular-season fold", () => {
+  /*
+   * Nothing survives into Week 1: strikes clear, used teams free up, and preseason
+   * leaves the standings.
    *
    * The engine needs no special case for this, because it is a pure fold over
    * whatever results it is handed. The reset lives in WHICH results reach it:
    * recomputeSeason filters picks and games to season_type = 'regular', so no
-   * preseason result is ever folded into a member's real standing. These pin that
-   * the same engine gives both answers.
+   * preseason result is ever folded into a member's real standing.
    */
 
-  it("folds a preseason wipeout and a clean regular season independently", () => {
-    const preseasonResults = computeStatus(single, ["loss", "loss"], [1, 2]);
-    expect(preseasonResults).toEqual({ status: "eliminated", strikes: 1, eliminatedWeek: 1 });
-
-    // The regular-season fold sees only regular-season results — an empty slate at
-    // Week 1, whatever happened in August.
+  it("starts the regular season from an empty slate whatever happened in August", () => {
     const regular = computeStatus(single, [], []);
     expect(regular).toEqual({ status: "alive", strikes: 0, eliminatedWeek: null });
   });

@@ -58,6 +58,7 @@ export function StandingsGrid({
   now,
   gameForTeam,
   hiddenPickUserIds = [],
+  showLosses = false,
 }: {
   ranked: RankedMember[];
   viewerId: string;
@@ -79,6 +80,18 @@ export function StandingsGrid({
    * still show a padlock rather than a bare "no pick" slot.
    */
   hiddenPickUserIds?: string[];
+  /**
+   * Print each member's loss tally beside their name, in the slot the "Out"
+   * label uses in the real standings.
+   *
+   * Only the practice grid asks for it, and it is what keeps that table honest:
+   * nothing eliminates in preseason, so no row ever carries an "Out" chip — but
+   * `rankMembers` still orders the table on those losses. Without the tally, two
+   * rows would sit in a deliberate order with nothing on screen explaining it.
+   * The real standings leave it off: there, strikes are legible as the "Out" chip
+   * and the washed cells running across the row.
+   */
+  showLosses?: boolean;
 }) {
   const weeks: WeekColumn[] =
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
@@ -218,6 +231,11 @@ export function StandingsGrid({
                         {eliminated ? (
                           <Label className="shrink-0 rounded bg-out-wash px-1 text-[#8A2C2C]">
                             Out
+                          </Label>
+                        ) : null}
+                        {showLosses && member.strikes > 0 ? (
+                          <Label className="shrink-0 rounded bg-fill-soft px-1 text-ink-soft">
+                            {member.strikes}L
                           </Label>
                         ) : null}
                       </div>
