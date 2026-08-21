@@ -37,7 +37,21 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0005_invite_code_without_pgcrypto` → `0006_preseason_picks` →
 `0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
 `0009_public_standings` → `0010_account_closure_and_league_buy_in` →
-`0011_admin_settings` → `0012_create_group_entry_deadline`.
+`0011_admin_settings` → `0012_create_group_entry_deadline` →
+`0013_lock_membership_writes` → `0014_pick_consistency`.
+
+**0013 and 0014 close two direct-write holes reachable with the anon key**, and
+both are pure RLS changes — idempotent, no backfill, hand-applied. 0013 drops
+`group_members`' `"members insert self"` policy: membership is created only by the
+`join_by_invite` / `create_group` definer functions, so a browser could otherwise
+self-insert an *admin* row from the league UUID alone (the id ships in every
+member's payload). 0014 tightens the `picks` insert/update `with check` so a pick's
+`week` / `season_type` / `team_id` / season must match the referenced game, blocking
+the inconsistent rows a direct POST could write. Neither needs an app change —
+`submitPick` already writes consistent rows — so unlike 0010/0011 there is no "the
+page is broken until this is applied" symptom; the only effect of skipping them is
+that the holes stay open. `supabase/setup.sql` is synced to match, so a fresh
+project doesn't reintroduce them.
 
 **0010 is what the redesigned account page reads and writes**, and until it is
 applied that page shows a $0 buy-in and Delete Account fails with
