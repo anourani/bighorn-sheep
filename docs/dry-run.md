@@ -2,14 +2,16 @@
 
 > **Just want to rehearse with friends? Use the preseason practice round instead.**
 > Once the real schedule is loaded (`docs/go-live.md`), the week strip leads with
-> **preseason** chips that run the whole loop — pick → lock → reveal → result →
-> elimination — against real NFL games, with everything resetting at Week 1. That is
-> the better rehearsal, and it needs no scripts.
+> **preseason** chips that run the loop — pick → lock → reveal → result — against
+> real NFL games, with everything resetting at Week 1. That is the better rehearsal,
+> and it needs no scripts.
 >
-> This harness is for the one thing real football cannot give you: **a specific
-> outcome, right now.** It is how you force an elimination, force a whole-group
-> wipeout, or watch a result land the moment you ask for it — instead of waiting for
-> an actual game to go against someone.
+> What it deliberately will not do is eliminate anyone: a losing practice pick is
+> counted on the practice table and goes no further. So this harness is now the only
+> way to see an elimination at all, on top of the one thing real football cannot give
+> you: **a specific outcome, right now.** It is how you force an elimination, force a
+> whole-group wipeout, or watch a result land the moment you ask for it — instead of
+> waiting for an actual game to go against someone.
 
 It is also the only thing outside production that calls `recomputeSeason`
 (`src/lib/game/score.ts`), the code that writes `picks.result` and every member's

@@ -1,14 +1,26 @@
 import { isKickedOff, type Game, type TeamId } from "../nfl/types";
-import { computeStatus, evaluateWeek } from "../game/elimination";
+import { countStrikes, evaluateWeek } from "../game/elimination";
 import { buildGameIndex, type GameIndex } from "./games";
-import type { CurrentPick, GroupRules, HistoryPick, MemberStatus, PickResult } from "./types";
+import type { CurrentPick, GroupRules, HistoryPick, PickResult } from "./types";
 
 /**
  * The preseason practice round.
  *
- * NFL preseason is played for real — a losing pick strikes you and can eliminate
- * you — but it is thrown away completely at Week 1: status, strikes, and used
- * teams all reset, and preseason stops appearing in the standings.
+ * NOTHING HERE ELIMINATES ANYONE. Preseason is a rehearsal: a losing pick is
+ * counted and shown, so the table means something and you can see how you would
+ * have fared, but only the regular season ends a run. That is why this file
+ * reaches for `countStrikes` rather than the `computeStatus` fold the real season
+ * uses — see the note on it in `../game/elimination.ts`.
+ *
+ * It used to work the other way, and the cost was concrete: one losing preseason
+ * pick in a single-elimination league derived `eliminated`, and `submitPick`'s
+ * guard then refused every remaining practice pick with "You're eliminated, so
+ * picks are closed." Since the pick surfaces never read status at all, the tap
+ * painted optimistically and then snapped back to "No Pick Made" — the practice
+ * round shutting itself down for exactly the people using it.
+ *
+ * Everything else about the round is still thrown away completely at Week 1:
+ * strikes and used teams reset, and preseason stops appearing in the standings.
  *
  * The way that reset is implemented is by NOT STORING ANY OF IT.
  * `group_members.status` / `.strikes` / `.eliminated_week` remain exclusively
@@ -33,10 +45,17 @@ export interface PracticePickInput {
 
 export interface PracticeMember {
   id: string;
-  status: MemberStatus;
-  /** Practice losses only. Never mixed with the member's real strikes. */
+  /**
+   * Practice losses only. Never mixed with the member's real strikes, and never
+   * capped: nothing eliminates in practice, so this keeps counting past the
+   * group's strike allowance.
+   *
+   * There is deliberately no `status` or `eliminatedWeek` beside it. Pinning them
+   * to "alive"/null would be a field that can only ever hold one value — a claim
+   * waiting to be read as a real one — so the fact that practice cannot eliminate
+   * is expressed by the absence, and the two consumers supply the constants.
+   */
   strikes: number;
-  eliminatedWeek: number | null;
   history: HistoryPick[];
   currentPick: CurrentPick | null;
   /**
@@ -104,7 +123,7 @@ export function derivePractice(input: DerivePracticeInput): PracticeState | null
       picks: picksByUser.get(id) ?? [],
       idx,
       // Only weeks that have begun can damage anyone; a future week's missed pick
-      // is "no_pick", which computeStatus treats as harmless.
+      // is "no_pick", which isDamaging treats as harmless.
       weeks: weeks.filter((w) => w <= currentWeek),
       currentWeek,
       rules: input.rules,
@@ -149,7 +168,6 @@ function derivePracticeMember(args: {
   const { id, picks, idx, weeks, currentWeek, rules, now } = args;
 
   const results: PickResult[] = [];
-  const weekNumbers: number[] = [];
   const history: HistoryPick[] = [];
   let currentPick: CurrentPick | null = null;
 
@@ -158,12 +176,15 @@ function derivePracticeMember(args: {
    *
    * Preseason has no entry deadline — the regular season's `entry_closes_at` gate
    * is what stops someone joining a league mid-run, and there is no equivalent for
-   * practice. So folding EVERY preseason week would retroactively strike a member
-   * for weeks that finished before they ever opened the app. Concretely: the Hall
-   * of Fame game is played in early August, so by the second week of preseason a
-   * brand-new account was already derived `eliminated`, and submitPick rejected
-   * every practice pick with "You're eliminated" — the practice round advertised in
-   * the banner was unusable for exactly the newcomers it exists for.
+   * practice. So folding EVERY preseason week would retroactively charge a member
+   * for weeks that finished before they ever opened the app: the Hall of Fame game
+   * is played in early August, so by preseason week 2 a brand-new account would
+   * arrive already carrying losses it had no way to avoid.
+   *
+   * That used to be the difference between a usable practice round and a dead one,
+   * because those phantom losses eliminated you. Nothing eliminates here now, so
+   * the stake is smaller — but a practice record is still a claim about what you
+   * did, and weeks you were never present for are not part of it.
    *
    * Weeks before a member's first pick are therefore skipped, not forgiven: once
    * you are in, a missed week is a loss like anywhere else.
@@ -190,7 +211,6 @@ function derivePracticeMember(args: {
       now,
     });
 
-    weekNumbers.push(week);
     results.push(result);
 
     if (pick && week < currentWeek && (result === "win" || result === "loss" || result === "push")) {
@@ -203,13 +223,9 @@ function derivePracticeMember(args: {
     currentPick = { week: current.week, teamId: current.teamId, gameId: current.gameId };
   }
 
-  const status = computeStatus(rules, results, weekNumbers);
-
   return {
     id,
-    status: status.status,
-    strikes: status.strikes,
-    eliminatedWeek: status.eliminatedWeek,
+    strikes: countStrikes(results),
     history,
     currentPick,
     picks: picks.map((p) => ({ week: p.week, teamId: p.teamId })),

@@ -56,6 +56,21 @@ export function isDamaging(result: PickResult): boolean {
   return result === "loss";
 }
 
+/**
+ * How many of these weeks damaged the player, with no allowance to stop at.
+ *
+ * Deliberately NOT `computeStatus(...).strikes`: that fold `break`s the moment it
+ * eliminates someone, so it reports 1 for a player who lost three times in a
+ * single-elimination league. That is the right answer where elimination ends the
+ * run and the rest of the season is moot — and the wrong one for the preseason
+ * practice round, which eliminates nobody and so keeps counting to the end.
+ * Overriding `status` after the fact would have left the cap in place and printed
+ * a plausible, wrong number.
+ */
+export function countStrikes(results: readonly PickResult[]): number {
+  return results.filter(isDamaging).length;
+}
+
 export interface StatusResult {
   status: "alive" | "eliminated";
   strikes: number;

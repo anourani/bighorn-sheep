@@ -84,7 +84,12 @@ export interface Member {
   phone: string | null;
   role: Role;
   status: MemberStatus;
-  /** Losses accrued (0..allowance). */
+  /**
+   * Losses accrued. Bounded by the group's allowance for a real member row —
+   * `computeStatus` stops folding once it eliminates someone — but NOT on the
+   * practice standings, where `StandingsClient` merges the preseason tally in and
+   * nothing there eliminates, so it counts on past the allowance.
+   */
   strikes: number;
   /**
    * Whether the league admin has marked this member's buy-in as paid. Purely

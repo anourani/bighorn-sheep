@@ -190,7 +190,7 @@ The screens read live data server-side through `src/lib/league/load.ts` (RLS-sco
 
 ### Rehearsing the loop
 
-For an ordinary rehearsal, use the **preseason practice round** — the Preseason entries in the week dropdown run pick → lock → reveal → result → elimination against real NFL games, and everything resets at Week 1. No scripts needed.
+For an ordinary rehearsal, use the **preseason practice round** — the Preseason entries in the week dropdown run pick → lock → reveal → result against real NFL games, and everything resets at Week 1. No scripts needed. It stops short of elimination on purpose: a losing practice pick is counted on the practice table and nothing more, so nobody is knocked out of a round that exists to be practised.
 
 The harness in **[docs/dry-run.md](docs/dry-run.md)** is for what real football can't do on cue: **forcing a specific result, right now.** It's how you drive an elimination or a whole-group wipeout deliberately, and it's the only caller of `recomputeSeason` outside production — so it's currently the only way to prove the elimination write path works.
 

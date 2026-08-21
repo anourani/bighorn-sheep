@@ -64,9 +64,15 @@ export function StandingsClient({ data }: { data: LeagueData }) {
 
   /**
    * Practice standing, shaped as `Member[]` so the existing grid and ranking are
-   * reused wholesale. Identity comes from the real membership row; status,
-   * strikes, and history are the DERIVED preseason values — the real ones are
-   * never touched, which is what makes the Week 1 reset free.
+   * reused wholesale. Identity comes from the real membership row; strikes and
+   * history are the DERIVED preseason values — the real ones are never touched,
+   * which is what makes the Week 1 reset free.
+   *
+   * `status` and `eliminatedWeek` are constants rather than derived values, and
+   * `PracticeMember` deliberately carries neither: nothing eliminates in practice,
+   * so everyone is alive here every week. `rankMembers` then falls into its alive
+   * branch for the whole table and orders on practice losses, which is exactly the
+   * ranking this board wants.
    */
   const practiceRanked = useMemo<RankedMember[] | null>(() => {
     if (!practice) return null;
@@ -74,9 +80,9 @@ export function StandingsClient({ data }: { data: LeagueData }) {
       const p = practice.members[m.id];
       return {
         ...m,
-        status: p?.status ?? "alive",
+        status: "alive",
+        eliminatedWeek: null,
         strikes: p?.strikes ?? 0,
-        eliminatedWeek: p?.eliminatedWeek ?? null,
         history: p?.history ?? [],
         currentPick: p?.currentPick ?? null,
       };
@@ -157,8 +163,9 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             <section className="mt-5 lg:mt-12">
               <SectionHeader title="Practice Standings" />
               <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
-                A real run-through — a wrong pick strikes you here too. None of it carries over: this
-                table disappears and everyone starts Week 1 alive, with all 32 teams available.
+                A real run-through, with nothing at stake — a wrong pick is counted here, but the
+                preseason can&rsquo;t knock you out. None of it carries over either: this table
+                disappears and everyone starts Week 1 with a clean sheet and all 32 teams available.
               </p>
               <StandingsGrid
                 ranked={practiceRanked}

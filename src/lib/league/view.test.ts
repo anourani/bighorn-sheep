@@ -3,6 +3,7 @@ import type { Game, TeamId } from "../nfl/types";
 import type { Member, TeamRecord } from "./types";
 import {
   orderPickerTeams,
+  rankMembers,
   statusLabel,
   statusLine,
   survivorCounts,
@@ -144,6 +145,74 @@ describe("survivorCounts", () => {
     const rogue = { ...member("d", "alive"), status: "zombie" as Member["status"] };
     const out = survivorCounts([member("a", "alive"), member("b", "eliminated"), rogue]);
     expect(out).toEqual({ alive: 1, eliminated: 1, total: 2 });
+  });
+});
+
+describe("rankMembers", () => {
+  function member(id: string, over: Partial<Member> = {}): Member {
+    return {
+      id,
+      name: id,
+      firstName: id,
+      lastName: "",
+      favoriteAnimal: null,
+      phone: null,
+      role: "player",
+      status: "alive",
+      strikes: 0,
+      buyInPaid: false,
+      buyInPaidAt: null,
+      showPreseason: false,
+      eliminatedWeek: null,
+      history: [],
+      currentPick: null,
+      ...over,
+    };
+  }
+
+  const ids = (ms: Member[]) => rankMembers(ms).map((r) => r.member.id);
+
+  it("puts the living above the dead, then orders each tier on its own key", () => {
+    const out = ids([
+      member("dead-early", { status: "eliminated", strikes: 1, eliminatedWeek: 2 }),
+      member("two-strikes", { strikes: 2 }),
+      member("clean"),
+      member("dead-late", { status: "eliminated", strikes: 1, eliminatedWeek: 9 }),
+    ]);
+    // Fewest strikes first among the living; among the dead, whoever survived
+    // longest leads.
+    expect(out).toEqual(["clean", "two-strikes", "dead-late", "dead-early"]);
+  });
+
+  /*
+   * The practice standings board. Nothing eliminates in preseason, so
+   * StandingsClient hands this an all-alive table and the ONLY thing separating
+   * two rows is the practice loss count — uncapped, so a three-loss member really
+   * does sit below a one-loss member. Under the old fold both were "eliminated"
+   * with a capped single strike, and the dead-tier branch ordered them by
+   * eliminatedWeek instead. This pins the ordering the practice grid now relies on.
+   */
+  it("orders an all-alive table purely on losses, then name, then id", () => {
+    expect(
+      ids([
+        member("z-three", { name: "Zoe Z.", strikes: 3 }),
+        member("b-one", { name: "Bea B.", strikes: 1 }),
+        member("a-one", { name: "Ada A.", strikes: 1 }),
+        member("c-none", { name: "Cal C." }),
+      ]),
+    ).toEqual(["c-none", "a-one", "b-one", "z-three"]);
+  });
+
+  it("is total and stable — the input order never decides the output", () => {
+    const tied = [member("b", { name: "Same Name" }), member("a", { name: "Same Name" })];
+    expect(ids(tied)).toEqual(["a", "b"]);
+    expect(ids([...tied].reverse())).toEqual(["a", "b"]);
+  });
+
+  it("numbers the ranks from 1 in the sorted order", () => {
+    expect(rankMembers([member("b", { strikes: 1 }), member("a")]).map((r) => r.rank)).toEqual([
+      1, 2,
+    ]);
   });
 });
 
