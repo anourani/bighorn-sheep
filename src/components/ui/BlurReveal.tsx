@@ -4,8 +4,12 @@ import { BLUR_REVEAL_CLASS, revealDelay, splitWords } from "./blur-reveal";
 
 /**
  * Reveals its content with the `blur-in` keyframe — opacity 0 -> 1,
- * blur(12px) -> blur(0), scale(1.04) -> scale(1) over 1250ms — one piece at a
- * time, 40ms apart.
+ * blur(12px) -> blur(0), scale(1.04) -> scale(1) — one piece at a time,
+ * `BLUR_STEP_MS` apart.
+ *
+ * The duration is NOT fixed here: `blur-in` reads it from `--blur-ms`, so a
+ * surface sets its own pace on its own root and every piece inherits. The
+ * default is 1250ms; the My Picks hero runs at 650ms.
  *
  * Two modes:
  *
@@ -35,6 +39,7 @@ export function BlurReveal({
   text,
   children,
   start = 0,
+  delayMs = 0,
   replayKey,
   className,
 }: {
@@ -43,6 +48,14 @@ export function BlurReveal({
   children?: React.ReactNode;
   /** This piece's first slot in the cascade — see `cascadeStarts`. */
   start?: number;
+  /**
+   * Milliseconds before this element's own cascade begins, added on top of the
+   * slot delay. Slots are a fixed 20ms grid; this is for an offset that is not
+   * on it — the home page's 1s lead, and the gaps between its blocks, both from
+   * `blockStarts`. Zero everywhere else, so `start` alone still reads as the
+   * whole answer in `PickHero`.
+   */
+  delayMs?: number;
   /**
    * Change this to play the reveal again. CSS animations do not restart on
    * their own, so the value is used as a React `key` below and a new one
@@ -57,7 +70,7 @@ export function BlurReveal({
   className?: string;
 }) {
   return (
-    <Piece key={replayKey} text={text} start={start} className={className}>
+    <Piece key={replayKey} text={text} start={start} delayMs={delayMs} className={className}>
       {children}
     </Piece>
   );
@@ -67,11 +80,13 @@ function Piece({
   text,
   children,
   start,
+  delayMs,
   className,
 }: {
   text?: string;
   children?: React.ReactNode;
   start: number;
+  delayMs: number;
   className?: string;
 }) {
   // One piece: the whole of `children` resolves together. This is how the team
@@ -80,7 +95,10 @@ function Piece({
   // animate spans whose content is about to be replaced.
   if (text === undefined) {
     return (
-      <span className={cls(className)} style={{ animationDelay: `${revealDelay(start)}ms` }}>
+      <span
+        className={cls(className)}
+        style={{ animationDelay: `${delayMs + revealDelay(start)}ms` }}
+      >
         {children}
       </span>
     );
@@ -98,7 +116,7 @@ function Piece({
           {i > 0 ? " " : null}
           <span
             className={cls(className)}
-            style={{ animationDelay: `${revealDelay(start + i)}ms` }}
+            style={{ animationDelay: `${delayMs + revealDelay(start + i)}ms` }}
           >
             {word}
           </span>

@@ -130,7 +130,8 @@ export function PickHero({
     wordCount(matchup),
     1,
     1,
-    ...lockLines.map((line) => wordCount(line.text)),
+    // One slot per LINE, not per word — `LockLines` reveals them whole.
+    ...lockLines.map(() => 1),
   ]);
 
   return (
@@ -283,7 +284,8 @@ function NoPickHero({
     1,
     1,
     wordCount(NO_PICK),
-    ...lockLines.map((line) => wordCount(line.text)),
+    // One slot per LINE, not per word — `LockLines` reveals them whole.
+    ...lockLines.map(() => 1),
   ]);
 
   return (
@@ -367,7 +369,17 @@ function replayFor(
   return `${weekName}|${teamId ?? "none"}|${gameId ?? "none"}|${kicked}`;
 }
 
-/** The lock column's lines, each revealed in turn. */
+/**
+ * The lock column's lines, each revealed in turn — a whole line at a time, NOT
+ * word by word like everything above it.
+ *
+ * This is where the module's length was going. "Only you can see this pick
+ * until the game kicks off" is eleven words, so at one slot each the privacy
+ * line alone was eleven of the module's twenty-nine pieces and the cascade
+ * spent its whole tail crawling across 12px grey type nobody reads twice. As
+ * whole lines the module is sixteen pieces, and the wave ends on the lock copy
+ * rather than dragging through it.
+ */
 function LockLines({
   lines,
   starts,
@@ -383,7 +395,9 @@ function LockLines({
         // Keyed on the text so a line that survives a rebuild is reconciled in
         // place; the reveal inside restarts regardless, off `replay`.
         <p key={line.text} className={line.mute ? "text-shell-mute" : "text-shell-ink"}>
-          <BlurReveal text={line.text} start={starts[i] ?? 0} replayKey={replay} />
+          <BlurReveal start={starts[i] ?? 0} replayKey={replay}>
+            {line.text}
+          </BlurReveal>
         </p>
       ))}
     </>
@@ -425,7 +439,15 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-2 py-10 lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12">
+    // `[--blur-ms:650ms]` sets this module's reveal pace, and only this
+    // module's: `blur-in` reads its duration from that property, so every piece
+    // below — strips, mark and text alike — inherits it without a prop being
+    // threaded to a dozen call sites. Half the landing page's 1250ms, because
+    // this module re-forms on every team tap and a title you look at once can
+    // afford to take its time. A custom property declaration is not an
+    // animation, so it does not collide with the `reveal-up` that `.stagger`
+    // applies to this same element.
+    <section className="space-y-2 py-10 [--blur-ms:650ms] lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12">
       <Label className="lg:text-base lg:leading-[1.1]">
         <BlurReveal text={eyebrow} start={start} replayKey={replay} />
       </Label>

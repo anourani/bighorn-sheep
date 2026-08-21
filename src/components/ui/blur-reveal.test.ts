@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  BLOCK_GAP_MS,
   BLUR_DURATION_MS,
   BLUR_REVEAL_CLASS,
+  BLUR_SETTLE_FRACTION,
   BLUR_STEP_MS,
+  blockStarts,
   cascadeStarts,
+  HERO_DURATION_MS,
   revealDelay,
+  settleMs,
   splitWords,
   wordCount,
 } from "./blur-reveal";
@@ -38,9 +43,12 @@ describe("revealDelay", () => {
     expect(revealDelay(0)).toBe(0);
   });
 
-  it("steps one piece per 40ms, as the spec asks", () => {
-    expect(revealDelay(1)).toBe(40);
-    expect(revealDelay(7)).toBe(280);
+  // The spec asked for 40ms. The My Picks hero at 29 pieces then took 2.37s end
+  // to end and read as slow, so the step was halved; the hero's own shorter
+  // duration and its per-line lock copy were the rest of that fix.
+  it("steps one piece per 20ms", () => {
+    expect(revealDelay(1)).toBe(20);
+    expect(revealDelay(7)).toBe(140);
   });
 });
 
@@ -57,15 +65,25 @@ describe("cascadeStarts", () => {
 
   // The My Picks hero's real shape: eyebrow, three colour strips, the logo,
   // city, team name, matchup, kickoff date, kickoff time, then two lock lines.
-  // The strips and the logo are one slot each — they are not split.
-  it("gives the hero's strips and logo a slot each between the eyebrow and the name", () => {
-    const counts = [4, 1, 1, 1, 1, 1, 1, 2, 1, 1, 4, 11];
+  // The strips, the logo AND each lock line are one slot each — none is split.
+  it("gives the hero's strips, logo and lock lines a slot each", () => {
+    const counts = [4, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1];
     const at = cascadeStarts(counts);
 
     expect(at.slice(0, 6)).toEqual([0, 4, 5, 6, 7, 8]);
-    // The last line starts once every piece before it has been handed a slot.
-    expect(at.at(-1)).toBe(18);
-    expect(revealDelay(at.at(-1)!)).toBe(720);
+    // Sixteen pieces in all, so the last one starts on slot 15.
+    expect(at.at(-1)).toBe(15);
+    expect(revealDelay(at.at(-1)!)).toBe(300);
+  });
+
+  // The count that made the module drag: the two lock lines were 4 words and 11
+  // words, which is 13 extra slots for one sentence of 12px grey type.
+  it("cost 13 extra slots when the lock lines were split into words", () => {
+    const perWord = cascadeStarts([4, 1, 1, 1, 1, 1, 1, 2, 1, 1, 4, 11]);
+    const perLine = cascadeStarts([4, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1]);
+
+    expect(perWord.at(-1)! - perLine.at(-1)!).toBe(3);
+    expect(perWord.at(-1)! + 11 - (perLine.at(-1)! + 1)).toBe(13);
   });
 
   it("is empty for an empty module", () => {
@@ -77,6 +95,65 @@ describe("cascadeStarts", () => {
   // it does not inherit a hole in the cascade.
   it("skips over a block with nothing in it", () => {
     expect(cascadeStarts([1, 0, 1])).toEqual([0, 1, 1]);
+  });
+});
+
+describe("settleMs", () => {
+  // 700ms of the default 1250ms. The number the home page's whole sequence is
+  // built on, and it is not a guess: cubic-bezier(0.16,1,0.3,1) is 98.3% of the
+  // way through at t = 0.56, and the frame captured at 700ms while the effect
+  // was being built already read as fully resolved.
+  it("lands a default-paced piece at 700ms", () => {
+    expect(settleMs()).toBe(700);
+  });
+
+  it("scales with a surface's own pace", () => {
+    expect(settleMs(HERO_DURATION_MS)).toBe(364);
+    expect(settleMs(HERO_DURATION_MS)).toBeLessThan(settleMs());
+  });
+
+  // The point of the fraction is that it is well inside the animation. Landing
+  // at or past the end would make it a synonym for "finished" and the sequence
+  // would stretch back out to the 7.7s it was designed to avoid.
+  it("lands well before the animation formally ends", () => {
+    expect(settleMs()).toBeLessThan(BLUR_DURATION_MS);
+    expect(BLUR_SETTLE_FRACTION).toBeGreaterThan(0.5);
+    expect(BLUR_SETTLE_FRACTION).toBeLessThan(1);
+  });
+});
+
+describe("blockStarts", () => {
+  // The home page, exactly: a five-word title after a 1s hold, then three
+  // single-piece blocks each waiting for the one above to land.
+  it("sequences the home page's four blocks", () => {
+    expect(blockStarts([5, 1, 1, 1], 1000)).toEqual([1000, 2280, 3480, 4680]);
+  });
+
+  // Where those numbers come from, spelled out so a change to any constant
+  // shows up here rather than only on screen: the title's last word starts at
+  // 1000 + 4 steps, lands 700ms later, and the next block waits 500ms more.
+  it("waits for the previous block's LAST piece, not its first", () => {
+    const [, second] = blockStarts([5, 1], 1000);
+    expect(second).toBe(1000 + 4 * BLUR_STEP_MS + settleMs() + BLOCK_GAP_MS);
+
+    // A one-piece block has no internal spread, so it is 1200ms to the next.
+    const [, afterSingle] = blockStarts([1, 1], 0);
+    expect(afterSingle).toBe(settleMs() + BLOCK_GAP_MS);
+  });
+
+  it("starts at zero when nothing is held back", () => {
+    expect(blockStarts([1, 1])[0]).toBe(0);
+  });
+
+  it("is empty for a page with no blocks", () => {
+    expect(blockStarts([], 1000)).toEqual([]);
+  });
+
+  // A surface running at its own pace settles sooner, so its blocks tighten up.
+  it("tightens the sequence for a faster surface", () => {
+    const slow = blockStarts([1, 1], 0);
+    const fast = blockStarts([1, 1], 0, HERO_DURATION_MS);
+    expect(fast[1]).toBeLessThan(slow[1]!);
   });
 });
 
@@ -101,5 +178,12 @@ describe("the timing constants", () => {
   // error anywhere. `reveal-blur` is the reduced-motion override's only hook.
   it("carries both the utility and the reduced-motion marker", () => {
     expect(BLUR_REVEAL_CLASS.split(" ")).toEqual(["reveal-blur", "animate-blur-in"]);
+  });
+
+  // The hero re-forms on every team tap; the landing title is looked at once.
+  // The relationship is the point — the values are set by `--blur-ms`, and if
+  // they ever crossed, the interactive surface would be the slower of the two.
+  it("runs the My Picks hero faster than the default pace", () => {
+    expect(HERO_DURATION_MS).toBeLessThan(BLUR_DURATION_MS);
   });
 });

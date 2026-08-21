@@ -1,8 +1,10 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { BlurReveal } from "@/components/ui/BlurReveal";
+import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
 import { StatusReport } from "@/components/app/StatusReport";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
+import { cn } from "@/lib/cn";
 import { loadPublicLeague } from "@/lib/league/load";
 
 export const metadata = {
@@ -23,6 +25,21 @@ export const metadata = {
  */
 export const revalidate = 60;
 
+/** The title's two lines, hoisted so their word count is taken from the text
+ *  that actually renders and cannot drift from it. */
+const EYEBROW = "Welcome to";
+const HEADLINE = "Last Man Standing";
+
+/**
+ * How long the page holds still before anything moves.
+ *
+ * It is a real cost — for one second a visitor sees the header and an empty
+ * column — and it is deliberate: the pause is what makes the title read as
+ * arriving rather than as having always been there. Everything below is timed
+ * off it, so this single number shifts the whole page.
+ */
+const LEAD_MS = 1000;
+
 /**
  * The public landing page (the canonical root). Signed-in visitors are
  * redirected to /app by middleware; everyone else gets the league's current
@@ -41,6 +58,23 @@ export default async function LandingPage() {
   // broken, so treat it the same as no league at all.
   const board = league && league.members.length > 0 ? league : null;
 
+  /* The page arrives one block at a time: the title holds for `LEAD_MS`, then
+     each block below waits for the one above it to land and half a second more.
+     `blockStarts` does that arithmetic — see its note on why "land" is measured
+     from the easing's 98% point rather than the animation's formal end.
+
+     The title is the only block that cascades internally; the other three are
+     one piece each, so the whole block resolves together. When no league is
+     published `board` is null and the last two never render — their starts are
+     computed anyway, and cost nothing.
+
+     The `= 0` defaults are unreachable (`blockStarts` returns one entry per
+     count) and satisfy `noUncheckedIndexedAccess`. */
+  const [titleAt = 0, copyAt = 0, statusAt = 0, boardAt = 0] = blockStarts(
+    [wordCount(EYEBROW) + wordCount(HEADLINE), 1, 1, 1],
+    LEAD_MS,
+  );
+
   return (
     // Deliberately no background class: this wrapper is transparent so the grid
     // in `AmbientBackground` shows through here exactly as it does on /app. It
@@ -50,7 +84,30 @@ export default async function LandingPage() {
     <div className="mx-auto flex min-h-dvh max-w-shell flex-col">
       <LandingHeader />
 
-      <main className="flex-1">
+      {/* `overflow-x: clip` guards the reveal, not the layout. `blur-in` starts
+          on `transform: scale(1.04)`, and below `lg` both the status strip and
+          the standings Panel already reach the viewport edges by cancelling
+          their host's `px-4` with `-mx-4` — so their block scales past the
+          viewport and the page grows a horizontal scrollbar for the length of
+          the animation.
+
+          IT ONLY HAPPENS WHERE THE SCROLLBAR IS AN OVERLAY, i.e. on the phones
+          this full-bleed exists for. `html` carries `scrollbar-gutter: stable`,
+          so on a classic-scrollbar desktop the reserved 15px is wider than the
+          4% the block grows by and swallows it whole. Measured at 393px, with
+          this class removed: mobile emulation overflows the document by 9px
+          (the block draws 408.72px and its right edge lands at 400.86), while
+          the same page on the desktop profile overflows by 0. So checking this
+          in a desktop browser proves nothing, and the obvious conclusion there
+          — that the class does nothing — is wrong.
+
+          `clip` rather than `hidden` on purpose: `hidden` would make this a
+          scroll container, which is the one thing that would break the
+          `position: sticky` cells inside StandingsGrid's own horizontal
+          scroller. `clip` clips without scrolling, so their scrollport is
+          untouched. What gets clipped is a blurred, near-transparent edge
+          mid-animation; the settled page is 1:1. */}
+      <main className="flex-1 overflow-x-clip">
         {/* Both mock-ups now inset the title block by 16px, so the heading
             lines up with the brand name above it and the sections below rather
             than hanging left of everything. Both steps are mobile/desktop
@@ -64,17 +121,18 @@ export default async function LandingPage() {
               ignored and the title block sits 8px taller than the design. As a
               block it sets its own line box, which is the other half of this:
               1.1 on a phone (18px), `leading-none` on desktop (16px). */}
-          {/* The eyebrow and the heading are ONE cascade, not two: five words
-              at 40ms apart, so "Welcome to" has not finished resolving before
-              "Last" begins. `cascadeStarts([2, 3])` is [0, 2] — the heading's
-              first word takes the slot after the eyebrow's second, and the two
-              elements need know nothing about each other beyond that offset.
+          {/* The eyebrow and the heading are ONE cascade, not two: five words a
+              `BLUR_STEP_MS` apart, so "Welcome to" has not finished resolving
+              before "Last" begins. The heading's first word simply takes the
+              slot after the eyebrow's last, which is all either element needs to
+              know about the other. Both carry the same `delayMs`, so the whole
+              title moves together when `LEAD_MS` changes.
 
-              Nothing replays here. The text is a literal and this page is
-              static, so the animation runs once, off server-rendered markup,
-              with no client JS on the route at all. */}
+              Nothing replays here. The text is a literal and the page is static,
+              so this runs once, off server-rendered markup, and `BlurReveal`
+              itself adds no JS to the route. */}
           <Label className="block text-base leading-[1.1] sm:leading-none">
-            <BlurReveal text="Welcome to" start={0} />
+            <BlurReveal text={EYEBROW} start={0} delayMs={titleAt} />
           </Label>
           {/*
             64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
@@ -94,7 +152,7 @@ export default async function LandingPage() {
             specifies −2px at both 64px and 88px, so it does not scale.
           */}
           <h1 className="text-[clamp(3.5rem,3rem_+_4vw,5.5rem)] font-semibold leading-none tracking-[-2px] text-black">
-            <BlurReveal text="Last Man Standing" start={2} />
+            <BlurReveal text={HEADLINE} start={wordCount(EYEBROW)} delayMs={titleAt} />
           </h1>
         </section>
 
@@ -116,7 +174,19 @@ export default async function LandingPage() {
               emitted after any unprefixed `leading-*`, so the pair silently
               reverts to 1.5 from `sm` up. Binding both to one utility per
               breakpoint is the only form that cannot come apart. */}
-          <div className="w-full text-lg/[1.35] sm:w-[339px] sm:text-base/[1.35]">
+          {/* The reveal goes on THIS div and not on the section around it. That
+              section is `flex justify-end`, i.e. full width, and `scale(1.04)`
+              about a full-width box's centre would swing right-aligned copy
+              sideways as it settles; about a 339px box it barely moves. Same
+              reason the status report and the standings below carry it on the
+              element that holds their content rather than on a wrapper. */}
+          <div
+            className={cn(
+              "w-full text-lg/[1.35] sm:w-[339px] sm:text-base/[1.35]",
+              BLUR_REVEAL_CLASS,
+            )}
+            style={{ animationDelay: `${copyAt}ms` }}
+          >
             <p className="text-shell-ink">A private NFL survivor league with friends.</p>
             <p className="text-shell-mute">
               Pick one team a week. Win to advance to the next week. Lose or tie and you&apos;re
@@ -130,10 +200,23 @@ export default async function LandingPage() {
             {/* Still `px-4` at every width. The strip inside goes edge to edge
                 below `lg` on its own, by cancelling this inset — the label above
                 it stays put, which is the whole point of the mobile variant. */}
-            <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
+            {/* The reveal rides a wrapper here, where the description and the
+                standings carry it themselves. `StatusReport` is shared with the
+                signed-in standings page and takes only `status` and `className`
+                — widening a shared component's props for one host's animation
+                is the wrong trade when a bare block box does the same job. It
+                must stay full-width and padding-free: the `-mx-4` inside
+                cancels the `px-4` on the section below it, and a wrapper that
+                inset or shrank either one would break that bleed. */}
+            <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${statusAt}ms` }}>
+              <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
+            </div>
             {/* The design drops the "League" eyebrow that used to sit here: the
                 table follows the status report directly in both mock-ups. */}
-            <section className="px-4 pb-10 sm:pt-5">
+            <section
+              className={cn("px-4 pb-10 sm:pt-5", BLUR_REVEAL_CLASS)}
+              style={{ animationDelay: `${boardAt}ms` }}
+            >
               <PublicStandings data={board} />
             </section>
           </>
