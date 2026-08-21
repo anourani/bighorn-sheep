@@ -123,10 +123,18 @@ describe("settleMs", () => {
 });
 
 describe("blockStarts", () => {
-  // The home page, exactly: a five-word title after a 1s hold, then three
-  // single-piece blocks each waiting for the one above to land.
-  it("sequences the home page's four blocks", () => {
-    expect(blockStarts([5, 1, 1, 1], 1000)).toEqual([1000, 2280, 3480, 4680]);
+  // The home page, exactly: a five-word title after a 1s hold, then the
+  // description, then the status report and standings table as ONE block.
+  it("sequences the home page's three blocks", () => {
+    expect(blockStarts([5, 1, 1], 1000)).toEqual([1000, 2280, 3480]);
+  });
+
+  // Splitting the board in two is what the page used to do, and it pushed the
+  // last block a further 1.2s out — one settle plus one gap per extra block.
+  it("costs a settle and a gap for every block the page is split into", () => {
+    const three = blockStarts([5, 1, 1], 1000);
+    const four = blockStarts([5, 1, 1, 1], 1000);
+    expect(four.at(-1)! - three.at(-1)!).toBe(settleMs() + BLOCK_GAP_MS);
   });
 
   // Where those numbers come from, spelled out so a change to any constant

@@ -63,15 +63,16 @@ export default async function LandingPage() {
      `blockStarts` does that arithmetic — see its note on why "land" is measured
      from the easing's 98% point rather than the animation's formal end.
 
-     The title is the only block that cascades internally; the other three are
-     one piece each, so the whole block resolves together. When no league is
-     published `board` is null and the last two never render — their starts are
-     computed anyway, and cost nothing.
+     The title is the only block that cascades internally; the other two are
+     one piece each, so each resolves as a whole. Three blocks, not four: the
+     status report and the standings table animate together. When no league is
+     published `board` is null and the third never renders — its start is
+     computed anyway, and costs nothing.
 
      The `= 0` defaults are unreachable (`blockStarts` returns one entry per
      count) and satisfy `noUncheckedIndexedAccess`. */
-  const [titleAt = 0, copyAt = 0, statusAt = 0, boardAt = 0] = blockStarts(
-    [wordCount(EYEBROW) + wordCount(HEADLINE), 1, 1, 1],
+  const [titleAt = 0, copyAt = 0, boardAt = 0] = blockStarts(
+    [wordCount(EYEBROW) + wordCount(HEADLINE), 1, 1],
     LEAD_MS,
   );
 
@@ -196,30 +197,32 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          <>
+          /* The status report and the table are ONE block of the sequence, not
+             two. They are one thought — the week's tally and the board that
+             tally is read off — and revealing them apart made the strip look
+             like it belonged to the description above it. It also cost 1.2s: as
+             separate blocks the page did not finish until 5.93s.
+
+             Hence a wrapper rather than the fragment that was here. It also
+             does the job the status report cannot do for itself: `StatusReport`
+             is shared with the signed-in standings page and takes only `status`
+             and `className`, and widening a shared component's props for one
+             host's animation is the wrong trade when a block box does the same
+             job. The wrapper must stay full-width and padding-free — both
+             children bleed with `-mx-4` against the `px-4` on their own
+             sections, and a wrapper that inset or shrank either one would
+             break that. */
+          <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
             {/* Still `px-4` at every width. The strip inside goes edge to edge
                 below `lg` on its own, by cancelling this inset — the label above
                 it stays put, which is the whole point of the mobile variant. */}
-            {/* The reveal rides a wrapper here, where the description and the
-                standings carry it themselves. `StatusReport` is shared with the
-                signed-in standings page and takes only `status` and `className`
-                — widening a shared component's props for one host's animation
-                is the wrong trade when a bare block box does the same job. It
-                must stay full-width and padding-free: the `-mx-4` inside
-                cancels the `px-4` on the section below it, and a wrapper that
-                inset or shrank either one would break that bleed. */}
-            <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${statusAt}ms` }}>
-              <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
-            </div>
+            <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
             {/* The design drops the "League" eyebrow that used to sit here: the
                 table follows the status report directly in both mock-ups. */}
-            <section
-              className={cn("px-4 pb-10 sm:pt-5", BLUR_REVEAL_CLASS)}
-              style={{ animationDelay: `${boardAt}ms` }}
-            >
+            <section className="px-4 pb-10 sm:pt-5">
               <PublicStandings data={board} />
             </section>
-          </>
+          </div>
         ) : null}
       </main>
     </div>
