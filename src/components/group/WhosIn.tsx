@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { CopyIcon, CheckIcon } from "@/components/icons";
+import { LocalTime } from "@/components/ui/LocalTime";
 import { isEntryOpen } from "@/lib/game/season";
 import type { Group, Member } from "@/lib/league/types";
 
@@ -94,7 +95,27 @@ export function InviteCta({ group, appUrl, now }: { group: Group; appUrl: string
       <SectionHeader title="Grow the Pool" />
       <Panel tone="light" className="mt-3 p-card">
         <p className="text-sm text-ink-soft">
-          Bigger pools are more fun — and last longer. Share the invite before entry closes.
+          Bigger pools are more fun — and last longer. Share the invite while you can.
+        </p>
+        {/* Name the deadline rather than alluding to it. Every member can hand
+            this code out, so every member needs to know how long it is good for
+            — "before entry closes" above told them there was a clock without
+            telling them the time on it.
+
+            `LocalTime` rather than a formatter called here: this card
+            server-renders (Standings is `ƒ`), and a raw `toLocaleString` would
+            hydrate to a different string in any timezone but the server's. It
+            renders US-Eastern on the server and swaps to the reader's own zone
+            after mount. `long` is the kickoff wording — "Sunday, September 10th
+            at 8:20 PM EDT" — which is exactly what this deadline is. */}
+        <p className="mt-2 text-sm text-ink-soft">
+          Entry closes at the first Week 1 kickoff —{" "}
+          <LocalTime
+            iso={group.entryClosesAt}
+            mode="long"
+            className="font-medium text-ink"
+          />
+          . After that the code stops working.
         </p>
         <div className="mt-3 flex items-center gap-2">
           <code className="min-w-0 flex-1 truncate rounded-control border border-line bg-[#FAFAFB] px-3 py-2.5 font-mono text-sm text-ink">

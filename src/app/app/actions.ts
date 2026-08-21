@@ -385,7 +385,9 @@ export async function updateFavoriteAnimal(animal: string | null): Promise<Actio
 }
 
 /** Join a league by invite code (idempotent, via join_by_invite). */
-export async function joinGroup(code: string): Promise<ActionResult<{ groupId: string }>> {
+export async function joinGroup(
+  code: string,
+): Promise<ActionResult<{ groupId: string; groupName: string }>> {
   return attempt(async () => {
     const supabase = await createClient();
     const {
@@ -407,7 +409,10 @@ export async function joinGroup(code: string): Promise<ActionResult<{ groupId: s
     revalidatePath("/app");
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
-    return { ok: true, data: { groupId: data.id } };
+    // The name comes back for free — join_by_invite returns the whole groups row
+    // — and it is what lets the banner say "You've joined Bighorn Sheep" instead
+    // of "Joined." Nothing leaks: you are a member of it by the time you read it.
+    return { ok: true, data: { groupId: data.id, groupName: data.name } };
   });
 }
 
@@ -662,6 +667,60 @@ export async function setMemberPreseason(input: {
     // The member's own picker and standings change, not the admin's.
     revalidatePath("/app");
     revalidatePath("/app/standings");
+    return { ok: true };
+  });
+}
+
+/**
+ * Remove a player from a league, along with their picks. Admin only.
+ *
+ * The counterpart to `joinGroup`, and the only destructive control an admin has.
+ * Everything that makes it safe is in the RPC (0013) rather than here: the
+ * entry-still-open window, the refusal to remove an admin or yourself, and the
+ * pick cleanup that stops a re-invited player finding their old teams spent.
+ * A Server Action gated only in the UI is not gated.
+ *
+ * `not_admin` is in `known` and therefore tested BEFORE `rpcErrorCode` reaches
+ * its bare-42501 branch — both raise 42501, and the one that means "grants were
+ * never replayed" must not swallow the one that means "you aren't an admin".
+ */
+export async function removeMember(input: {
+  groupId: string;
+  userId: string;
+}): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("remove_member", {
+      p_group_id: input.groupId,
+      p_user_id: input.userId,
+    });
+    if (error) {
+      const reason = rpcErrorCode(
+        error,
+        [
+          "not_authenticated",
+          "not_admin",
+          "cannot_remove_self",
+          "group_not_found",
+          "entry_closed",
+          "cannot_remove_admin",
+          "member_not_found",
+        ],
+        "remove_failed",
+      );
+      console.error("[removeMember] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    // The roster and the board both lose a row; the account page counts members.
+    revalidatePath("/app");
+    revalidatePath("/app/standings");
+    revalidatePath("/app/account");
     return { ok: true };
   });
 }
