@@ -273,11 +273,20 @@ const config: Config = {
         "drawer-down": "drawer-down 0.28s cubic-bezier(0.22,1,0.36,1) both",
         "scrim-out": "scrim-out 0.2s ease both",
         "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
-        // 1250ms and a curve of its own — the app's other entrances use
+        // A curve of its own — the app's other entrances use
         // cubic-bezier(0.22,1,0.36,1), and this one is flatter still at the
         // tail so a word is legible long before its animation formally ends.
         // The per-element delay is NOT here: it is inline, from `revealDelay`.
-        "blur-in": "blur-in 1250ms cubic-bezier(0.16,1,0.3,1) both",
+        //
+        // The duration is a custom property so a surface can set its own pace
+        // on its own root and have every piece under it inherit — `PickHero`
+        // uses `[--blur-ms:650ms]`, because a module you re-form on every tap
+        // wants to be quicker than a title you look at once. A prop would have
+        // had to be threaded through a dozen call sites; a property inherits.
+        // It goes inside the shorthand rather than a second `animation-duration`
+        // declaration so there is only ever one rule, and no question of which
+        // of the two wins. The fallback is `BLUR_DURATION_MS`.
+        "blur-in": "blur-in var(--blur-ms,1250ms) cubic-bezier(0.16,1,0.3,1) both",
         "pulse-live": "pulse-live 1.6s ease-in-out infinite",
         drift: "drift 9s ease-in-out infinite",
         shimmer: "shimmer 1.6s infinite",
