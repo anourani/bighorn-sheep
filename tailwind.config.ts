@@ -237,6 +237,18 @@ const config: Config = {
           from: { opacity: "0", clipPath: "inset(0 0 100% 0)" },
           to: { opacity: "1", clipPath: "inset(0 0 0 0)" },
         },
+        // The per-element fade+blur used by `BlurReveal` — the landing title and
+        // every piece of the My Picks hero. Distinct from `reveal-mask` above,
+        // which wipes a whole box; this resolves one word, strip or logo in
+        // place and is applied to dozens of elements at staggered delays.
+        //
+        // `blur(0)` rather than `none` in the `to` frame on purpose: `none` is
+        // not a filter-function list, so the two frames would not interpolate
+        // and the blur would snap off at the end instead of easing out.
+        "blur-in": {
+          from: { opacity: "0", filter: "blur(12px)", transform: "scale(1.04)" },
+          to: { opacity: "1", filter: "blur(0)", transform: "scale(1)" },
+        },
         "pulse-live": {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },
           "50%": { opacity: "0.45", transform: "scale(0.85)" },
@@ -261,6 +273,11 @@ const config: Config = {
         "drawer-down": "drawer-down 0.28s cubic-bezier(0.22,1,0.36,1) both",
         "scrim-out": "scrim-out 0.2s ease both",
         "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
+        // 1250ms and a curve of its own — the app's other entrances use
+        // cubic-bezier(0.22,1,0.36,1), and this one is flatter still at the
+        // tail so a word is legible long before its animation formally ends.
+        // The per-element delay is NOT here: it is inline, from `revealDelay`.
+        "blur-in": "blur-in 1250ms cubic-bezier(0.16,1,0.3,1) both",
         "pulse-live": "pulse-live 1.6s ease-in-out infinite",
         drift: "drift 9s ease-in-out infinite",
         shimmer: "shimmer 1.6s infinite",

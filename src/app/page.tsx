@@ -1,4 +1,5 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
+import { BlurReveal } from "@/components/ui/BlurReveal";
 import { StatusReport } from "@/components/app/StatusReport";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
@@ -63,7 +64,18 @@ export default async function LandingPage() {
               ignored and the title block sits 8px taller than the design. As a
               block it sets its own line box, which is the other half of this:
               1.1 on a phone (18px), `leading-none` on desktop (16px). */}
-          <Label className="block text-base leading-[1.1] sm:leading-none">Welcome to</Label>
+          {/* The eyebrow and the heading are ONE cascade, not two: five words
+              at 40ms apart, so "Welcome to" has not finished resolving before
+              "Last" begins. `cascadeStarts([2, 3])` is [0, 2] — the heading's
+              first word takes the slot after the eyebrow's second, and the two
+              elements need know nothing about each other beyond that offset.
+
+              Nothing replays here. The text is a literal and this page is
+              static, so the animation runs once, off server-rendered markup,
+              with no client JS on the route at all. */}
+          <Label className="block text-base leading-[1.1] sm:leading-none">
+            <BlurReveal text="Welcome to" start={0} />
+          </Label>
           {/*
             64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
             Desktop). An arbitrary clamp rather than a new `display-*` fontSize
@@ -82,7 +94,7 @@ export default async function LandingPage() {
             specifies −2px at both 64px and 88px, so it does not scale.
           */}
           <h1 className="text-[clamp(3.5rem,3rem_+_4vw,5.5rem)] font-semibold leading-none tracking-[-2px] text-black">
-            Last Man Standing
+            <BlurReveal text="Last Man Standing" start={2} />
           </h1>
         </section>
 

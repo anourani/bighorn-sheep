@@ -112,6 +112,32 @@
     }
   }
 
+  /* The fade+blur reveal's reduced-motion escape hatch. `BlurReveal` and the
+     hero's colour strips carry this class beside `animate-blur-in`; it has no
+     declarations of its own and exists only to be this selector's target.
+
+     NOT redundant with the block at the top of this layer. That one zeroes
+     animation DURATIONS and says nothing about delays — and `blur-in` runs with
+     `fill-mode: both`, which holds the invisible, blurred first frame right
+     through the delay. The My Picks hero is ~29 pieces at 40ms apart, so
+     without this a reduced-motion visitor watches the module arrive blank and
+     assemble over more than a second: the stagger survives intact while every
+     piece's own animation snaps.
+
+     `animation: none` rather than a zeroed delay because the blurred state
+     lives only inside the keyframes — unlike `.reveal-clip` above, which is a
+     static property and so needs its value overridden. With no animation at
+     all, each piece simply renders as it is.
+
+     `!important` because the competing declaration is Tailwind's own generated
+     `animate-blur-in`, which sits in this same layer; source order between them
+     is not something to rely on. */
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-blur {
+      animation: none !important;
+    }
+  }
+
   /* Staggered entrance helper — delays applied by child position. */
   .stagger > * {
     animation: reveal-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
