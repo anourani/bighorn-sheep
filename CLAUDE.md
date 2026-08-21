@@ -576,12 +576,17 @@ reading, but only the first kind is the lesson.
     to regular-season elimination — the exact leak the comment above it promises
     cannot happen. Same shape as the `entryOpen: true` beside it: a guard input
     answered by the round's rules rather than by this member's record.
-  - **The practice table prints a loss tally (`showLosses` on `StandingsGrid`), and
-    that is not decoration.** `rankMembers` still orders practice on losses, but no
-    practice row wears an "Out" chip any more and `StrikePips` is rendered nowhere,
-    so without the tally two rows sit in a deliberate order with nothing on screen
-    explaining it. The real standings leave it off — there the order is legible from
-    the "Out" chip and the washed cells.
+  - **`StandingsGrid` is UNTOUCHED, and the practice table now orders on a number
+    that has no label of its own.** `rankMembers` still ranks practice by losses, but
+    nothing eliminates, so no practice row wears an "Out" chip any more — and
+    `strikes` is rendered nowhere in the app at all (`StrikePips` in `Badge.tsx` has
+    no call site). The washed loss cells running across each row are what the order
+    reads off. That is deliberate rather than an oversight: a loss tally beside the
+    name was built and then removed, because it is in no mock-up and duplicates what
+    the cells already say. The one case the cells genuinely miss is a missed pick in
+    the LAST preseason week — `countStrikes` counts it, but `history` only covers
+    `week < currentWeek`, so that cell renders empty rather than washed. Rare, and
+    accepted; don't reintroduce a chip for it without a design.
   - **The `firstPickWeek` clamp stays, on a new argument.** Its original one was that
     a mid-preseason joiner derived `eliminated` on arrival, which cannot happen now.
     It survives because a practice record is a claim about what you did, and the Hall

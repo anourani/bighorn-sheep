@@ -177,10 +177,6 @@ export function StandingsClient({ data }: { data: LeagueData }) {
                 now={now}
                 gameForTeam={practiceIdx.gameForTeam}
                 hiddenPickUserIds={practice.hiddenPickUserIds}
-                // Nothing is eliminated here, so no row wears an "Out" chip — but
-                // the table is still ordered on practice losses. The tally is what
-                // makes that order legible.
-                showLosses
               />
             </section>
           ) : (
