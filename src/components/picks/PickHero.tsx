@@ -1,3 +1,10 @@
+import { BlurReveal } from "@/components/ui/BlurReveal";
+import {
+  BLUR_REVEAL_CLASS,
+  cascadeStarts,
+  revealDelay,
+  wordCount,
+} from "@/components/ui/blur-reveal";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { TeamLogo } from "@/components/ui/TeamLogo";
@@ -77,15 +84,69 @@ export function PickHero({
   const kicked = isKickedOff(game, now);
   const cd = countdown(new Date(game.kickoff), now);
 
+  const eyebrow = eyebrowFor(weekName);
+  const matchup = `${home ? "vs." : "@"} ${opp?.name ?? "TBD"}`;
+  const lockLines = kicked
+    ? [ink("This game has kicked off — your pick is now visible to the group.")]
+    : [
+        ink(`Locks in ${cd.label}`),
+        mute("Only you can see this pick until the game kicks off"),
+      ];
+  if (practice) lockLines.push(mute(PRACTICE_LINE));
+
+  /* Every piece of the module replays together, off one key. See `replayFor`. */
+  const replay = replayFor(weekName, teamId, game.id, kicked);
+
+  /* The cascade, in the order it reads: the eyebrow, a wave across the three
+     colour strips, the mark landing on them, then the name and everything to
+     its right. The strips and the logo are one slot each — they are not split.
+     The rest element collects the lock column, whose line count varies by
+     branch, which is exactly why those lines are built as data above rather
+     than as JSX: the counts here cannot drift from what renders.
+
+     The `= 0` defaults are unreachable — `cascadeStarts` returns exactly one
+     entry per count — and are here only because `noUncheckedIndexedAccess`
+     types every element of a `number[]` as possibly undefined. */
+  const [
+    eyebrowAt = 0,
+    stripAt = 0,
+    stripBt = 0,
+    stripCt = 0,
+    logoAt = 0,
+    cityAt = 0,
+    nameAt = 0,
+    matchupAt = 0,
+    dateAt = 0,
+    timeAt = 0,
+    ...lockAt
+  ] = cascadeStarts([
+    wordCount(eyebrow),
+    1,
+    1,
+    1,
+    1,
+    wordCount(team.location),
+    wordCount(team.name),
+    wordCount(matchup),
+    1,
+    1,
+    ...lockLines.map((line) => wordCount(line.text)),
+  ]);
+
   return (
-    <Shell weekName={weekName}>
+    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay}>
       <PickRow>
-        <Strips>
+        {/* The key is on the GROUP, not on each strip and the logo separately:
+            the three strips and the mark over them are one object, and one key
+            remounts all four so their animations restart together. A CSS
+            animation has no other way to replay — see `BlurReveal`, which does
+            the same thing internally for every piece of text below. */}
+        <Strips key={replay}>
           {/* The one place the team's colour appears. `down`/`up`/`down` so the
               three read as one object catching light, not three copies of a bar. */}
-          <Strip gradient={stripGradient(team.color, "down")} />
-          <Strip gradient={stripGradient(team.color, "up")} />
-          <Strip gradient={stripGradient(team.color, "down")} />
+          <Strip gradient={stripGradient(team.color, "down")} start={stripAt} />
+          <Strip gradient={stripGradient(team.color, "up")} start={stripBt} />
+          <Strip gradient={stripGradient(team.color, "down")} start={stripCt} />
 
           {/* Centred over the strips below `lg`; from `lg` offset right of them,
               where it overhangs into the gap before the name.
@@ -112,43 +173,63 @@ export function PickHero({
             aria-hidden
             className="pointer-events-none absolute left-1/2 top-1/2 z-10 w-max -translate-x-1/2 -translate-y-1/2 lg:left-[18px] lg:translate-x-0"
           >
-            <TeamLogo teamId={teamId} size={50} className="md:hidden" />
-            <TeamLogo teamId={teamId} size={64} className="hidden md:block lg:hidden" />
-            <TeamLogo teamId={teamId} size={80} className="hidden lg:block" />
+            {/* The reveal goes on a span INSIDE this wrapper, never on the
+                wrapper itself. Those `-translate-*` classes compile to a
+                `transform`, and `blur-in` animates `transform` too — so the
+                keyframe would replace the centring for its whole 1250ms and
+                fling the logo to the strips' top-left corner before it snapped
+                back into place.
+
+                `block` rather than the default `inline-block`, so this span does
+                not sit on a baseline of its own: an inline-block would add a
+                second line box's descender inside the wrapper and lift the
+                `-translate-y-1/2` centring a couple of pixels. It renders no
+                width of its own either way, so the `w-max` above is still what
+                keeps preflight off the logo. */}
+            <BlurReveal start={logoAt} className="block">
+              <TeamLogo teamId={teamId} size={50} className="md:hidden" />
+              <TeamLogo teamId={teamId} size={64} className="hidden md:block lg:hidden" />
+              <TeamLogo teamId={teamId} size={80} className="hidden lg:block" />
+            </BlurReveal>
           </span>
         </Strips>
 
         <Identity>
-          <Name city={team.location}>{team.name}</Name>
+          <Name
+            city={team.location}
+            cityStart={cityAt}
+            name={team.name}
+            nameStart={nameAt}
+            replay={replay}
+          />
           <Rule />
           <Meta>
+            {/* The `<span>` around the matchup is load-bearing now that the
+                words animate separately. `Meta` is a flex row with `gap-1`, so
+                two bare word spans would become flex items in their own right —
+                the whitespace between them dropped (a flex container discards
+                whitespace-only text nodes) and the gutter set by `gap` instead.
+                Every wrapper below is doing the same job. */}
             <span>
-              {home ? "vs." : "@"} {opp?.name ?? "TBD"}
+              <BlurReveal text={matchup} start={matchupAt} replayKey={replay} />
             </span>
             <MetaDivider />
-            <LocalTime iso={game.kickoff} mode="date" />
+            {/* One piece each, not split into words: `LocalTime` rewrites its
+                own text in an effect once it knows the viewer's zone, so there
+                is nothing stable to split. */}
+            <BlurReveal start={dateAt} replayKey={replay}>
+              <LocalTime iso={game.kickoff} mode="date" />
+            </BlurReveal>
             <MetaDivider />
-            <LocalTime iso={game.kickoff} mode="clockzone" />
+            <BlurReveal start={timeAt} replayKey={replay}>
+              <LocalTime iso={game.kickoff} mode="clockzone" />
+            </BlurReveal>
           </Meta>
         </Identity>
       </PickRow>
 
       <LockColumn>
-        {kicked ? (
-          <p className="text-shell-ink">
-            This game has kicked off — your pick is now visible to the group.
-          </p>
-        ) : (
-          <>
-            <p className="text-shell-ink">Locks in {cd.label}</p>
-            <p className="text-shell-mute">
-              Only you can see this pick until the game kicks off
-            </p>
-          </>
-        )}
-        {practice ? (
-          <p className="text-shell-mute">Practice only — everyone resets for Week 1.</p>
-        ) : null}
+        <LockLines lines={lockLines} starts={lockAt} replay={replay} />
       </LockColumn>
     </Shell>
   );
@@ -173,19 +254,51 @@ function NoPickHero({
 }) {
   const cd = weekFinalKickoff ? countdown(weekFinalKickoff, now) : null;
 
+  const eyebrow = eyebrowFor(weekName);
+  const lockLines = [
+    ...(cd ? [ink(`Week locks in ${cd.label}`)] : []),
+    mute("Miss the final kickoff and it counts as a loss."),
+    ...(practice ? [mute(PRACTICE_LINE)] : []),
+  ];
+
+  /* Nothing else here can change — there is no team and no game — so the week
+     is the whole key. Stepping between an unpicked week and a picked one swaps
+     this component for `PickHero`, which React remounts on its own. */
+  const replay = replayFor(weekName, null, null, false);
+
+  /* The same sequence as the filled state minus the logo, the city and the
+     matchup: those last two render as invisible stand-ins holding their lines'
+     height, and an invisible word has nothing to reveal. The strips DO animate
+     — they are on screen, inert grey rather than absent. */
+  const [
+    eyebrowAt = 0,
+    stripAt = 0,
+    stripBt = 0,
+    stripCt = 0,
+    nameAt = 0,
+    ...lockAt
+  ] = cascadeStarts([
+    wordCount(eyebrow),
+    1,
+    1,
+    1,
+    wordCount(NO_PICK),
+    ...lockLines.map((line) => wordCount(line.text)),
+  ]);
+
   return (
-    <Shell weekName={weekName}>
+    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay}>
       <PickRow>
-        <Strips>
+        <Strips key={replay}>
           {/* Inert: no gradient, no logo. The strips are still here because
               their absence would move the headline. */}
-          <Strip />
-          <Strip />
-          <Strip />
+          <Strip start={stripAt} />
+          <Strip start={stripBt} />
+          <Strip start={stripCt} />
         </Strips>
 
         <Identity>
-          <Name>No Pick Made</Name>
+          <Name name={NO_PICK} nameStart={nameAt} replay={replay} />
           {/* No <Rule/> here: from `lg` it would be a hairline dividing the
               headline from empty space. The matchup below is `invisible` rather
               than absent because it holds that line's height, and so the
@@ -196,13 +309,84 @@ function NoPickHero({
       </PickRow>
 
       <LockColumn>
-        {cd ? <p className="text-shell-ink">Week locks in {cd.label}</p> : null}
-        <p className="text-shell-mute">Miss the final kickoff and it counts as a loss.</p>
-        {practice ? (
-          <p className="text-shell-mute">Practice only — everyone resets for Week 1.</p>
-        ) : null}
+        <LockLines lines={lockLines} starts={lockAt} replay={replay} />
       </LockColumn>
     </Shell>
+  );
+}
+
+// ── The reveal ───────────────────────────────────────────────────────────────
+//
+// Every piece of this module — the three colour strips, the mark, and each line
+// of text — fades in from blurred and slightly oversized, 40ms apart, reading
+// left to right and top to bottom. The arithmetic is in `ui/blur-reveal.ts`;
+// what lives here is the ORDER, and when the whole thing plays again.
+
+/** The headline of the empty state, named because its word count is counted. */
+const NO_PICK = "No Pick Made";
+
+/** Shared by both states, so the two cannot drift apart. */
+const PRACTICE_LINE = "Practice only — everyone resets for Week 1.";
+
+function eyebrowFor(weekName: string): string {
+  return `Your ${weekName} Pick`;
+}
+
+/** A lock-column line and the ink it takes. */
+type LockLine = { text: string; mute: boolean };
+const ink = (text: string): LockLine => ({ text, mute: false });
+const mute = (text: string): LockLine => ({ text, mute: true });
+
+/**
+ * The one value that decides when the module replays. It is shared by every
+ * piece rather than each keying on its own content, so a change replays the
+ * WHOLE cascade — the module re-forming, rather than a handful of unrelated
+ * animations firing while the rest of it sits still.
+ *
+ * Between them these four cover every way the content can change: a team tap
+ * (the team and its game, and with them the strips' colour, the mark, the
+ * matchup, the kickoff and the countdown), a week change (the week name, and
+ * usually the pick with it), and a game crossing kickoff mid-session, which
+ * swaps the lock column wholesale. Tapping the team that is already picked
+ * changes none of them, and correctly plays nothing.
+ *
+ * The countdown label needs no term of its own: `now` is memoized from the
+ * server's `nowIso` in `MyPicksClient` and never ticks, so the label only moves
+ * when the game does.
+ *
+ * Note what must NOT carry a key: `<PickHero>` itself, at its call site. Its
+ * root `<section>` is a direct `.stagger` child, so remounting it would replay
+ * `reveal-up` — a 12px lift of the whole block — on every single tap.
+ */
+function replayFor(
+  weekName: string,
+  teamId: TeamId | null,
+  gameId: string | null,
+  kicked: boolean,
+): string {
+  return `${weekName}|${teamId ?? "none"}|${gameId ?? "none"}|${kicked}`;
+}
+
+/** The lock column's lines, each revealed in turn. */
+function LockLines({
+  lines,
+  starts,
+  replay,
+}: {
+  lines: LockLine[];
+  starts: number[];
+  replay: string;
+}) {
+  return (
+    <>
+      {lines.map((line, i) => (
+        // Keyed on the text so a line that survives a rebuild is reconciled in
+        // place; the reveal inside restarts regardless, off `replay`.
+        <p key={line.text} className={line.mute ? "text-shell-mute" : "text-shell-ink"}>
+          <BlurReveal text={line.text} start={starts[i] ?? 0} replayKey={replay} />
+        </p>
+      ))}
+    </>
   );
 }
 
@@ -227,10 +411,24 @@ function NoPickHero({
  * exactly. A wrong number here shows up as a few pixels rather than as anything
  * obviously broken, so check the arithmetic before adjusting either by eye.
  */
-function Shell({ weekName, children }: { weekName: string; children: React.ReactNode }) {
+function Shell({
+  eyebrow,
+  start,
+  replay,
+  children,
+}: {
+  /** Built by the caller, not from `weekName` here, because the caller has to
+   *  count its words to lay out the rest of the cascade behind it. */
+  eyebrow: string;
+  start: number;
+  replay: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="space-y-2 py-10 lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12">
-      <Label className="lg:text-base lg:leading-[1.1]">Your {weekName} Pick</Label>
+      <Label className="lg:text-base lg:leading-[1.1]">
+        <BlurReveal text={eyebrow} start={start} replayKey={replay} />
+      </Label>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         {children}
       </div>
@@ -251,12 +449,26 @@ function Strips({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** One strip. No gradient means the empty state's inert grey. */
-function Strip({ gradient }: { gradient?: string }) {
+/** One strip. No gradient means the empty state's inert grey.
+ *
+ *  It carries the reveal itself rather than sitting inside a `<BlurReveal>`:
+ *  the strips are flex items of a `h-full` row, and an extra span between them
+ *  and `Strips` would take that row's sizing and leave the strip auto-height.
+ *  It has no transform classes of its own, so the keyframe's `scale` is free to
+ *  apply here — unlike the logo's wrapper next door. Its replay comes from the
+ *  key on `Strips`. */
+function Strip({ gradient, start }: { gradient?: string; start: number }) {
   return (
     <span
-      className={cn("h-full w-4 rounded-[4px] md:w-[18px] lg:w-5", !gradient && "bg-shell-dark")}
-      style={gradient ? { backgroundImage: gradient } : undefined}
+      className={cn(
+        "h-full w-4 rounded-[4px] md:w-[18px] lg:w-5",
+        BLUR_REVEAL_CLASS,
+        !gradient && "bg-shell-dark",
+      )}
+      style={{
+        animationDelay: `${revealDelay(start)}ms`,
+        ...(gradient ? { backgroundImage: gradient } : null),
+      }}
     />
   );
 }
@@ -280,18 +492,32 @@ function Identity({ children }: { children: React.ReactNode }) {
  * 44px at a 393px phone and shrinks below that rather than overflowing. Tracking
  * is in `em` so it stays proportional as the clamp bites.
  */
-function Name({ city, children }: { city?: string; children: React.ReactNode }) {
+function Name({
+  city,
+  cityStart = 0,
+  name,
+  nameStart,
+  replay,
+}: {
+  city?: string;
+  cityStart?: number;
+  name: string;
+  nameStart: number;
+  replay: string;
+}) {
   return (
     <div className="flex flex-col justify-center pt-2 lg:py-5">
       {city ? (
-        <Label>{city}</Label>
+        <Label>
+          <BlurReveal text={city} start={cityStart} replayKey={replay} />
+        </Label>
       ) : (
         // Holds the line the city would occupy, so "No Pick Made" sits where a
         // team name does.
         <Label className="invisible">&nbsp;</Label>
       )}
       <h1 className="max-w-full font-semibold leading-none tracking-[-0.04em] text-shell-ink text-[clamp(1.5rem,calc((100vw_-_96px)/6.75),2.75rem)] md:tracking-[-0.03em] md:text-[3.5rem] lg:tracking-[-0.025em] lg:text-[5rem]">
-        {children}
+        <BlurReveal text={name} start={nameStart} replayKey={replay} />
       </h1>
     </div>
   );
