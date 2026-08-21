@@ -18,6 +18,10 @@
 --   supabase/migrations/0011_admin_settings.sql
 --   supabase/migrations/0012_create_group_entry_deadline.sql (also folded into
 --     create_group below, for the same reason as 0005)
+--   supabase/migrations/0013_lock_membership_writes.sql (folded in: the
+--     "members insert self" policy is simply ABSENT below)
+--   supabase/migrations/0014_pick_consistency.sql (folded into the picks
+--     insert/update policies below — the game-consistency conjuncts)
 -- Edit those, not this file. Run once on a fresh project.
 -- ============================================================================
 
@@ -192,11 +196,12 @@ create policy "groups update by admin (unlocked)" on public.groups
   using (public.is_group_admin(id))
   with check (public.is_group_admin(id) and settings_locked_at is null);
 
--- group_members: read members of your own groups; insert only yourself.
+-- group_members: read members of your own groups. There is deliberately NO
+-- client INSERT/UPDATE/DELETE policy — membership is created only by the
+-- SECURITY DEFINER functions join_by_invite / create_group (which bypass RLS),
+-- so a direct anon-key insert cannot self-enroll, let alone as admin. See 0013.
 create policy "members read same group" on public.group_members
   for select to authenticated using (public.is_group_member(group_id));
-create policy "members insert self" on public.group_members
-  for insert to authenticated with check (user_id = auth.uid());
 
 -- games: read-only to all authenticated users; writes come from the service
 -- role (scheduled scorer), which bypasses RLS.
@@ -227,8 +232,16 @@ create policy "picks insert own before kickoff" on public.picks
     user_id = auth.uid()
     and public.is_group_member(group_id)
     and exists (
-      select 1 from public.games g
-      where g.id = picks.game_id and g.kickoff > now() and g.status = 'scheduled'
+      select 1
+      from public.games g
+      join public.groups gr on gr.id = picks.group_id
+      where g.id = picks.game_id
+        and g.kickoff > now()
+        and g.status = 'scheduled'
+        and g.week = picks.week
+        and g.season_type = picks.season_type
+        and g.season = gr.season
+        and picks.team_id in (g.home, g.away)
     )
   );
 
@@ -245,9 +258,18 @@ create policy "picks update own before kickoff" on public.picks
   )
   with check (
     user_id = auth.uid()
+    and public.is_group_member(group_id)
     and exists (
-      select 1 from public.games g
-      where g.id = picks.game_id and g.kickoff > now() and g.status = 'scheduled'
+      select 1
+      from public.games g
+      join public.groups gr on gr.id = picks.group_id
+      where g.id = picks.game_id
+        and g.kickoff > now()
+        and g.status = 'scheduled'
+        and g.week = picks.week
+        and g.season_type = picks.season_type
+        and g.season = gr.season
+        and picks.team_id in (g.home, g.away)
     )
   );
 
