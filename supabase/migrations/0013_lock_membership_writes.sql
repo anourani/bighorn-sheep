@@ -1,0 +1,42 @@
+-- Last Man Standing — remove the client-facing group_members INSERT policy.
+--
+-- 0001 shipped:
+--
+--   create policy "members insert self" on public.group_members
+--     for insert to authenticated with check (user_id = auth.uid());
+--
+-- Its only constraint is "the row is about me." role, the invite code and the
+-- entry window are all unchecked — and because the browser talks straight to
+-- PostgREST with the public anon key, this policy is reachable directly, without
+-- ever going through the app. So a signed-in user (anyone can mint an account via
+-- signInWithOtp) who knows a league's UUID — which ships in every member's page
+-- payload — can:
+--
+--   insert into public.group_members (group_id, user_id, role, status)
+--   values ('<their-league-uuid>', auth.uid(), 'admin', 'alive');
+--
+-- and become an ADMIN of that league, bypassing the invite entirely. That grants
+-- reading every member's phone (profile_private is admin-readable, 0008), toggling
+-- buy-in/paid flags, renaming the league, and editing the rules pre-lock.
+--
+-- The fix is to DROP the policy, not tighten it to role = 'player':
+--
+--   * Every LEGITIMATE membership insert already goes through a SECURITY DEFINER
+--     function — join_by_invite (0002) and create_group (0003/0005) — which
+--     BYPASSES RLS and hard-codes role ('player' / 'admin'). Neither depends on
+--     this policy. No client code inserts into group_members directly (verified:
+--     no `.insert("group_members")` anywhere in src/).
+--   * With RLS enabled and no INSERT policy, direct client inserts are denied by
+--     default — the desired end state.
+--   * Dropping (vs. role = 'player') also closes the invite-less self-join: a
+--     stranger could otherwise still enroll as a player in any league they had the
+--     UUID for, skipping the entry-window and invite-code checks join_by_invite
+--     enforces.
+--
+-- No UPDATE/DELETE policy exists on group_members (0001), so membership mutation
+-- was already definer-only; this closes the one remaining client write path.
+--
+-- APPLY TO PRODUCTION BY HAND — merging this deploys the code, not the database.
+-- Apply with:  supabase db push   (or paste into the SQL editor). Idempotent.
+
+drop policy if exists "members insert self" on public.group_members;
