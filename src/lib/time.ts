@@ -68,19 +68,37 @@ export function formatFull(iso: string, opts: FmtOpts = {}): string {
  * EST rather than picking up today's daylight offset.
  */
 export function formatLong(iso: string, opts: FmtOpts = {}): string {
+  return ordinalDate(iso, opts, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+/**
+ * "Wednesday, September" + an ordinal day, plus whatever `extra` asks for.
+ *
+ * The shared body of the two ordinal formatters. `timeZone` is spread LAST so
+ * `extra` cannot shadow it — a caller passing one would otherwise silently
+ * format in the wrong zone.
+ *
+ * A bad timestamp makes toLocaleDateString say "Invalid Date", but makes
+ * formatToParts THROW — and one unparseable kickoff should not take the whole
+ * picks page down with it. Same backstop reasoning as the unknown-team row.
+ */
+function ordinalDate(
+  iso: string,
+  opts: FmtOpts,
+  extra: Intl.DateTimeFormatOptions,
+): string {
   const d = new Date(iso);
-  // A bad timestamp makes toLocaleDateString say "Invalid Date", but makes
-  // formatToParts throw — and one unparseable kickoff should not take the whole
-  // picks page down with it. Same backstop reasoning as the unknown-team row.
   if (Number.isNaN(d.getTime())) return "";
 
   return new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
+    ...extra,
     timeZone: opts.timeZone,
   })
     .formatToParts(d)
@@ -144,7 +162,9 @@ export function formatMonthDayClock(iso: string, opts: FmtOpts = {}): string {
  * by ___ will be removed from the league". {@link formatLong} is the wrong tool
  * there: it appends an ordinal and a time ("Sunday, August 15th at 1:00 PM
  * EDT"), which is right for a kickoff and reads as false precision for a
- * money deadline.
+ * money deadline. {@link formatWeekdayDateOrdinal} is the one that DOES carry
+ * the ordinal, for the invite card — if you came here looking for "9th", that
+ * is the neighbour you want, and adding one here would break a test.
  *
  * en-US and "" on a bad value, for the same reasons as {@link formatMonthDayClock}.
  */
@@ -157,6 +177,28 @@ export function formatWeekdayDate(iso: string, opts: FmtOpts = {}): string {
     day: "numeric",
     timeZone: opts.timeZone,
   });
+}
+
+/**
+ * A date with its weekday and an ordinal day, no clock — "Wednesday, September
+ * 9th".
+ *
+ * The invite card's deadline line, where the date is the headline of the module
+ * and the kickoff time is not shown at all.
+ *
+ * A third formatter rather than an option on either neighbour, because both
+ * neighbours are deliberately what they are. {@link formatLong} appends the
+ * time and zone, which is right for a kickoff. {@link formatWeekdayDate} omits
+ * the ordinal ON PURPOSE — its docblock argues an ordinal reads as false
+ * precision on the buy-in card, and there is a test pinning that the two differ.
+ * So "just add an ordinal to formatWeekdayDate" breaks a guard written to catch
+ * exactly that edit.
+ *
+ * Shares {@link ordinalDate} with {@link formatLong}, so the two can only ever
+ * differ by the clock — there is a test asserting exactly that.
+ */
+export function formatWeekdayDateOrdinal(iso: string, opts: FmtOpts = {}): string {
+  return ordinalDate(iso, opts, {});
 }
 
 export function weekdayShort(iso: string, opts: FmtOpts = {}): string {

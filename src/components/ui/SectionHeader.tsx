@@ -17,8 +17,14 @@ import { cn } from "@/lib/cn";
  * mockup plainly shows a descending "g" in both "League" and "Standings" — i.e.
  * ordinary title case. Synthesising small caps from it renders "LEAGUE".
  *
- * Titles are Title Case, small words lowercase: "Practice Standings", "Grow the
- * Pool", "Who's In" — the last word is capitalised even when it is a preposition.
+ * Titles are Title Case, small words lowercase — "Practice Standings", and the
+ * "Grow the League" the invite module now draws for itself, where the last word
+ * is capitalised even when it is a preposition.
+ *
+ * Down to one caller: the practice empty-state on Standings. The invite module
+ * and the account page both want a heading with something sitting immediately
+ * beside it, which the `flex-1` on the `h2` below cannot do — it exists to push
+ * the `right` slot to the far edge of the row.
  */
 export function SectionHeader({
   title,

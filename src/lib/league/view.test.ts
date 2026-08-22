@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
 import type { Member, TeamRecord } from "./types";
 import {
+  countNoun,
   orderPickerTeams,
   rankMembers,
   statusLabel,
@@ -272,5 +273,20 @@ describe("statusLine", () => {
       primary: "44 survivors.",
       secondary: "0 deaths.",
     });
+  });
+});
+
+describe("countNoun", () => {
+  it("inflects on the number, not on the word", () => {
+    expect(countNoun(1, "member")).toBe("1 member");
+    expect(countNoun(27, "member")).toBe("27 members");
+  });
+
+  it("still pluralises at zero", () => {
+    expect(countNoun(0, "member")).toBe("0 members");
+  });
+
+  it("takes an explicit plural for words that do not just take an s", () => {
+    expect(countNoun(2, "entry", "entries")).toBe("2 entries");
   });
 });

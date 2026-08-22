@@ -6,7 +6,7 @@ import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
-import { InviteCta, WhosIn } from "@/components/group/WhosIn";
+import { InviteCta } from "@/components/group/InviteCta";
 import { StatusReport } from "@/components/app/StatusReport";
 import { buildGameIndex } from "@/lib/league/games";
 import { rankMembers, survivorCounts, type StatusLineInput } from "@/lib/league/view";
@@ -130,15 +130,18 @@ export function StandingsClient({ data }: { data: LeagueData }) {
        Moving them out changes the first-paint stagger not at all: both render
        null when closed, so neither ever occupied an :nth-child slot on load. */
     <>
-      {/* No `space-y-*` here any more. The redesign gives the first three blocks
-          a rhythm of their own (tiles → 20px → status report → 20/48px → table)
-          that a single uniform gap can't express, and `space-y-6`'s `> * + *`
-          selector outranks a child's own `mt-*` on specificity, so it can't be
-          overridden per child either. `stagger` stays: it keys the entrance
-          animation off direct children, and the count below is unchanged.
+      {/* No `space-y-*` here any more. The blocks below carry a rhythm a single
+          uniform gap can't express — tiles → 20px → status report, then 20/48px
+          to the table and 24/48 through the two blocks under it — and
+          `space-y-6`'s `> * + *` selector outranks a child's own `mt-*` on
+          specificity, so it can't be overridden per child either. `stagger`
+          stays: it keys the entrance animation off direct children, and the
+          count below is unchanged.
 
           The desktop 48 reads as 60 on screen because StatusReport carries its
-          own `lg:py-3`; the mockup measures the box, so the margin is 48. */}
+          own `lg:py-3`; the mockup measures the box, so the margin is 48. Note
+          the seam below the table measures a true 48 — nothing pads it — so the
+          two are equal as authored rather than as rendered. */}
       <div className="stagger">
         <LeagueDetails
           group={group}
@@ -152,7 +155,8 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             Phone: 20px below the tiles, no padding of its own. Desktop: 8px below
             them plus 12px of padding, which is the same 20px to the label — the
             padding earns its keep underneath, where it becomes 12 of the 60px
-            down to the "Standings" heading.
+            down to the standings table. (It measured to the "Standings" heading
+            until that heading went sr-only; the number is unchanged.)
 
             Only the vertical is ours. The shell's `main` supplies the horizontal
             inset that the survivor strip inside cancels with `-mx-4`. */}
@@ -161,12 +165,12 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
             <section className="mt-5 lg:mt-12">
-              <SectionHeader title="Practice Standings" />
-              <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
-                A real run-through, with nothing at stake — a wrong pick is counted here, but the
-                preseason can&rsquo;t knock you out. None of it carries over either: this table
-                disappears and everyone starts Week 1 with a clean sheet and all 32 teams available.
-              </p>
+              {/* sr-only, not absent. The redesign drops the visible heading
+                  above both tables, but a `<section>` with no heading at all
+                  falls out of the page's outline and heading-jump navigation
+                  stops reaching the table. Same trade `MyPicksClient` makes for
+                  the pick grid, where the week strip absorbed the visible one. */}
+              <h2 className="sr-only">Practice Standings</h2>
               <StandingsGrid
                 ranked={practiceRanked}
                 viewerId={data.viewer.id}
@@ -200,19 +204,21 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           )
         ) : (
           <section className="mt-5 lg:mt-12">
-            <SectionHeader title="Standings" />
-            <div className="mt-3">
-              <StandingsGrid
-                ranked={ranked}
-                viewerId={data.viewer.id}
-                currentWeek={currentWeek}
-                finalWeek={finalWeek}
-                rules={group.rules}
-                now={now}
-                gameForTeam={idx.gameForTeam}
-                hiddenPickUserIds={hiddenPickUserIds}
-              />
-            </div>
+            {/* See the practice branch above: heading kept for the outline,
+                hidden visually. The `mt-3` wrapper went with the visible
+                heading — it was the gap underneath it and had nothing left to
+                space away from. */}
+            <h2 className="sr-only">Standings</h2>
+            <StandingsGrid
+              ranked={ranked}
+              viewerId={data.viewer.id}
+              currentWeek={currentWeek}
+              finalWeek={finalWeek}
+              rules={group.rules}
+              now={now}
+              gameForTeam={idx.gameForTeam}
+              hiddenPickUserIds={hiddenPickUserIds}
+            />
 
             <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
               <LockIcon className="h-3.5 w-3.5" />
@@ -221,16 +227,43 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           </section>
         )}
 
-        {/* Wrapped rather than given a `className` prop: the mockups stop at the
-            table and say nothing about what follows, so these two keep the 24px
-            the old `space-y-6` gave them. */}
-        <div className="mt-6">
-          <WhosIn members={data.members} preseason={isPreseason} />
-        </div>
+        {/* Wrapped rather than given a `className` prop: `InviteCta` takes none,
+            and the seam belongs to the page rather than to the block.
 
-        <div className="mt-6">
-          <InviteCta group={group} appUrl={appUrl} now={now} />
-        </div>
+            24px on a phone, 48 from `lg` — the same step the status report takes
+            down to the table above, so the three blocks on this page sit on one
+            rhythm rather than the table's seam being the only wide one. The
+            phone keeps its tighter 24: this is the foot of a page that is
+            already long on a small screen.
+
+            The roster ("Who's In") used to sit between the table and this, on
+            the same seam. It was removed rather than hidden: every fact in it —
+            who is in the league, who is alive, who the commissioner is — is
+            already on the standings grid above or in the admin drawer. The
+            headcount beside the invite heading is not a partial restoration of
+            it: `LeagueDetails` prints "N in" and the status report "N joined."
+            on this same screen, both from this same `members.length`, so during
+            preseason the number is on the page three times. That is the
+            design's call, not an oversight to tidy up.
+
+            Rendered conditionally rather than always: `InviteCta` returns null
+            once entry closes, and a wrapper around null is still an empty div
+            carrying 24/48px of margin at the foot of the page. `isPreseason` is
+            the same predicate as the component's own `isEntryOpen` guard (both
+            read `entryClosesAt` against the server `now`), which stays — a
+            Server Action's surface is not gated by its call site. Dropping the
+            block also leaves `.stagger` with three children instead of four,
+            which changes no delay: the missing one was invisible anyway. */}
+        {isPreseason ? (
+          <div className="mt-6 lg:mt-12">
+            <InviteCta
+              group={group}
+              memberCount={data.members.length}
+              appUrl={appUrl}
+              now={now}
+            />
+          </div>
+        ) : null}
 
       </div>
 

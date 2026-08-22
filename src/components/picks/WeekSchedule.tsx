@@ -83,7 +83,7 @@ export function WeekSchedule({
   return (
     <fieldset
       ref={grid}
-      className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]"
+      className="grid gap-6 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]"
     >
       <legend className="sr-only">Pick your {weekName} team</legend>
       {games.map((game) => (

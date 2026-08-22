@@ -58,8 +58,8 @@ export interface RankedMemberView {
  *
  * Lives here, not in StandingsClient, because the landing page ranks the same
  * members and importing the client component to reach it would drag
- * AdminSettingsDrawer, LeagueRulesModal, LeagueDetails and WhosIn into a
- * signed-out page's bundle.
+ * AdminSettingsDrawer, LeagueRulesModal and LeagueDetails into a signed-out
+ * page's bundle.
  */
 export function rankMembers(members: readonly Member[]): RankedMemberView[] {
   const ordered = [...members].sort((a, b) => {
@@ -104,8 +104,14 @@ export interface StatusLine {
   secondary: string;
 }
 
-/** `1 survivor` / `2 survivors`, with the count. */
-function count(n: number, singular: string, plural = `${singular}s`): string {
+/**
+ * `1 survivor` / `2 survivors`, with the count.
+ *
+ * Exported for the invite card's "27 members", which is the same shape and has
+ * the same one failure mode — see `statusLine` below for the bug that made this
+ * a helper rather than a ternary at each call site.
+ */
+export function countNoun(n: number, singular: string, plural = `${singular}s`): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
@@ -128,8 +134,8 @@ export function statusLine(input: StatusLineInput): StatusLine {
   return {
     lead: `Week ${input.week}`,
     leadShort: `W${input.week}`,
-    primary: `${count(input.alive, "survivor")}.`,
-    secondary: `${count(input.eliminated, "death")}.`,
+    primary: `${countNoun(input.alive, "survivor")}.`,
+    secondary: `${countNoun(input.eliminated, "death")}.`,
   };
 }
 

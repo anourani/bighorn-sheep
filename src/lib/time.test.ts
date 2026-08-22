@@ -6,6 +6,7 @@ import {
   formatLong,
   formatMonthDayClock,
   formatWeekdayDate,
+  formatWeekdayDateOrdinal,
 } from "./time";
 
 /**
@@ -147,5 +148,56 @@ describe("formatWeekdayDate", () => {
 
   it("returns empty on an unparseable timestamp", () => {
     expect(formatWeekdayDate("")).toBe("");
+  });
+});
+
+describe("formatWeekdayDateOrdinal", () => {
+  it("gives the weekday and an ordinal date with no clock", () => {
+    expect(formatWeekdayDateOrdinal(KICKOFF, NY)).toBe("Sunday, September 13th");
+  });
+
+  it("suffixes days correctly, including the 11-13 exceptions", () => {
+    const on = (day: string) =>
+      formatWeekdayDateOrdinal(`2026-09-${day}T16:00:00Z`, { timeZone: "UTC" });
+
+    expect(on("01")).toBe("Tuesday, September 1st");
+    expect(on("02")).toBe("Wednesday, September 2nd");
+    expect(on("03")).toBe("Thursday, September 3rd");
+    expect(on("04")).toBe("Friday, September 4th");
+    expect(on("11")).toBe("Friday, September 11th");
+    expect(on("12")).toBe("Saturday, September 12th");
+    expect(on("13")).toBe("Sunday, September 13th");
+    expect(on("21")).toBe("Monday, September 21st");
+    expect(on("22")).toBe("Tuesday, September 22nd");
+    expect(on("23")).toBe("Wednesday, September 23rd");
+    expect(on("30")).toBe("Wednesday, September 30th");
+  });
+
+  it("resolves in the given zone, so a late kickoff can read as the day before", () => {
+    // 00:20 UTC on the 10th is still the evening of the 9th in New York — and
+    // the invite card shows only the date, so this is the whole difference the
+    // reader sees when LocalTime swaps zones after mount.
+    expect(formatWeekdayDateOrdinal("2026-09-10T00:20:00Z", NY)).toBe("Wednesday, September 9th");
+    expect(formatWeekdayDateOrdinal("2026-09-10T00:20:00Z", { timeZone: "UTC" })).toBe("Thursday, September 10th");
+  });
+
+  // The strongest single assertion here, and what pins the shared `ordinalDate`
+  // body: the two formatters may only ever differ by the clock.
+  it("is formatLong with the clock removed", () => {
+    expect(formatWeekdayDateOrdinal(KICKOFF, NY)).toBe(
+      norm(formatLong(KICKOFF, NY)).split(" at ")[0],
+    );
+  });
+
+  it("differs from formatWeekdayDate, which drops the ordinal on purpose", () => {
+    expect(formatWeekdayDateOrdinal(KICKOFF, NY)).not.toBe(formatWeekdayDate(KICKOFF, NY));
+  });
+
+  it("differs from formatLong, which also carries the time", () => {
+    expect(formatWeekdayDateOrdinal(KICKOFF, NY)).not.toBe(norm(formatLong(KICKOFF, NY)));
+  });
+
+  it("returns empty on an unparseable timestamp rather than throwing", () => {
+    expect(formatWeekdayDateOrdinal("not a date")).toBe("");
   });
 });

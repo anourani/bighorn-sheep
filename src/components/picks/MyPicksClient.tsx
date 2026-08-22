@@ -343,7 +343,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
 
       <PickHero
         weekName={viewName}
-        practice={viewingPractice}
         teamId={pickTeam}
         game={pickGame}
         now={now}
