@@ -81,10 +81,16 @@ const config: Config = {
         // replaces Tailwind's built-in neutral-50..950 scale. (Safe either way
         // today — no neutral-*/zinc-*/stone-* class exists in src/ — but the
         // trap is worth not setting.)
+        //
+        // `mute` / `soft` / `faint` are NOT a monotonic scale, and the names do
+        // not order them: `soft` #6A6A6A is the DARKEST of the three, `mute`
+        // #757575 next, `faint` #858585 the lightest. Read the hex, not the name.
         shell: {
           ink: "#1E1E1E", // app name, league name, "Week 6", chevron
           mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
           soft: "#6A6A6A", // unused since "15 deaths." moved to `mute` in the mock-up
+          faint: "#858585", // the spec's tertiary text — an unselected filter option
+          disabled: "#BABABA", // an inert control's text: PickFilters' Sort on Matchups
           line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
           dark: "#A5ACAF", // the spec's "border-dark" — the picks hero's inert strips
           alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
