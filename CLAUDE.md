@@ -314,8 +314,9 @@ message. `MoreSection.tsx` used `??` and had exactly this bug latent in it.
 server (`open` starts false), but `InviteCta` is on `/app/standings`, which
 builds as `ƒ` — server-rendered on demand. Reading `window` in its render body
 would break the server pass. A handler only ever runs in the browser, and nothing
-renders the link itself (the card shows `group.inviteCode`), so there is no
-hydration concern either.
+renders the link itself, so there is no hydration concern either. (That last
+clause used to read "the card shows `group.inviteCode`" — it no longer does. The
+code is revealed only when the clipboard write throws.)
 
 ---
 
@@ -547,6 +548,52 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The invite card is the "Grow the League" module, and it carries a photo.**
+  `InviteCta.tsx` (was `WhosIn.tsx`, which also held the deleted roster) is now a
+  heading with the headcount beside it over a white 12px-radius card: the
+  league's sheep photo, one sentence, the entry deadline set at 24px, and a
+  black "Copy Link" button. Desktop is one 968px row with a 133px square; below
+  `lg` it stacks with a full-bleed square. Six things are load-bearing:
+  - **The photo lives at `public/icons/grow-the-league.webp` and the `/icons/`
+    part is not a filing preference.** The service worker's runtime cache accepts
+    only `/_next/static/` and `/icons/`, so art anywhere else refetches on every
+    load and is missing offline — the rule `public/icons/animals/README.md`
+    already states. It is deliberately NOT in that route's `SHELL` precache
+    array: `addAll` is atomic, so one wrong path there kills the whole precache,
+    which is a poor trade for a below-the-fold photo.
+    `src/components/group/invite-asset.test.ts` pins the path, the file's
+    existence and the reference from the component, because a missing file 404s
+    into the `bg-shell-line` grey square and nothing in the browser says a word.
+  - **`shrink-0` on that image is the load-bearing class, and `max-w-none` is
+    not.** The text column is `lg:flex-1` (`flex-basis: 0`, so zero shrink
+    weight), which means every pixel of overflow would otherwise come out of the
+    photo. `max-w-none` is prophylaxis and was MEASURED not to bind — preflight's
+    cap resolves against the card's 942px content box — so unlike `PickHero` and
+    `AppHeader`, where the same class fixed a real 50-drawn-at-28 bug, here it
+    only stops one starting.
+  - **`time.ts` now has three weekday-date formatters and they differ by
+    millimetres.** `formatLong` = ordinal + clock + zone (kickoffs);
+    `formatWeekdayDate` = no ordinal, no clock (the buy-in deadline, where an
+    ordinal reads as false precision); `formatWeekdayDateOrdinal` = ordinal, no
+    clock (this card). The first and third share one private `ordinalDate` body
+    so they can only ever differ by the clock, and there is a test asserting
+    exactly that. Adding an ordinal to the middle one breaks a test written to
+    catch that edit.
+  - **Dropping the time means the CALENDAR DAY can change at hydration.**
+    `LocalTime` ships US-Eastern and swaps to the reader's zone after mount, so a
+    Thursday-night kickoff reads as Friday in Tokyo — a date change rather than a
+    clock change, because the clock is no longer on screen. `formatDate` already
+    behaved this way and has a test pinning it.
+  - **The button carries no `aria-label`, on purpose.** One would override the
+    children, so the Copied/Copy Link swap — the whole confirmation — would never
+    be announced; and "Copy invite link" does not contain the visible "Copy Link"
+    as a substring, which fails WCAG 2.5.3 Label in Name for voice control.
+    `MoreSection.tsx` still has both bugs on the same label.
+  - **The headcount beside the heading is the THIRD copy of that number on the
+    page.** `LeagueDetails` prints "N in" and the status report "N joined.", both
+    off the same `members.length`. That is the design's call. It is also why
+    deleting the roster lost nothing: the count was never unique to it.
 
 - **The preseason practice round no longer eliminates anyone.** A losing practice
   pick is counted and shown; only the regular season ends a run. It used to work the

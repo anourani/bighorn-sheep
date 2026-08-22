@@ -10,6 +10,7 @@ import {
   formatLong,
   formatMonthDayClock,
   formatWeekdayDate,
+  formatWeekdayDateOrdinal,
 } from "@/lib/time";
 
 type Mode =
@@ -20,7 +21,8 @@ type Mode =
   | "full"
   | "long"
   | "monthdayclock"
-  | "weekdaydate";
+  | "weekdaydate"
+  | "weekdayordinal";
 
 function format(iso: string, mode: Mode, timeZone?: string): string {
   const opts = { timeZone };
@@ -31,6 +33,7 @@ function format(iso: string, mode: Mode, timeZone?: string): string {
   if (mode === "long") return formatLong(iso, opts);
   if (mode === "monthdayclock") return formatMonthDayClock(iso, opts);
   if (mode === "weekdaydate") return formatWeekdayDate(iso, opts);
+  if (mode === "weekdayordinal") return formatWeekdayDateOrdinal(iso, opts);
   return formatDayClock(iso, opts);
 }
 

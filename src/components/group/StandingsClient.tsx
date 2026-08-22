@@ -239,10 +239,31 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             The roster ("Who's In") used to sit between the table and this, on
             the same seam. It was removed rather than hidden: every fact in it —
             who is in the league, who is alive, who the commissioner is — is
-            already on the standings grid above or in the admin drawer. */}
-        <div className="mt-6 lg:mt-12">
-          <InviteCta group={group} appUrl={appUrl} now={now} />
-        </div>
+            already on the standings grid above or in the admin drawer. The
+            headcount beside the invite heading is not a partial restoration of
+            it: `LeagueDetails` prints "N in" and the status report "N joined."
+            on this same screen, both from this same `members.length`, so during
+            preseason the number is on the page three times. That is the
+            design's call, not an oversight to tidy up.
+
+            Rendered conditionally rather than always: `InviteCta` returns null
+            once entry closes, and a wrapper around null is still an empty div
+            carrying 24/48px of margin at the foot of the page. `isPreseason` is
+            the same predicate as the component's own `isEntryOpen` guard (both
+            read `entryClosesAt` against the server `now`), which stays — a
+            Server Action's surface is not gated by its call site. Dropping the
+            block also leaves `.stagger` with three children instead of four,
+            which changes no delay: the missing one was invisible anyway. */}
+        {isPreseason ? (
+          <div className="mt-6 lg:mt-12">
+            <InviteCta
+              group={group}
+              memberCount={data.members.length}
+              appUrl={appUrl}
+              now={now}
+            />
+          </div>
+        ) : null}
 
       </div>
 
