@@ -4,7 +4,11 @@ import { AccountClient } from "@/components/account/AccountClient";
 
 export default async function AccountPage() {
   const account = await loadAccount();
-  if (!account) redirect("/login");
+  // `/`, matching what middleware already does for a signed-out visitor on any
+  // /app route — this is the defence-in-depth copy of that rule, for the window
+  // where a session dies between middleware's check and this one, so the two
+  // must not disagree about where such a visitor belongs.
+  if (!account) redirect("/");
 
   // The Admin Control Center row opens `AdminSettingsDrawer`, which needs the
   // league's full roster — and `loadAccount` deliberately doesn't carry one

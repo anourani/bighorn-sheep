@@ -176,6 +176,11 @@ const config: Config = {
       },
       borderRadius: {
         card: "16px",
+        // The design system's `radius/medium`, named after it rather than after
+        // a surface, because that is how the design refers to it. NOT `md`:
+        // Tailwind already ships `rounded-md` at 6px and `WeekStrip` uses it, so
+        // redefining that key would silently resize a control on the pick page.
+        medium: "12px",
         control: "8px",
         pill: "9999px",
       },

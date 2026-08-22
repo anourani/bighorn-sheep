@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/errors";
 import { verifyErrorReason } from "@/lib/auth-callback";
@@ -8,7 +9,7 @@ import { formatDisplayName } from "@/lib/league/name";
 import { Panel } from "@/components/ui/Panel";
 import { Label } from "@/components/ui/Label";
 import { Button } from "@/components/ui/Button";
-import { LoginHero, LoginStepHero } from "@/components/auth/LoginHero";
+import { LoginHero } from "@/components/auth/LoginHero";
 import { MailIcon, InfoIcon, CheckIcon, UsersIcon } from "@/components/icons";
 
 /** One email field drives everything; the step reflects what we learned about it. */
@@ -60,8 +61,10 @@ type Preview =
  * drift: the `/login` route (where invite links and the auth callback's
  * `?error=` bounces land) and the landing header's Log In modal.
  *
- * On the `/login` route it owns its hero too, because which hero is right
- * depends on `step` — see `LoginHero.tsx`. The modal gets none.
+ * On the `/login` route it owns its hero too — one hero, held steady across
+ * every step, with only its eyebrow keyed to whether an invite code is present.
+ * See `LoginHero.tsx` for why that is worth a component rather than markup on
+ * the page. The modal gets none.
  *
  * The URL params arrive as **props**, never via `useSearchParams()`. That hook
  * forces a `<Suspense>` boundary onto whatever route contains it, and the modal
@@ -334,7 +337,7 @@ export function LoginFlow({
           </p>
         ) : null}
 
-        <Button type="submit" variant="primary" block size="lg" className="mt-4" disabled={!firstValid || submitting}>
+        <Button type="submit" variant="dark" block size="lg" className="mt-4" disabled={!firstValid || submitting}>
           {submitting ? "Sending…" : "Create my account"}
         </Button>
 
@@ -372,7 +375,7 @@ export function LoginFlow({
           </p>
         ) : null}
 
-        <Button type="submit" variant="primary" block size="lg" className="mt-4" disabled={!emailValid || submitting}>
+        <Button type="submit" variant="dark" block size="lg" className="mt-4" disabled={!emailValid || submitting}>
           <MailIcon />
           {submitting ? "Checking…" : "Continue"}
         </Button>
@@ -384,93 +387,120 @@ export function LoginFlow({
       </form>
     );
 
-  // The interim steps — link sent, and the new player's name — trade the full
-  // hero for the headline-only one. `name` is only ever reached with a valid
-  // invite (see `handleEmailContinue`); `sent` is not, so a returning player
-  // arriving straight from `/login` gets a headline about their inbox rather
-  // than an invitation they weren't sent.
+  // ONE hero, at every step. It keys off `invite` — a fact fixed for the whole
+  // visit — and never off `step`, which changes underneath the reader. The old
+  // pair swapped headers partway through a single invite and could contradict
+  // the card below it outright; `LoginHero.tsx` has the full account.
   const hero =
-    variant !== "page" ? null : step === "sent" || step === "name" ? (
-      <LoginStepHero
-        headline={invite ? "You're Invited to the League" : "Check Your Inbox"}
-      />
-    ) : (
-      <LoginHero />
+    variant !== "page" ? null : (
+      <LoginHero eyebrow={invite ? "Your invitation to" : "Welcome to"} />
     );
 
   return (
     <>
       {hero}
 
-      {/* Callback error banner */}
-      {shownError && ERROR_COPY[shownError] ? (
-        <div className="mb-4 flex items-start gap-2.5 rounded-card border border-out/30 bg-out-wash px-4 py-3 text-sm text-[#8A2C2C]">
-          <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{ERROR_COPY[shownError]}</span>
-        </div>
-      ) : null}
+      {/* The card column. `max-w-app` and the gutter live HERE rather than on the
+          page, because the hero and the cards are deliberately different widths:
+          the design runs a 64px headline wider than the 480px stack it sits
+          above, so `/login`'s `main` holds the wider measure and this re-narrows
+          everything below the hero. 480 less `px-5` is the same 440px column the
+          cards had when the page carried both — they have not moved a pixel.
 
-      {/* Invite banner */}
-      {invite ? <InviteBanner invite={invite} preview={preview} /> : null}
+          `w-full` is not optional: a `max-w-*` block inside a `flex-col` page
+          would otherwise shrink to its content. The gutter is page-only because
+          `Modal` already supplies `px-card`, and the 480px cap is simply inert
+          inside a modal narrower than that — so one tree serves both variants. */}
+      <div className={cn("mx-auto w-full max-w-app", variant === "page" && "px-5")}>
+        {/* Callback error banner */}
+        {shownError && ERROR_COPY[shownError] ? (
+          <div className="mb-4 flex items-start gap-2.5 rounded-card border border-out/30 bg-out-wash px-4 py-3 text-sm text-[#8A2C2C]">
+            <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{ERROR_COPY[shownError]}</span>
+          </div>
+        ) : null}
 
-      {/* The card. `Modal` is already a white card with its own padding, so the
-          modal variant would otherwise be a box inside a box. */}
-      {variant === "page" ? (
-        <Panel tone="light" className="p-card">
-          {card}
-        </Panel>
-      ) : (
-        card
-      )}
+        {/* Invite banner */}
+        {invite ? <InviteBanner invite={invite} preview={preview} /> : null}
+
+        {/* The card. `Modal` is already a white card with its own padding, so the
+            modal variant would otherwise be a box inside a box. */}
+        {variant === "page" ? (
+          <Panel tone="light" className="p-card">
+            {card}
+          </Panel>
+        ) : (
+          card
+        )}
+      </div>
     </>
   );
 }
 
+/**
+ * Which league this invite is for — the design's "League-line item".
+ *
+ * A recessive grey card in the page's own hairline, not the orange notice it
+ * replaced. The orange was doing two jobs at once: announcing an invitation
+ * (which the hero above now says, at 64px) and colouring the one league fact on
+ * screen as if it were a warning. Stripped of the first job, it only had to name
+ * the league — so it is typeset rather than decorated, and the accent is spent
+ * on the CTA instead.
+ *
+ * The fill is what separates it from the form below: #F3F3F3 against the login
+ * card's white, so the thing you READ sits back and the thing you FILL IN comes
+ * forward. `fill-soft` is that colour to the byte, so no new token was needed.
+ *
+ * The geometry is the design's: `radius/medium` (12px) on a #D9D9D9 hairline, a
+ * uniform 16px of padding, 8px between an 18px #757575 line and the 28px #1E1E1E
+ * name — and none of those four step at a breakpoint, because the phone and
+ * desktop frames specify them identically. Trackings are bound to the em, the
+ * design stating -0.18px at 18px and -1.12px at 28px: the same -0.01em and
+ * -0.04em on both artboards.
+ *
+ * Three states share one shell so the page does not jump as the RPC lands:
+ * pending prints the raw code where the name goes and is replaced in place, and
+ * only `invalid` changes colour, because a code that matches nothing is the one
+ * case where "you're invited" would be a lie.
+ */
 function InviteBanner({ invite, preview }: { invite: string; preview: Preview }) {
   const invalid = preview.status === "invalid";
   return (
     <div
-      className={
-        invalid
-          ? "mb-4 flex items-center gap-3 rounded-card border border-out/30 bg-out-wash px-4 py-3"
-          : "mb-4 flex items-center gap-3 rounded-card border border-brand/40 bg-brand-wash px-4 py-3"
-      }
+      className={cn(
+        "mb-4 flex flex-col items-center gap-2 rounded-medium border p-4 text-center",
+        invalid ? "border-out/30 bg-out-wash" : "border-shell-line bg-fill-soft",
+      )}
     >
-      <div
-        className={
-          invalid
-            ? "grid h-9 w-9 shrink-0 place-items-center rounded-control bg-out text-white"
-            : "grid h-9 w-9 shrink-0 place-items-center rounded-control bg-brand-sheen text-white"
-        }
-      >
-        {invalid ? <InfoIcon className="h-4 w-4" /> : <UsersIcon className="h-4 w-4" />}
-      </div>
-      <div className="min-w-0">
-        {invalid ? (
-          <>
-            <Label className="text-[#8A2C2C]">Invite not found</Label>
-            <p className="text-sm text-ink">
-              Code <span className="font-mono font-semibold">{invite}</span> doesn&apos;t match a league.
-            </p>
-          </>
-        ) : preview.status === "found" ? (
-          <>
-            <Label className="text-[#8A4A24]">You&apos;re invited</Label>
-            <p className="text-sm text-ink">
-              Joining <span className="font-semibold">{preview.name}</span> ·{" "}
-              {preview.memberCount} {preview.memberCount === 1 ? "player" : "players"} ·{" "}
-              {preview.entryOpen ? "entry open" : "entry closed"}
-            </p>
-          </>
-        ) : (
-          <>
-            <Label className="text-[#8A4A24]">You&apos;re invited</Label>
-            <p className="text-sm text-ink">
-              Joining league <span className="font-mono font-semibold">{invite}</span> after you sign in.
-            </p>
-          </>
+      <p
+        className={cn(
+          "w-full text-lg font-semibold leading-[1.2] tracking-[-0.01em]",
+          invalid ? "text-[#8A2C2C]" : "text-shell-mute",
         )}
-      </div>
+      >
+        {invalid
+          ? "That invite code didn't match a league"
+          : "You've been invited to join the league"}
+      </p>
+      <p
+        className={cn(
+          "w-full text-[28px] font-semibold leading-[1.2] tracking-[-0.04em] text-shell-ink",
+          // The code is a machine string wherever it stands in for a name.
+          preview.status !== "found" && "font-mono text-2xl",
+        )}
+      >
+        {preview.status === "found" ? preview.name : invite}
+      </p>
+      {/* Not in the design, which draws the open-entry case only — but entry
+          closing is what makes the form below refuse, and `handleEmailContinue`
+          otherwise reports it only after the reader has typed their address and
+          pressed Continue. Say it before they spend the effort. */}
+      {preview.status === "found" && !preview.entryOpen ? (
+        <p className="flex items-center gap-1.5 text-sm text-[#8A2C2C]">
+          <InfoIcon className="h-4 w-4 shrink-0" />
+          Entry has closed for this league.
+        </p>
+      ) : null}
     </div>
   );
 }
