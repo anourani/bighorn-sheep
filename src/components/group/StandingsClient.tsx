@@ -131,8 +131,8 @@ export function StandingsClient({ data }: { data: LeagueData }) {
        null when closed, so neither ever occupied an :nth-child slot on load. */
     <>
       {/* No `space-y-*` here any more. The blocks below carry a rhythm a single
-          uniform gap can't express — tiles → 20px → status report, then 20/48px
-          to the table and 24/48 through the two blocks under it — and
+          uniform gap can't express — tiles → 64px → status report, then
+          16/48px to the table and 56/48 to the invite module under it — and
           `space-y-6`'s `> * + *` selector outranks a child's own `mt-*` on
           specificity, so it can't be overridden per child either. `stagger`
           stays: it keys the entrance animation off direct children, and the
@@ -152,19 +152,19 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         />
 
         {/* The two mockups space this differently and both are reproduced here.
-            Phone: 20px below the tiles, no padding of its own. Desktop: 8px below
-            them plus 12px of padding, which is the same 20px to the label — the
-            padding earns its keep underneath, where it becomes 12 of the 60px
-            down to the standings table. (It measured to the "Standings" heading
-            until that heading went sr-only; the number is unchanged.)
+            Phone: 64px below the tiles, no padding of its own. Desktop: 8px
+            below them plus 12px of padding of its own — the padding earns its
+            keep underneath, where it becomes 12 of the 60px down to the
+            standings table. (It measured to the "Standings" heading until that
+            heading went sr-only; the number is unchanged.)
 
             Only the vertical is ours. The shell's `main` supplies the horizontal
             inset that the survivor strip inside cancels with `-mx-4`. */}
-        <StatusReport status={status} className="mt-5 lg:mt-2 lg:py-3" />
+        <StatusReport status={status} className="mt-16 lg:mt-2 lg:py-3" />
 
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
-            <section className="mt-5 lg:mt-12">
+            <section className="mt-4 lg:mt-12">
               {/* sr-only, not absent. The redesign drops the visible heading
                   above both tables, but a `<section>` with no heading at all
                   falls out of the page's outline and heading-jump navigation
@@ -193,7 +193,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              * Two quite different causes land here, which is why `practiceEnabled`
              * exists as its own flag rather than being inferred from the null.
              */
-            <section className="mt-5 lg:mt-12">
+            <section className="mt-4 lg:mt-12">
               <SectionHeader title="Practice Standings" />
               <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
                 {practiceEnabled
@@ -203,7 +203,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             </section>
           )
         ) : (
-          <section className="mt-5 lg:mt-12">
+          <section className="mt-4 lg:mt-12">
             {/* See the practice branch above: heading kept for the outline,
                 hidden visually. The `mt-3` wrapper went with the visible
                 heading — it was the gap underneath it and had nothing left to
@@ -230,11 +230,25 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         {/* Wrapped rather than given a `className` prop: `InviteCta` takes none,
             and the seam belongs to the page rather than to the block.
 
-            24px on a phone, 48 from `lg` — the same step the status report takes
-            down to the table above, so the three blocks on this page sit on one
-            rhythm rather than the table's seam being the only wide one. The
-            phone keeps its tighter 24: this is the foot of a page that is
-            already long on a small screen.
+            56px on a phone, 48 from `lg`. Desktop is unchanged, and it still
+            matches the status report's own step down to the table above — both
+            are 48 at that width, so the seam below the table is not the only
+            wide one there. Below `lg` the two diverge instead: the status
+            report's own step down to the table dropped to 16 in this same pass,
+            while this one grew to 56 — a reversal, since 24 used to be the
+            tighter of this seam's own two values (24 against a desktop 48) and
+            56 is now the wider one (56 against the same 48). That traces back to
+            Figma, where this is not a gap between the table and the module at
+            all — the Grow-the-League Module's own node carries `pt-[56px]`
+            directly, with zero space of its own above it in the frame. The
+            wrapper here keeps owning the number anyway, for the same reason
+            this is wrapped rather than passed as a prop in the first place: the
+            seam belongs to the page, not to `InviteCta`, so the 56 lives on
+            this `mt-*` rather than moving onto the component's own root. It is
+            now the second-widest gap on the page below `lg`, behind only the
+            status report's own 64px lead-in, and reads less like the page
+            tapering off and more like the invite module being marked out as
+            its own distinct final block.
 
             The roster ("Who's In") used to sit between the table and this, on
             the same seam. It was removed rather than hidden: every fact in it —
@@ -248,14 +262,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
 
             Rendered conditionally rather than always: `InviteCta` returns null
             once entry closes, and a wrapper around null is still an empty div
-            carrying 24/48px of margin at the foot of the page. `isPreseason` is
+            carrying 56/48px of margin at the foot of the page. `isPreseason` is
             the same predicate as the component's own `isEntryOpen` guard (both
             read `entryClosesAt` against the server `now`), which stays — a
             Server Action's surface is not gated by its call site. Dropping the
             block also leaves `.stagger` with three children instead of four,
             which changes no delay: the missing one was invisible anyway. */}
         {isPreseason ? (
-          <div className="mt-6 lg:mt-12">
+          <div className="mt-14 lg:mt-12">
             <InviteCta
               group={group}
               memberCount={data.members.length}
