@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <!-- The MASKABLE variant of icon.svg: same art, squared off (no corner
+         radius, so it fills whatever shape the platform masks it into) with the
+         shield scaled down into the safe zone. Source for maskable-512.png and
+         apple-touch-icon.png; icon.svg is the source for the round-cornered
+         set. Keep the two in step.
+
+         The three hexes mirror `bg-brand-sheen` and `accent`. Static art cannot
+         import src/lib/accent.ts, so they are hand-copies — src/lib/palette.test.ts
+         fails if ACCENT moves without them. -->
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#FC5F38"/>
+        <stop offset="1" stop-color="#FD7C5C"/>
+      </linearGradient>
+    </defs>
+    <rect width="512" height="512" fill="url(#g)"/>
+    
+    <g transform="translate(95,95) scale(13.42)" fill="none">
+      <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"
+            fill="#ffffff"/>
+      <path d="M9.3 11.9l1.9 1.9L15 9.8" stroke="#FC5F38"
+            stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>

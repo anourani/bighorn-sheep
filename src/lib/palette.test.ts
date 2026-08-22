@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import tailwind from "../../tailwind.config";
 import { ACCENT as SOURCE } from "./accent";
@@ -106,15 +106,24 @@ describe("the accent is a single source of truth", () => {
 });
 
 /**
- * The two static assets that carry the accent by hand. Neither can import
- * `accent.ts` — one is JSON the browser reads, the other is artwork — so this
- * is the only thing standing between a hue change and an app icon left on the
- * previous one. Nothing in the browser would report that: the icon simply looks
- * right, in the wrong colour, on the home screen.
+ * The static assets that carry the accent by hand. None of them can import
+ * `accent.ts` — one is JSON the browser reads, two are artwork — so this is the
+ * only thing standing between a hue change and an icon left on the previous
+ * one. Nothing in a browser would report that: the icon simply looks right, in
+ * the wrong colour, in the tab and on the home screen.
+ *
+ * The five rasters are RENDERED from the two SVGs, so guarding the sources
+ * covers them — but only if whoever changes ACCENT re-renders. The failure
+ * messages name them for that reason; see `src/lib/accent.ts` for the recipe.
  */
 describe("the hand-copied static assets stay in step", () => {
   const PUBLIC_DIR = new URL("../../public/", import.meta.url);
   const read = (path: string) => readFileSync(new URL(path, PUBLIC_DIR), "utf8");
+
+  const RENDERED_FROM: Record<string, string[]> = {
+    "icons/icon.svg": ["favicon.ico", "icons/icon-192.png", "icons/icon-512.png"],
+    "icons/icon-maskable.svg": ["icons/maskable-512.png", "icons/apple-touch-icon.png"],
+  };
 
   it("keeps the PWA theme colour on the accent", () => {
     expect(
@@ -124,12 +133,30 @@ describe("the hand-copied static assets stay in step", () => {
     ).toContain(`"theme_color": "${ACCENT}"`);
   });
 
-  it("keeps the app icon's gradient and tick on the accent", () => {
-    // Stop 0 and the tick are the accent; stop 1 mirrors `brand-sheen`'s light
-    // stop, which is `brand.DEFAULT`.
-    const svg = read("icons/icon.svg");
-    expect(svg).toContain(`stop-color="${ACCENT}"`);
-    expect(svg).toContain(`stop-color="${hex("brand", "DEFAULT")}"`);
-    expect(svg).toContain(`stroke="${ACCENT}"`);
+  // Both SVGs carry the same three hexes: the gradient's two stops (the accent
+  // and `brand.DEFAULT`, mirroring `bg-brand-sheen`) and the tick, which is the
+  // accent straight. `icon.svg` is round-cornered and is the browser favicon;
+  // `icon-maskable.svg` is squared off for a maskable icon's safe zone.
+  for (const [svg, rasters] of Object.entries(RENDERED_FROM)) {
+    it(`keeps ${svg} on the accent`, () => {
+      const source = read(svg);
+      const stale =
+        `public/${svg} has drifted off ACCENT. Re-render it and the ${rasters.length} ` +
+        `raster(s) built from it (${rasters.join(", ")}) — see src/lib/accent.ts.`;
+      expect(source, stale).toContain(`stop-color="${ACCENT}"`);
+      expect(source, stale).toContain(`stop-color="${hex("brand", "DEFAULT")}"`);
+      expect(source, stale).toContain(`stroke="${ACCENT}"`);
+    });
+  }
+
+  it("still ships every raster those SVGs are rendered into", () => {
+    // Not a colour check — no PNG decoder here, and adding a dependency for one
+    // is not worth it. This catches the other half: a rename or a deletion that
+    // leaves `layout.tsx` / the manifest pointing at a 404, which degrades to a
+    // blank favicon and an install with no icon, silently.
+    for (const file of Object.values(RENDERED_FROM).flat()) {
+      const size = statSync(new URL(file, PUBLIC_DIR)).size;
+      expect(size, `public/${file} is missing or empty`).toBeGreaterThan(512);
+    }
   });
 });
