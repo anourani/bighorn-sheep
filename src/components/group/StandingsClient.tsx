@@ -155,8 +155,8 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             Phone: 64px below the tiles, no padding of its own. Desktop: 8px
             below them plus 12px of padding of its own — the padding earns its
             keep underneath, where it becomes 12 of the 60px down to the
-            standings table. (It measured to the "Standings" heading back when
-            there was a visible one; the number outlived it and is unchanged.)
+            standings table. (It measured to the "Standings" heading until that
+            heading went sr-only; the number is unchanged.)
 
             Only the vertical is ours. The shell's `main` supplies the horizontal
             inset that the survivor strip inside cancels with `-mx-4`. */}
@@ -165,6 +165,12 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
             <section className="mt-4 lg:mt-12">
+              {/* sr-only, not absent. The redesign drops the visible heading
+                  above both tables, but a `<section>` with no heading at all
+                  falls out of the page's outline and heading-jump navigation
+                  stops reaching the table. Same trade `MyPicksClient` makes for
+                  the pick grid, where the week strip absorbed the visible one. */}
+              <h2 className="sr-only">Practice Standings</h2>
               <StandingsGrid
                 ranked={practiceRanked}
                 viewerId={data.viewer.id}
@@ -198,6 +204,11 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           )
         ) : (
           <section className="mt-4 lg:mt-12">
+            {/* See the practice branch above: heading kept for the outline,
+                hidden visually. The `mt-3` wrapper went with the visible
+                heading — it was the gap underneath it and had nothing left to
+                space away from. */}
+            <h2 className="sr-only">Standings</h2>
             <StandingsGrid
               ranked={ranked}
               viewerId={data.viewer.id}
