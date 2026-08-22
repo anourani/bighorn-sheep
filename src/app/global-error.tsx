@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
+import { ACCENT } from "@/lib/accent";
 
 /**
  * Last-resort boundary: catches throws from the root layout itself, which the
@@ -87,7 +88,7 @@ export default function GlobalError({
                 padding: "0 18px",
                 border: "none",
                 borderRadius: "10px",
-                background: "#ED7B46",
+                background: ACCENT,
                 color: "#FFFFFF",
                 fontSize: "14px",
                 fontWeight: 500,

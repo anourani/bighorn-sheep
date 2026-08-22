@@ -41,7 +41,7 @@ export function SurvivorStrip({
         <span key={`out-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-line" />
       ))}
       {Array.from({ length: alive }).map((_, i) => (
-        <span key={`alive-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-shell-alive" />
+        <span key={`alive-${i}`} className="h-10 min-w-0 flex-1 rounded-[2px] bg-accent" />
       ))}
     </div>
   );

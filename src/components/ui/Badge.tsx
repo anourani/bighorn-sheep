@@ -23,7 +23,7 @@ export type PillVariant =
 const variantClasses: Record<PillVariant, string> = {
   alive: "bg-alive-wash text-[#2C7A52]",
   out: "bg-out-wash text-[#A5293A]",
-  live: "bg-live-wash text-[#C2551F]",
+  live: "bg-live-wash text-accent-ink",
   final: "bg-[#EEF1F6] text-[#3A4356]",
   hidden: "bg-[#EEF1F6] text-[#3A4356]",
   strike: "bg-strike-wash text-[#9A6B18]",
@@ -32,7 +32,7 @@ const variantClasses: Record<PillVariant, string> = {
   push: "bg-[#E7EEF6] text-[#2C5788]",
   pending: "bg-[#EEF1F6] text-[#4B5563]",
   neutral: "bg-[#EEF1F6] text-ink-soft",
-  brand: "bg-brand-wash text-[#B85C2B]",
+  brand: "bg-brand-wash text-accent-ink",
 };
 
 export function Pill({

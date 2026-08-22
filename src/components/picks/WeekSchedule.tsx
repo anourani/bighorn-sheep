@@ -281,7 +281,7 @@ function TeamOption({
           <span
             className={cn(
               "truncate text-sm font-semibold",
-              selected ? "text-[#B85C2B]" : used ? "text-ink-mute line-through" : "text-ink",
+              selected ? "text-accent-ink" : used ? "text-ink-mute line-through" : "text-ink",
             )}
           >
             {team.name}

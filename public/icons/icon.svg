@@ -1,8 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <!-- The two gradient stops mirror `bg-brand-sheen` and the tick takes the
+         accent itself. Static art cannot import `src/lib/accent.ts`, so these
+         three hexes are hand-copies: change ACCENT and they must be updated in
+         the same commit, or the app icon stays on the previous hue. -->
     <defs>
       <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#ED7B46"/>
-        <stop offset="1" stop-color="#E48B59"/>
+        <stop offset="0" stop-color="#FC5F38"/>
+        <stop offset="1" stop-color="#FD7C5C"/>
       </linearGradient>
     </defs>
     <rect width="512" height="512" rx="112" fill="url(#g)"/>
@@ -10,7 +14,7 @@
     <g transform="translate(52,52) scale(17)" fill="none">
       <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"
             fill="#ffffff"/>
-      <path d="M9.3 11.9l1.9 1.9L15 9.8" stroke="#ED7B46"
+      <path d="M9.3 11.9l1.9 1.9L15 9.8" stroke="#FC5F38"
             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
   </svg>

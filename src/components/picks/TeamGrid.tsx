@@ -168,7 +168,7 @@ function TeamCard({
         // the moment you picked it. A ring is a box-shadow: same 2px stroke just
         // inside the same radius, and it costs no layout at all.
         selected
-          ? "rounded-control bg-white ring-2 ring-inset ring-selected"
+          ? "rounded-control bg-accent-faded ring-2 ring-inset ring-accent"
           : outOfPlay
             ? "rounded-sm bg-fill-soft/50 opacity-70"
             : "rounded-sm bg-fill-soft",

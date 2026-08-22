@@ -549,6 +549,62 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **There is one accent colour now, it lives in `src/lib/accent.ts`, and every
+  orange in the app is derived from it.** `ACCENT` is `#FC5F38` (the design
+  library's `Text Color/Accent`); `tailwind.config.ts` imports it and mixes the
+  rest. Before this there were four unrelated oranges and a green all meaning
+  "this is lit / this is yours" — `shell.alive` #FC855C (survivor bars),
+  `selected` #0C6F28 (week chip + picked card), `brand.strong` #ED7B46 (focus
+  rings, sheen, `live`), plus #B85C2B / #C2551F / #8A4A24 hand-typed in four
+  component files — so there was no single place to retune the accent and no way
+  to tell which orange a surface had picked. Seven things:
+  - **`accent` and `accent-faded` are the tokens to reach for.** `faded` is the
+    accent with an alpha byte on it (`#FC5F3814`, 0x14 = 20/255 ≈ 8%), written
+    as an 8-digit hex rather than as `accent/8` so it is a NAME that tracks the
+    accent for free. It is the picked team card's fill; `accent` is its ring,
+    the week strip's selected chip and the survivor bars.
+  - **`brand.*` survived as the accent's light ramp, and is not a second
+    palette.** `brand.strong` IS `accent`; `DEFAULT`/`soft`/`wash` are build-time
+    mixes toward white. The 39 `brand-*` call sites were deliberately NOT
+    renamed: they already resolve to accent-derived values, and Tailwind's JIT
+    compiles a class it cannot find to *nothing*, so a bulk rename is a
+    silent-blank-page risk with no payoff.
+  - **Those tints are opaque mixes, never `accent/NN`.** `StandingsGrid` paints
+    its STICKY name column with `bg-brand-wash`; a translucent value there lets
+    the scrolling rows show through it.
+  - **The mixing happens in the config at build time, not in CSS.** Every token
+    stays a plain hex, which is what keeps Tailwind's `/opacity` modifier
+    working on them (27 call sites rely on it) and costs no `color-mix` support
+    caveat.
+  - **`src/lib/accent.ts` is a LEAF — one export, no imports — because the
+    Tailwind config imports it** and that config is loaded by PostCSS at build
+    time. Don't add dependencies to it. It is separate from the config precisely
+    so `layout.tsx` (PWA `themeColor`) and `global-error.tsx` (inline styles
+    Tailwind never reaches) can read the same value.
+  - **Two static assets carry the hex BY HAND and cannot import it** —
+    `public/manifest.webmanifest` and `public/icons/icon.svg`.
+    `src/lib/palette.test.ts` fails on exactly those two if `ACCENT` moves
+    without them, which is the whole reason it reads files off disk. Every other
+    assertion in it compares tokens to EACH OTHER, so switching the accent stays
+    a one-line change that leaves the suite green apart from that reminder.
+  - **The week strip's `-lit` numerals are gone.** `result.win-lit` /
+    `loss-lit` (#7BE170 / #F8787A) existed only to survive the chip's dark green
+    fill; on `accent` they measure 1.88:1 and 1.16:1 — worse than the dark pair,
+    not better. `CORNER_INK`'s `on` column now takes `result.win` / `result.loss`
+    in both states. The whole ladder, measured, so nobody re-derives it:
+
+    | corner numeral | on the old green | `-lit` on accent | shipped, on accent |
+    | --- | --- | --- | --- |
+    | win | 3.87:1 | 1.88:1 | **2.06:1** |
+    | loss | 2.40:1 | 1.16:1 | **2.42:1** |
+    | undecided (white) | 6.33:1 | — | **3.07:1** |
+
+    So loss is at parity with what it always was, win is the one that gave
+    ground, and the 28px week numeral clears AA-Large (3:1) at 3.07:1 while the
+    10px corner numerals clear nothing. That is a KNOWN accepted state, chosen
+    deliberately with the numbers on the table — not an oversight, and not
+    something to "fix" by putting the `-lit` pair back, which is strictly worse.
+
 - **The invite card is the "Grow the League" module, and it carries a photo.**
   `InviteCta.tsx` (was `WhosIn.tsx`, which also held the deleted roster) is now a
   heading with the headcount beside it over a white 12px-radius card: the

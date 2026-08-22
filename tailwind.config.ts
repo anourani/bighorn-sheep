@@ -1,9 +1,30 @@
 import type { Config } from "tailwindcss";
 
 /**
+ * THE BRAND ACCENT, and the whole ramp below is derived from it.
+ *
+ * Change `ACCENT` and the status report's survivor bars, the week strip's
+ * selected chip, the picked team card, every focus ring, the primary button's
+ * sheen, the `live` status hue, the text selection colour and the PWA theme
+ * colour all move together. That is the entire point of it: "the accent" used
+ * to be three unrelated hexes under three unrelated names (`shell.alive`
+ * #FC855C, `selected` #0C6F28, `brand.strong` #ED7B46) plus four hand-typed
+ * ones in component files, so there was no single place to retune it and no way
+ * to tell which orange a given surface had picked.
+ *
+ * It lives in `src/lib/accent.ts` rather than here because `layout.tsx` and
+ * `global-error.tsx` need it too and cannot reach a Tailwind token — the first
+ * is a metadata string, the second ships inline styles Tailwind never sees.
+ * That module is a LEAF (one export, no imports), which is what makes it safe
+ * for a config PostCSS loads at build time to depend on.
+ */
+import { ACCENT } from "./src/lib/accent";
+
+/**
  * Design tokens transcribed from the "Ecosystem Visualization" direction.
  *
- *   primary  #E48B59   secondary/accent #ED7B46
+ *   accent   #FC5F38   (one const — see `ACCENT` above; the whole orange
+ *                       ramp, the sheen and the glow are derived from it)
  *   bg       #FDFDFD   surface (slate panels) #53617A
  *   text     #111827 / #4B5563   border #D8DADF
  *   type     Inter throughout — display, body, and semibold labels/metrics
@@ -16,6 +37,47 @@ import type { Config } from "tailwindcss";
  * Status hues (alive / out / live / strike) extend the base palette; they are
  * deliberately desaturated so they read as instrumentation, not decoration.
  */
+/**
+ * Tint / shade / alpha helpers, so the ramp below is DERIVED rather than
+ * transcribed. A transcribed ramp is exactly what made the old palette
+ * impossible to retune: change the hue and the wash, the soft and the ink all
+ * stay behind on the previous one, and nothing anywhere says so.
+ *
+ * Deliberately NOT `hexToRgb` from `src/components/picks/pick-hero.ts`, which
+ * does the same arithmetic. This file is loaded by PostCSS at build time, and
+ * that module pulls in app types and the team table with it — where
+ * `src/lib/accent.ts` above is a bare string constant with no imports at all.
+ *
+ * `mix` is sRGB, matching `color-mix(in srgb, …)`. It runs here at build time
+ * rather than in CSS so every token stays a plain hex — which is what keeps
+ * Tailwind's `/opacity` modifier working on them (27 call sites in `src/` rely
+ * on it) and costs no browser-support caveat.
+ */
+const rgb = (hex: string): [number, number, number] => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+];
+
+const mix = (hex: string, toward: string, amount: number): string => {
+  // Destructured rather than `.map`ped over the pair: `noUncheckedIndexedAccess`
+  // widens `to[i]` to `number | undefined`, and a tuple destructure does not.
+  const [r, g, b] = rgb(hex);
+  const [tr, tg, tb] = rgb(toward);
+  const step = (from: number, to: number) =>
+    Math.round(from + (to - from) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${step(r, tr)}${step(g, tg)}${step(b, tb)}`.toUpperCase();
+};
+
+/** Toward white — the light end of the ramp (`soft`, `wash`). */
+const tint = (hex: string, amount: number) => mix(hex, "#FFFFFF", amount);
+/** Toward black — accent-coloured ink dark enough to read on one of the washes. */
+const shade = (hex: string, amount: number) => mix(hex, "#000000", amount);
+/** For the `rgba()` slots inside `boxShadow`, which take no hex. */
+const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(",")},${a})`;
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
   theme: {
@@ -30,12 +92,50 @@ const config: Config = {
         // see in the viewport. Changing one without the other seams on overscroll.
         bg: "#FDFDFD",
         line: "#D8DADF",
-        // Warm accent — the single lit element on every panel.
+        /**
+         * THE accent, by its canonical name. Everything else orange in this
+         * file is derived from `ACCENT`; this is the token to reach for in new
+         * code, and the one the three "this is lit / this is yours" surfaces
+         * use — the survivor bars, the week strip's selected chip and the
+         * picked team card.
+         *
+         * `faded` is the design library's `Text Color/Accent faded`, whose
+         * value is literally the accent with an alpha byte on it (`#fc5f3814`,
+         * 0x14 = 20/255 ≈ 8%). Written as an 8-digit hex rather than as
+         * `accent/8` so it is a TOKEN — one name to reuse, and it tracks the
+         * accent for free.
+         *
+         * `ink` is the accent taken dark enough to set type in. It replaces
+         * four hand-typed near-duplicates (#B85C2B, #C2551F, #8A4A24) that
+         * lived in component files and followed no token at all — the exact
+         * drift this whole block exists to end. 4.9:1 on `brand.wash`.
+         */
+        accent: {
+          DEFAULT: ACCENT, // #FC5F38
+          faded: `${ACCENT}14`, // #FC5F3814
+          ink: shade(ACCENT, 0.3), // #B04327
+        },
+        /**
+         * The accent's light ramp. Retained under the `brand` name because 39
+         * call sites across login, buttons, modals and badges already spell it
+         * that way, and Tailwind's JIT compiles a class it cannot find to
+         * NOTHING — so a bulk rename is a silent-failure risk with no payoff
+         * once the values already follow `ACCENT`.
+         *
+         * `strong` IS the accent. `DEFAULT` is a lighter step that exists so
+         * `brand-sheen` stays an actual gradient rather than collapsing to a
+         * flat fill.
+         *
+         * These are opaque mixes, NOT `accent/NN` opacity modifiers, and that
+         * is load-bearing: `StandingsGrid` paints its STICKY name column with
+         * `bg-brand-wash`, and a translucent value there lets the scrolling
+         * rows show through it.
+         */
         brand: {
-          DEFAULT: "#E48B59",
-          strong: "#ED7B46",
-          soft: "#F4B48C",
-          wash: "#FCEDE3",
+          DEFAULT: tint(ACCENT, 0.18), // #FD7C5C — the sheen's light stop
+          strong: ACCENT, // #FC5F38 — the accent itself
+          soft: tint(ACCENT, 0.42), // #FDA28C
+          wash: tint(ACCENT, 0.87), // #FFEAE5
         },
         // Near-black / grey ink used on the light page.
         ink: {
@@ -93,26 +193,15 @@ const config: Config = {
           disabled: "#BABABA", // an inert control's text: PickFilters' Sort on Matchups
           line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
           dark: "#A5ACAF", // the spec's "border-dark" — the picks hero's inert strips
-          alive: "#FC855C", // living cells — not `brand`, and not the green `alive` hue
+          // `alive` (#FC855C) lived here — the survivor strip's living cells,
+          // a fourth orange that was neither `brand` nor the green `alive`
+          // hue. It is `accent` now, which is what it always meant.
         },
-        // "This is your selection", across both pick surfaces: the week strip's
-        // filled chip (`bg-selected`) and the team grid's picked card
-        // (`ring-selected`). One token for one meaning — a second green 6% away
-        // with no difference of meaning is exactly the near-duplicate family the
-        // comments here keep arguing against.
-        //
-        // No longer a bespoke hue. It takes the design library's
-        // `Semantic/Success Green - Dark`, which is the same value `result.win`
-        // below carries — deliberately, since the strip's filled chip and its
-        // "you got through this week" ink are the same green by design. They
-        // never co-occur on one chip: a selected chip's numeral takes the `-lit`
-        // pair instead.
-        //
-        // Still deliberately NOT the `alive` hue below, despite both being
-        // green: that family is desaturated on purpose so it reads as
-        // instrumentation, and this is the opposite job — the one saturated,
-        // decorative fill in the app, marking where you are on the week axis.
-        selected: "#0C6F28",
+        // `selected` (#0C6F28) lived here — "this is your selection" on both
+        // pick surfaces. Both now take `accent`, which carries that meaning for
+        // the whole app rather than for these two components, so a token whose
+        // only job was to be shared by them has nothing left to say.
+
         /**
          * The account page's buy-in badge, from the mock-ups' semantic ramp.
          * Each pair is a fill and the hairline that sits on it.
@@ -140,10 +229,12 @@ const config: Config = {
          * their own right. Retuning one family must not silently repaint the
          * other.
          *
-         * The `-lit` pair has no counterpart anywhere else: the same two
-         * semantics lifted to survive on the SELECTED chip's dark green fill,
-         * where the dark pair would read as a smudge. Figma calls them
-         * "-Extra Light".
+         * There was a `-lit` pair here (#7BE170 / #F8787A, Figma's "-Extra
+         * Light"), lifted to survive on the selected chip's dark GREEN fill.
+         * That fill is `accent` now, and on orange those two read at 1.9:1 and
+         * 1.2:1 — the lighter pair is worse there than the dark one, not
+         * better. The chip takes `win` / `loss` in both states, so nothing
+         * referenced `-lit` any more.
          *
          * Not folded into `alive` / `out` either: those are the standings
          * palette's desaturated hues, painted as a wash BEHIND a logo. These are
@@ -151,14 +242,14 @@ const config: Config = {
          */
         result: {
           win: "#0C6F28", // Semantic/Success Green - Dark
-          "win-lit": "#7BE170", // Semantic/Success Green - Extra Light
           loss: "#A71930", // Semantic/Error Red - Dark
-          "loss-lit": "#F8787A", // Semantic/Error Red - Extra Light
         },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },
         out: { DEFAULT: "#D1495B", wash: "#F7E3E6" },
-        live: { DEFAULT: "#ED7B46", wash: "#FBE9DE" },
+        // `live` was #ED7B46 — `brand.strong`'s exact value under a second
+        // name, so it was always the accent and now says so.
+        live: { DEFAULT: ACCENT, wash: tint(ACCENT, 0.85) }, // #FC5F38 / #FFE7E1
         strike: { DEFAULT: "#E0A458", wash: "#FBF0DD" },
       },
       fontFamily: {
@@ -204,11 +295,15 @@ const config: Config = {
         panel: "0 1px 2px rgba(17,24,39,0.04), 0 18px 40px -24px rgba(17,24,39,0.45)",
         "panel-sm": "0 1px 2px rgba(17,24,39,0.05), 0 8px 20px -14px rgba(17,24,39,0.35)",
         lift: "0 1px 2px rgba(17,24,39,0.06), 0 24px 48px -20px rgba(17,24,39,0.5)",
-        glow: "0 0 0 1px rgba(237,123,70,0.35), 0 8px 28px -10px rgba(237,123,70,0.45)",
+        glow: `0 0 0 1px ${alpha(ACCENT, 0.35)}, 0 8px 28px -10px ${alpha(ACCENT, 0.45)}`,
         inset: "inset 0 1px 0 rgba(255,255,255,0.06)",
       },
       backgroundImage: {
-        "brand-sheen": "linear-gradient(135deg, #ED7B46 0%, #E48B59 100%)",
+        // Both stops off `ACCENT`, so the primary button and the app mark
+        // follow a hue change too. The lighter stop is `brand.DEFAULT` — same
+        // mix, restated rather than imported, because `theme()` is not
+        // available this early in the config object.
+        "brand-sheen": `linear-gradient(135deg, ${ACCENT} 0%, ${tint(ACCENT, 0.18)} 100%)`,
         "surface-sheen": "linear-gradient(160deg, #5E6C86 0%, #53617A 42%, #454F63 100%)",
         grid: "linear-gradient(rgba(108,122,147,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(108,122,147,0.14) 1px, transparent 1px)",
       },
