@@ -18,6 +18,7 @@ import {
   type GridSort,
 } from "@/components/picks/team-grid";
 import { useCardReveal } from "@/components/picks/use-card-reveal";
+import { REVEAL_CLIP } from "@/components/picks/card-reveal";
 import type { UsedPick } from "@/components/picks/WeekSchedule";
 
 /**
@@ -84,7 +85,14 @@ export function TeamGrid({
   // `groupUnavailable: false`, which skips the actionable-first branch, so the
   // comparator reads records and kickoffs only and the order does not move when
   // you tap a team. Keying on `cards` would rebuild 32 timelines on every pick.
-  useCardReveal(grid, { weekKey: weekKey(weekRef), orderKey: order.join(",") });
+  // `REVEAL_CLIP`: the curtain wipe, unchanged. The matchup layout next door
+  // takes `REVEAL_FADE` instead — a card here is a 155px square of logo whose
+  // whole read is its edge landing, and a blur costs it that.
+  useCardReveal(grid, {
+    reveal: REVEAL_CLIP,
+    weekKey: weekKey(weekRef),
+    orderKey: order.join(","),
+  });
 
   // A week with no schedule is not 32 byes — say so, exactly as the matchup
   // layout does, rather than drawing a full grid of dead cards.
@@ -143,9 +151,10 @@ function TeamCard({
   return (
     <label
       className={cn(
-        // `reveal-clip` is both the masked start state and how `useCardReveal`
-        // finds the cards — a direct child of the grid div above.
-        "reveal-clip",
+        // Both the masked start state and how `useCardReveal` finds the cards —
+        // a direct child of the grid div above. Read off the same object the
+        // hook was handed, so the class and the styles cannot disagree.
+        REVEAL_CLIP.className,
         "group relative flex aspect-square flex-col items-center px-1 pb-2 lg:px-2 lg:pb-3",
         "transition-[background-color,border-radius,box-shadow] duration-150",
         selectable ? "cursor-pointer" : "cursor-not-allowed",

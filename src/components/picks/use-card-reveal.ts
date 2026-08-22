@@ -6,17 +6,14 @@ import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { CustomEase } from "gsap/CustomEase";
 import {
-  REPLAY_IN_DURATION,
-  REPLAY_OUT_DURATION,
-  REVEAL_DURATION,
+  FADE_EASE,
   REVEAL_EASE,
-  REVEAL_HIDDEN,
-  REVEAL_SHOWN,
   REVEAL_START,
   columnCountFrom,
   countColumnsByRow,
   planCardReveal,
   revealDelay,
+  type Reveal,
 } from "@/components/picks/card-reveal";
 
 /**
@@ -43,11 +40,20 @@ gsap.registerPlugin(useGSAP, ScrollTrigger, CustomEase);
  */
 CustomEase.create(REVEAL_EASE, "M0,0 C0.4,0 0.2,1 1,1");
 
-/** Every card the reveal drives carries this class; see `globals.css`. */
-const CARD_SELECTOR = ":scope > .reveal-clip";
+/**
+ * `cubic-bezier(0.16, 1, 0.3, 1)`, by the same identity — the curve
+ * `tailwind.config.ts` gives the `blur-in` token, so the matchup cards ease
+ * exactly as the hero's own pieces do rather than merely near them.
+ */
+CustomEase.create(FADE_EASE, "M0,0 C0.16,1 0.3,1 1,1");
 
-function cardsIn(grid: HTMLElement): HTMLElement[] {
-  return Array.from(grid.querySelectorAll<HTMLElement>(CARD_SELECTOR));
+/**
+ * The cards are the grid's direct children carrying the reveal's own class; see
+ * `globals.css`, and `Reveal` in `card-reveal.ts` for why that class arrives
+ * alongside the styles rather than being spelled out at the call site.
+ */
+function cardsIn(grid: HTMLElement, reveal: Reveal): HTMLElement[] {
+  return Array.from(grid.querySelectorAll<HTMLElement>(`:scope > .${reveal.className}`));
 }
 
 function prefersReducedMotion(): boolean {
@@ -65,22 +71,39 @@ function prefersReducedMotion(): boolean {
  * formatting context lives on its anonymous content box. Measured in Chromium
  * at 393px and 1280px, not assumed. So the row-top count is not a defensive
  * fallback that never runs; it is what the matchup layout uses every time.
+ *
+ * `offsetTop` and not `getBoundingClientRect().top`, and that is load-bearing
+ * now that a reveal can start at `scale(1.04)`. A rect is the TRANSFORMED box,
+ * so an armed card reports a top ~2% of its height above a revealed one — about
+ * 3px, which is outside `countColumnsByRow`'s 1px tolerance. Any rebuild that
+ * lands mid-cascade, with some of the first row revealed and some not, would
+ * truncate the run and answer 1 column for a grid drawing three, collapsing that
+ * rebuild's stagger. `offsetTop` is layout-derived, so no transform reaches it,
+ * and every card shares the `relative` shell as its offset parent. It retires
+ * the `.stagger`-translate caveat in `countColumnsByRow`'s note too — that 12px
+ * never touched a relative comparison, but it does not touch this one at all.
  */
 function readColumns(grid: HTMLElement, cards: readonly HTMLElement[]): number {
   const declared = columnCountFrom(getComputedStyle(grid).gridTemplateColumns);
   if (declared > 0) return declared;
-  return countColumnsByRow(cards.map((card) => card.getBoundingClientRect().top));
+  return countColumnsByRow(cards.map((card) => card.offsetTop));
 }
 
 /**
- * The staggered clip-path reveal shared by both pick surfaces: each card wipes
- * upward from its own bottom edge as its row nears the bottom of the viewport,
- * and un-wipes if you scroll back up past that line.
+ * The staggered scroll reveal shared by both pick surfaces: each card arrives as
+ * its row nears the bottom of the viewport, a tenth of a second behind the card
+ * to its left, once.
+ *
+ * WHAT arriving looks like is the caller's — `REVEAL_CLIP` wipes a mask upward
+ * from the card's own bottom edge (`TeamGrid`), `REVEAL_FADE` resolves it out of
+ * a blur (`WeekSchedule`, matching the pick module above it). WHEN it happens is
+ * this hook's, and is identical for both.
  *
  * One hook rather than one per surface, because `TeamGrid` and `WeekSchedule`
- * are the same problem twice and a rule about how a card reveals should be
+ * are the same problem twice and a rule about when a card reveals should be
  * written once — the same argument `MyPicksClient` already makes for handing
- * both layouts the same derived pickability values.
+ * both layouts the same derived pickability values. Every branch below reads the
+ * `Reveal` and none of them tests which one it got.
  *
  * Cards are found by class under the grid rather than by walking `.children`,
  * and that is not fussiness: in `WeekSchedule` the grid element IS the
@@ -96,8 +119,11 @@ function readColumns(grid: HTMLElement, cards: readonly HTMLElement[]): number {
  * it. `planCardReveal` in `card-reveal.ts` owns the three-way decision, and the
  * one exception is a week change — see there.
  *
- * @param gridRef   The element carrying `display: grid`. Its direct
- *                  `.reveal-clip` children are the cards.
+ * @param gridRef   The element carrying `display: grid`. Its direct children
+ *                  carrying `reveal.className` are the cards.
+ * @param reveal    Which reveal, whole — see `Reveal` in `card-reveal.ts`. The
+ *                  card's class comes off this same object, so the two cannot
+ *                  drift apart.
  * @param weekKey   Changes only when the viewed week changes. This is the ONE
  *                  thing that makes a card animate a second time.
  * @param orderKey  Changes when the rendered ORDER or MEMBERSHIP of the cards
@@ -109,7 +135,7 @@ function readColumns(grid: HTMLElement, cards: readonly HTMLElement[]): number {
  */
 export function useCardReveal(
   gridRef: RefObject<HTMLElement | null>,
-  { weekKey, orderKey }: { weekKey: string; orderKey: string },
+  { reveal, weekKey, orderKey }: { reveal: Reveal; weekKey: string; orderKey: string },
 ) {
   // Bumped only when a resize actually changes the column count, which is what
   // forces a rebuild with the new cascade. The value itself is never read.
@@ -131,16 +157,33 @@ export function useCardReveal(
       const grid = gridRef.current;
       if (!grid) return;
 
-      const cards = cardsIn(grid);
-      if (cards.length === 0) return;
+      const cards = cardsIn(grid, reveal);
+      if (cards.length === 0) {
+        // The silent failure this hook has always had one way to reach and now
+        // has two: move the class off the direct child, or hand a surface one
+        // reveal's class and the other's styles, and the query finds nothing,
+        // this returns before writing a style, and `globals.css` leaves every
+        // card at its invisible start state. Nothing throws; typecheck and the
+        // suite stay green; the page is simply blank where the grid was. A grid
+        // with children but no cards is never legitimate, so say so — stripped
+        // from the production bundle, which is why it can be this chatty.
+        if (process.env.NODE_ENV !== "production" && grid.children.length > 1) {
+          console.warn(
+            `[useCardReveal] ${grid.children.length} children under the grid but no ".${reveal.className}" cards. ` +
+              "The class must be on the grid's DIRECT children and must match the reveal passed in, " +
+              "or they stay at their start state and never appear.",
+          );
+        }
+        return;
+      }
 
       // The global reduced-motion rule in globals.css only zeroes CSS animation
       // and transition durations; GSAP writes inline styles on every rAF tick
       // and has to opt out itself, exactly as `WeekStrip`'s programmatic scroll
-      // does. The `.reveal-clip` rule already unmasks these cards under
-      // `reduce` — this is what keeps them unmasked if that rule ever moves.
+      // does. The start-state rules already resolve these cards under `reduce` —
+      // this is what keeps them resolved if one of those rules ever moves.
       if (prefersReducedMotion()) {
-        gsap.set(cards, { clipPath: REVEAL_SHOWN });
+        gsap.set(cards, reveal.shown);
         return;
       }
 
@@ -182,7 +225,7 @@ export function useCardReveal(
           // rebuild, `once` retires each trigger only as its card passes the
           // trigger's `end`, so some outlive the wipe — measured at 2 to 11
           // still live across the four widths.)
-          gsap.set(card, { clipPath: REVEAL_SHOWN });
+          gsap.set(card, reveal.shown);
           return;
         }
 
@@ -202,11 +245,11 @@ export function useCardReveal(
             // reversing a tween reverses its easing curve as well, which is the
             // same argument `tailwind.config.ts` makes for `drawer-down` being
             // its own keyframe.
-            gsap.set(card, { clipPath: REVEAL_SHOWN });
+            gsap.set(card, reveal.shown);
             timeline.to(card, {
-              clipPath: REVEAL_HIDDEN,
-              duration: REPLAY_OUT_DURATION,
-              ease: REVEAL_EASE,
+              ...reveal.hidden,
+              duration: reveal.replayOut,
+              ease: reveal.ease,
             });
           }
 
@@ -218,16 +261,12 @@ export function useCardReveal(
           // Which is the bug this replay exists to fix, reintroduced one line
           // further down. Measured: the card read `inset(100% 0% 0%)` at 0ms and
           // did not move until 400ms.
-          timeline.fromTo(
-            card,
-            { clipPath: REVEAL_HIDDEN },
-            {
-              clipPath: REVEAL_SHOWN,
-              duration: REPLAY_IN_DURATION,
-              ease: REVEAL_EASE,
-              immediateRender: false,
-            },
-          );
+          timeline.fromTo(card, reveal.hidden, {
+            ...reveal.shown,
+            duration: reveal.replayIn,
+            ease: reveal.ease,
+            immediateRender: false,
+          });
 
           // No ScrollTrigger: it is on screen and ends revealed either way.
           revealed.current.add(card);
@@ -264,16 +303,26 @@ export function useCardReveal(
           //
           // `fromTo`, not `to`, because Chrome's computed clip-path collapses
           // `inset(100% 0 0 0)` to a three-value shorthand. Both ends are
-          // spelled out so GSAP interpolates matching token counts.
+          // spelled out so GSAP interpolates matching token counts. The fade
+          // wants the same treatment for the same reason one level down: GSAP
+          // has no filter parser, so `filter` is interpolated as a string and
+          // both ends have to be given, not read back off the element.
           .fromTo(
             card,
-            { clipPath: REVEAL_HIDDEN },
-            { clipPath: REVEAL_SHOWN, duration: REVEAL_DURATION, ease: REVEAL_EASE },
+            reveal.hidden,
+            { ...reveal.shown, duration: reveal.reveal, ease: reveal.ease },
             at,
           );
       });
     },
-    { scope: gridRef, dependencies: [columnEpoch, weekKey, orderKey], revertOnUpdate: true },
+    // `reveal` is a module-level constant on both call sites, so it is here for
+    // honesty rather than to trigger anything — a surface does not switch its
+    // reveal at runtime, and if one ever did, this is what would rebuild it.
+    {
+      scope: gridRef,
+      dependencies: [columnEpoch, weekKey, orderKey, reveal],
+      revertOnUpdate: true,
+    },
   );
 
   // A breakpoint crossing changes how many cards share a row, and therefore
@@ -285,7 +334,7 @@ export function useCardReveal(
     if (!grid || prefersReducedMotion()) return;
 
     const observer = new ResizeObserver(() => {
-      const cards = cardsIn(grid);
+      const cards = cardsIn(grid, reveal);
       if (cards.length === 0) return;
       const next = readColumns(grid, cards);
       if (next === columns.current) return;
@@ -294,7 +343,7 @@ export function useCardReveal(
     });
     observer.observe(grid);
     return () => observer.disconnect();
-  }, [gridRef, orderKey]);
+  }, [gridRef, orderKey, reveal]);
 
   // Both surfaces are rendered inside a child of `MyPicksClient`'s `.stagger`,
   // whose `reveal-up` starts at `translateY(12px)`. This hook builds in a layout

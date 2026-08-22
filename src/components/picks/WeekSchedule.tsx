@@ -11,6 +11,7 @@ import { isKickedOff, type Game } from "@/lib/nfl/types";
 import { weekKey, type WeekRef } from "@/lib/nfl/calendar";
 import { isHome } from "@/lib/league/view";
 import { useCardReveal } from "@/components/picks/use-card-reveal";
+import { REVEAL_FADE } from "@/components/picks/card-reveal";
 
 /**
  * A team already spent, and the week it went. Only the week is needed — a pick
@@ -64,9 +65,15 @@ export function WeekSchedule({
   //
   // Those ids are globally unique per game, so a week change replaces every card
   // node here where `TeamGrid` keeps all 32 of its labels. The reveal handles
-  // that — a card mounted a moment ago has nothing to wipe away, so on this
-  // surface a week change wipes in without wiping out first.
+  // that — a card mounted a moment ago has nothing to fade away, so on this
+  // surface a week change fades in without fading out first.
+  //
+  // `REVEAL_FADE` and not `REVEAL_CLIP`: this layout arrives out of a blur, the
+  // way the pick module above it resolves itself, where the team grid keeps the
+  // curtain wipe. Same object supplies the cards' class below, so the two halves
+  // of that choice cannot come apart.
   useCardReveal(grid, {
+    reveal: REVEAL_FADE,
     weekKey: weekKey(weekRef),
     orderKey: games.map((game) => game.id).join(","),
   });
@@ -124,17 +131,21 @@ function GameCard({
   const order: TeamId[] = [game.home, game.away];
 
   return (
-    // `reveal-clip` sits on this wrapper and NOT on the card below it. That is
-    // load-bearing: `useCardReveal` queries `:scope > .reveal-clip`, i.e. direct
-    // children of the fieldset only. Push the class down onto the card and the
-    // query matches nothing, the hook returns early before writing a single
-    // clip-path, and `globals.css` leaves every card at `inset(100% 0 0 0)` —
-    // a permanently blank matchup grid, with nothing thrown and both typecheck
-    // and the test suite still green.
+    // The reveal's class sits on this wrapper and NOT on the card below it. That
+    // is load-bearing: `useCardReveal` queries `:scope > .{className}`, i.e.
+    // direct children of the fieldset only. Push the class down onto the card
+    // and the query matches nothing, the hook returns early before writing a
+    // single style, and `globals.css` leaves every card blurred out at opacity
+    // 0 — a permanently blank matchup grid, with nothing thrown and both
+    // typecheck and the test suite still green. The hook warns about that in
+    // development now, which is the only reason it is not still silent.
     //
-    // So the kickoff line rides inside the mask along with the card, which is
-    // also the honest reading: the two are one module and wipe in together.
-    <div className="reveal-clip">
+    // Taken off `REVEAL_FADE` rather than typed, so it cannot disagree with the
+    // reveal handed to the hook above.
+    //
+    // So the kickoff line rides inside the fade along with the card, which is
+    // also the honest reading: the two are one module and arrive together.
+    <div className={REVEAL_FADE.className}>
       {/* The kickoff sits ABOVE the card now, on the page background — date on
           the left, clock (and the lock badge once it applies) on the right.
           `items-baseline` puts the two halves on one line; `flex-wrap` lets the
