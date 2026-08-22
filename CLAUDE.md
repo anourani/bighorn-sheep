@@ -739,8 +739,39 @@ reading, but only the first kind is the lesson.
     the width the logo is sized from — so the logo visibly shrank the moment you
     picked it, 90.66px to 86.66px. A ring is a box-shadow and costs no layout.
     Measured, not reasoned about.
-  - **Logos are greyscale at rest and come up in colour on hover or once
-    picked.** Figma reaches that with `mix-blend-luminosity`; over a neutral card
+  - **A logo is in colour exactly when the card is actionable, and on a touch
+    device that is true at rest.** A card you can pick comes up in colour on
+    hover; on a device with no hover it is in colour from the start, because
+    otherwise the treatment is a reward a phone can never claim and the whole grid
+    is 32 grey logos. The picked card is always in colour. Everything else — bye,
+    already spent, locked, and every card on a week you are only previewing — is
+    greyscale on **every** device, so colour keeps meaning "you can act on this".
+    Three things:
+    - **The trigger is `[@media(hover:hover)]`, never `lg`.** The reason is a
+      device fact, not a width one: an iPad past 1024px would sit at grey with no
+      hover to redeem it. It is also how the card's other two hover rules are
+      already gated. The accepted cost is that narrowing a desktop browser does
+      *not* show the touch treatment — DevTools device emulation, which flips
+      `hover` to `none`, does. Verify by reading computed `filter` (`none` vs a
+      string containing `grayscale(1)`), not by eye: a typo in an arbitrary
+      variant compiles to nothing and presents as "the change didn't take".
+    - **It keys on `selectable`, not on `outOfPlay`.** `buildGridCards` gives a
+      preview week `state: "available"` with `selectable: false`, so those cards
+      are neither selected nor out of play and a test on `outOfPlay` would light
+      all 32 of them up on a phone.
+    - **One class, chosen by a ternary — not a bare `grayscale` plus a
+      `[@media(hover:none)]:grayscale-0`.** Two classes writing `--tw-grayscale`
+      on one element are resolved by generated CSS source order, because a media
+      query adds no specificity. The ternary emits no filter class at all for a
+      selectable card on touch, so exactly one rule can ever apply. Note that the
+      comment in `TeamGrid.tsx` describes that rejected alternative in prose
+      rather than spelling the class: `content` is `./src/**/*.{ts,tsx,mdx}`, so
+      **Tailwind scans comments**, and naming a class you deliberately do not use
+      ships the rule anyway — measured at 266 bytes of dead CSS for this one.
+      Naming a class that IS used costs nothing, which is why every other comment
+      in the app can quote freely. This file is not scanned and so can.
+
+    Figma reaches the greyscale with `mix-blend-luminosity`; over a neutral card
     that is the same picture as `grayscale`, without the isolation and
     stacking-context rules a blend mode drags in.
   - **`TeamLogo` has a `fill` prop** for the desktop logo, which is sized off the
