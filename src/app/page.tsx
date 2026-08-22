@@ -1,4 +1,5 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
+import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
 import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
 import { StatusReport } from "@/components/app/StatusReport";
@@ -160,12 +161,12 @@ export default async function LandingPage() {
         {/* `align-items: flex-end` in the spec positions the block, not the text
             inside it — the copy stays left-aligned within its 339px, and takes
             the full width on a phone, where the design drops the right-hand
-            offset entirely. Two paragraphs because the design colours the first
-            sentence as primary ink and the rest as secondary — with "last man
-            standing" lifted back to primary inside the second, which is the
-            phrase the league is named for. The desktop mock splits the sentence
-            on the same three spans but leaves them all grey; taking the mobile
-            treatment at both sizes was the call. */}
+            offset entirely.
+
+            The copy itself is `LeaguePitch`, shared verbatim with the login
+            hero: three paragraphs in the design's ink / mute / mute-with-an-ink
+            span, and no geometry of its own — that is this wrapper's job, and
+            it is the only thing the two heroes disagree about. */}
         <section className="flex justify-end px-4 pb-14 sm:pb-10 sm:pt-4">
           {/* 18px on a phone, 16px once the block is offset to the right — the
               design sizes this copy up when it is the widest thing on screen.
@@ -188,11 +189,7 @@ export default async function LandingPage() {
             )}
             style={{ animationDelay: `${copyAt}ms` }}
           >
-            <p className="text-shell-ink">A private NFL survivor league with friends.</p>
-            <p className="text-shell-mute">
-              Pick one team a week. Win to advance to the next week. Lose or tie and you&apos;re
-              out. The <span className="text-shell-ink">last man standing</span> wins.
-            </p>
+            <LeaguePitch />
           </div>
         </section>
 

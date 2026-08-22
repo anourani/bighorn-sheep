@@ -1,4 +1,5 @@
 import { Label } from "@/components/ui/Label";
+import { LeaguePitch } from "@/components/landing/LeaguePitch";
 
 /**
  * The hero above the sign-in card on `/login`.
@@ -76,17 +77,12 @@ export function LoginHero({ eyebrow }: { eyebrow: string }) {
           reached its 64px cap (711px) — so the two halves of the hero step up
           together rather than 250px apart.
 
-          The copy is the landing page's, extended by the no-repeats rule and
-          with the closing sentence lifted onto its own line: same three-tone
-          treatment (ink / mute / ink), same voice, so the invite screen and the
-          marketing page read as one product. */}
+          The copy is the landing page's, and now literally so — `LeaguePitch`
+          is the one component both doors render, so the invite screen and the
+          marketing page cannot say different things about the same game. It
+          brings no geometry with it; everything above is this wrapper's. */}
       <div className="w-full py-4 text-base/[1.35] tracking-[-0.01em] md:max-w-[414px] md:px-4 md:text-lg/[1.4]">
-        <p className="text-shell-ink">A private NFL survivor league with friends.</p>
-        <p className="text-shell-mute">
-          Pick one team a week. Win to advance to the next week. Lose or tie and
-          you&apos;re out. You can&apos;t pick the same team twice.
-        </p>
-        <p className="text-shell-ink">The last man standing wins.</p>
+        <LeaguePitch />
       </div>
     </div>
   );
