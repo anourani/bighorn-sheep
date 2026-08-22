@@ -16,10 +16,6 @@ export const GRID_LAYOUTS = ["grid", "matchups"] as const;
 /** Which pick surface is on screen. */
 export type GridLayout = (typeof GRID_LAYOUTS)[number];
 
-export const GRID_SORTS = ["record", "abc"] as const;
-/** How the grid orders its 32 cards. */
-export type GridSort = (typeof GRID_SORTS)[number];
-
 /**
  * What a card says about its team this week.
  *
@@ -124,18 +120,20 @@ function availabilityOf(card: GridCard): TeamAvailability {
 }
 
 /**
- * The order cards are laid out in — left to right, then down.
+ * The order cards are laid out in — left to right, then down: best record first.
  *
  * `groupUnavailable: false` is the whole point: bye and already-spent teams sort
- * in place rather than sinking, so "Team Record" reads as a straight ranking of
- * all 32 and a card never moves just because you happened to spend it.
+ * in place rather than sinking, so this reads as a straight ranking of all 32
+ * and a card never moves just because you happened to spend it.
  *
- * "ABCs" is `TEAMS` order, which is already alphabetical by city and then
- * nickname — the order every NFL table uses — so it needs no sort key of its own.
+ * It used to take the Sort filter's choice. That filter is gone from the design
+ * and the record ranking was its stored default, so this is what everyone who
+ * never touched the control was already looking at. The other option, "ABCs",
+ * was `sort: "default"` — a passthrough, since `TEAMS` is already alphabetical
+ * by city and then nickname.
  */
 export function orderGridTeams(
   cards: ReadonlyMap<TeamId, GridCard>,
-  sort: GridSort,
   recordFor: (id: TeamId) => TeamRecord,
 ): TeamId[] {
   const states = new Map<TeamId, TeamAvailability>();
@@ -144,11 +142,7 @@ export function orderGridTeams(
   return orderPickerTeams(
     TEAMS.map((t) => t.id),
     states,
-    {
-      sort: sort === "record" ? "record" : "default",
-      availableOnly: false,
-      groupUnavailable: false,
-    },
+    { sort: "record", availableOnly: false, groupUnavailable: false },
     { recordFor, gameFor: (id) => cards.get(id)?.game },
   );
 }
