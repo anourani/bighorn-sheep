@@ -1,79 +1,74 @@
-import { BrandMark } from "@/components/shell/BrandMark";
 import { Label } from "@/components/ui/Label";
 
 /**
- * The two heroes that sit above the sign-in card on `/login`.
+ * The hero above the sign-in card on `/login`.
  *
- * They live here, and `LoginFlow` picks between them, because which one is
- * correct depends on the step — and the step is state inside `LoginFlow`. The
- * page can't know it without becoming a client component, and duplicating the
- * markup on both sides is exactly how the two surfaces drift.
+ * **One hero, every step, every arrival — that is the entire point of it.**
+ * There used to be two, picked by `LoginFlow`'s `step`: a full badge-and-pitch
+ * hero for the cold open and a headline-only one for "check your inbox" and
+ * "tell us your name". The reasoning was sound in isolation (by the interim
+ * steps you have read the pitch, so the badge only pushes the remaining action
+ * below the fold) and wrong in aggregate: following one invite link walked you
+ * through two different headers, and the second one contradicted the card under
+ * it — a returning player got "You're Invited to the League" stacked on top of
+ * "Welcome back", because the headline keyed off `invite` while the card keyed
+ * off whether the address already had an account. Nothing reconciled them.
  *
- * Neither renders in the landing modal (`variant="modal"`): that overlay opens
- * on top of the marketing page, which already carries the branding.
+ * So the header no longer moves. `eyebrow` is the only thing that varies, and it
+ * varies on the ONE fact that is fixed for the whole visit — whether the URL
+ * carried an invite code — never on `step`, which changes underneath the reader.
+ * The card below is where progress is reported; the hero says where you are.
+ *
+ * Neither `variant="modal"` caller renders this: that overlay opens on top of
+ * the marketing page, which already carries the branding.
  */
-
-/**
- * The full hero — badge, eyebrow, wordmark, one-line explainer.
- *
- * This is the cold-open header: an invite link pasted into a group chat, or an
- * `/auth/callback` bounce, lands here with no page behind it, so the first
- * screen has to say what the app *is* before it asks for an email.
- */
-export function LoginHero() {
+export function LoginHero({ eyebrow }: { eyebrow: string }) {
   return (
-    <div className="mb-8 text-center">
-      <div className="mb-5 flex justify-center">
-        <BrandMark size="lg" />
+    /* `px-4` is the design's own, and it is on this block rather than on the
+       page: `/login`'s `main` deliberately has no gutter so this hero can use
+       the full 600px column while the card below it stays in its 480px one. See
+       login/page.tsx. */
+    <div className="mb-8 flex flex-col items-center gap-2 px-4 text-center">
+      {/* 16px semibold uppercase #757575. `Label` is already uppercase, semibold
+          and `text-shell-mute` (#757575 exactly), so only the size and leading
+          are overridden — and `text-base` is a real Tailwind size, so it
+          displaces the component's `text-xs` through tailwind-merge instead of
+          being dropped the way a `text-label-*` token would be. */}
+      <Label className="text-base leading-[1.1]">{eyebrow}</Label>
+      {/*
+        64px semibold, leading-none, pure black — the design's H1, and the same
+        wordmark the landing page leads with, so the two doors match.
+
+        Tracking is `-0.05em`, NOT the flat `-3.2px` the design states. That is a
+        deliberate departure and the opposite call from the landing page's flat
+        `-2px`: there the mock-up specifies the same absolute value at BOTH 64px
+        and 88px, so it demonstrably does not scale. Here there is one size on
+        one artboard, and -3.2px at 64px IS -0.05em — so binding it to the em is
+        the only reading that survives the clamp below. A flat -3.2px would eat
+        9% of the glyph width at the 36px floor and collapse the word.
+
+        The clamp exists because 64px "Last Man Standing" measures 523px and a
+        phone has ~360px to give. 9vw reaches 64px at a 711px viewport, where the
+        column is already 568px wide; the 2.25rem floor keeps one line down to
+        ~330px and simply wraps below that rather than overflowing, which is why
+        the design's `whitespace-nowrap` is deliberately NOT transcribed.
+      */}
+      <h1 className="text-[clamp(2.25rem,9vw,4rem)] font-semibold leading-none tracking-[-0.05em] text-black">
+        Last Man Standing
+      </h1>
+      {/* 18px/1.4 at 382px, inside the design's own 16px padding — so `p-4` plus
+          a 414px cap, not a 382px one. The copy is the landing page's, extended
+          by the no-repeats rule and with the closing sentence lifted onto its own
+          line: same three-tone treatment (ink / mute / ink), same voice, so the
+          invite screen and the marketing page read as one product. */}
+      <div className="max-w-[414px] p-4 text-lg/[1.4] tracking-[-0.01em]">
+        <p className="text-shell-ink">A private NFL survivor league with friends.</p>
+        <p className="text-shell-mute">
+          Pick one team a week. Win to advance to the next week. Lose or tie and
+          you&apos;re out. You can&apos;t pick the same team twice.
+        </p>
+        <p className="text-shell-ink">The last man standing wins.</p>
       </div>
-      <Label className="text-brand-strong">NFL Survival League</Label>
-      <h1 className="mt-2 text-display-md font-medium leading-[1.02] tracking-tight text-ink">
-        Last Man
-        <br />
-        Standing
-      </h1>
-      <p className="mx-auto mt-3 max-w-[32ch] text-sm leading-relaxed text-ink-soft">
-        One team a week. Lose once and you&apos;re out. The last survivor takes the season.
-      </p>
-    </div>
-  );
-}
-
-/**
- * The pared-back hero for the interim steps — the eyebrow and a single large
- * headline, nothing else.
- *
- * By the time someone reaches "check your inbox" or "tell us your name" they've
- * already read the pitch and committed, so the badge and the explainer are
- * spent: they push the only thing left to do below the fold on a phone. The
- * headline takes over as the page's statement of where you are.
- *
- * Type is transcribed from the mock-up rather than the `display-*` tokens,
- * which are a size lighter (weight 500) and tighter-leaded than this: 48px on
- * phones stepping to 64px from `md`, semibold, `-2px` tracking flat at both
- * sizes (the mock-up specifies the same absolute value for each). The `clamp`
- * holds 48px across real phone widths and only gives ground below ~375px,
- * where a fixed 48px would start forcing awkward breaks.
- */
-export function LoginStepHero({ headline }: { headline: string }) {
-  return (
-    <div className="mb-8 flex flex-col items-center gap-2 text-center">
-      {/* No colour override: `Label`'s own `text-shell-mute` is the #757575 the
-          mock-up asks for. `text-base` is a real Tailwind size, so it displaces
-          the component's `text-xs` through tailwind-merge instead of being
-          dropped the way a `text-label-*` token would be. */}
-      <Label className="text-base leading-[1.1]">NFL Survival League</Label>
-      {/* The two max-widths are the mock-up's own headline measures, and they
-          are what fixes the line break: at 333px "You're Invited to the League"
-          breaks after "Invited", the same place the 460px desktop measure
-          breaks it. Left to the column's full width it would instead carry
-          "to" up onto the first line on a phone and read differently at each
-          size. Capping the text rather than padding the block keeps the card
-          below on the page's own gutter, which the mock-up also insets less
-          than the header. */}
-      <h1 className="max-w-[333px] text-[clamp(2.25rem,12vw,3rem)] font-semibold leading-[1.2] tracking-[-2px] text-ink md:max-w-[460px] md:text-[4rem]">
-        {headline}
-      </h1>
     </div>
   );
 }

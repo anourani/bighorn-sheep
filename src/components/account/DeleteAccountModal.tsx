@@ -50,10 +50,15 @@ export function DeleteAccountModal({ open, onClose }: { open: boolean; onClose: 
         } catch {
           // Supabase not configured, or the sign-out call failed. The closure is
           // already written, and /app's layout will bounce them regardless — so
-          // land them on the sign-in screen either way rather than leaving them
+          // land them somewhere signed-out either way rather than leaving them
           // on a page that now lies about their account.
         }
-        window.location.href = "/login";
+        // `/`, not `/login`. Someone who has just closed their account is not
+        // trying to sign in, and `/login` now opens on "Welcome to Last Man
+        // Standing" — an invitation to join, addressed to the one person who
+        // just left. The landing page is the honest end of this flow, and it is
+        // already where middleware sends a signed-out visitor who touches /app.
+        window.location.href = "/";
       } catch (err) {
         // A deploy landed while this tab was open — reload onto the new build.
         if (isStaleDeploymentError(err) && reloadOnce()) return;

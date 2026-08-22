@@ -10,7 +10,14 @@ import { ArrowRightIcon } from "@/components/icons";
  * reading. This route is not vestigial though: invite links pasted into group
  * chats are `${appUrl}/login?invite=CODE`, and /auth/callback bounces failures to
  * `/login?error=`. Both arrive cold, with no page behind them to overlay, so they
- * get the full hero.
+ * get the hero.
+ *
+ * Those two are now the ONLY things that reach it. Nothing in the app links or
+ * redirects to a bare `/login` any more: closing an account and the account
+ * page's signed-out guard both land on `/` instead, which is where middleware
+ * already sends a signed-out visitor who touches `/app`. So the parameterless
+ * form of this route is a typed URL or an old bookmark, and its hero says
+ * "Welcome to" rather than pretending an invitation exists.
  *
  * A server component: `searchParams` is read here rather than with
  * `useSearchParams()` inside `LoginFlow`, which keeps the flow a pure function of
@@ -27,13 +34,20 @@ export default async function LoginPage({
   const errorReason = typeof params.error === "string" ? params.error : null;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-app flex-col justify-center px-5 py-10">
-      {/* The hero belongs to `LoginFlow`, not to this page: it changes with the
-          step, and the step is state the page can't see without going client. */}
+    /* 600px, not `max-w-app`'s 480, and no horizontal gutter of its own. The
+       design runs the 64px headline wider than the card stack beneath it — 523px
+       of glyphs against a 480px column — so the page holds the WIDER of the two
+       measures and each block below claims its own: the hero pads itself by 16px,
+       and `LoginFlow` re-narrows the cards to `max-w-app`. Putting `px-5` back
+       here would inset the hero twice and cost it the width it was widened for. */
+    <main className="mx-auto flex min-h-dvh max-w-[600px] flex-col justify-center py-10">
+      {/* The hero belongs to `LoginFlow`, not to this page: its eyebrow follows
+          the invite, and the surrounding card follows `step` — state the page
+          can't see without going client. */}
       <LoginFlow variant="page" invite={invite} errorReason={errorReason} />
 
       {/* Footer */}
-      <div className="mt-6 text-center">
+      <div className="mt-6 px-5 text-center">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-strong hover:underline"

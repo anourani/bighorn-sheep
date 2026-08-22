@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "soft" | "outline" | "ghost" | "subtle" | "danger";
+type Variant = "primary" | "secondary" | "soft" | "outline" | "ghost" | "dark" | "subtle" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const base =
@@ -15,6 +15,17 @@ const variants: Record<Variant, string> = {
   soft: "bg-fill-soft text-ink border border-line hover:bg-[#EAEAEA]",
   outline: "bg-white text-ink border border-line hover:bg-[#F6F7F9]",
   ghost: "bg-transparent text-ink hover:bg-[#F1F2F5]",
+  // The design's filled black control. A real variant rather than a className
+  // override on `primary`, because `primary` cannot be repainted from a call
+  // site: `bg-brand-sheen` is a background *image*, so a background *colour*
+  // lands in a different tailwind-merge group and the gradient survives on top,
+  // and `shadow-none` loses to `shadow-panel-sm` outright (tailwind-merge does
+  // not parse `panel-sm` as a shadow size, so it never treats the two as
+  // alternatives). `src/components/account/spec.ts` documents that trap at
+  // length and works around it with `variant="ghost"` plus SPEC_BUTTON_DARK;
+  // this variant is the same black, reached without the workaround. The
+  // `font-semibold` beats base's `font-medium` on source order within one group.
+  dark: "bg-shell-ink text-white font-semibold hover:bg-[#333333]",
   // For placement on slate panels.
   subtle: "bg-white/10 text-onsurface border border-white/15 hover:bg-white/[0.16] focus-visible:ring-offset-surface",
   danger: "bg-out text-white hover:brightness-105",

@@ -6,14 +6,14 @@ import { LoginFlow } from "@/components/auth/LoginFlow";
 
 /**
  * The header's "Log In" action. A modal rather than a link to /login: that page
- * carries its own hero — a shield mark, an eyebrow, and a second, smaller "Last
- * Man Standing" — directly under the landing page's own, so following the link
- * read as arriving at a different, shrunken version of the same product.
+ * carries its own hero — an eyebrow over a second "Last Man Standing" — directly
+ * under the landing page's own, so following the link read as arriving at a
+ * different, shrunken version of the same product.
  *
  * /login is still a real route, and still renders this same `LoginFlow`. Invite
  * links pasted into group chats are `…/login?invite=CODE`, and the auth callback
  * bounces failures to `…/login?error=`. Both arrive cold, with no page behind
- * them to overlay, so they keep the full hero.
+ * them to overlay, so they keep the hero.
  *
  * No `eyebrow` and no `description` on the Modal: the landing page's own
  * branding is visible right behind the backdrop, and repeating it here would
