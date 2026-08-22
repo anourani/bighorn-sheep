@@ -384,9 +384,11 @@ function Legend() {
       <span className="inline-flex items-center gap-1.5">
         <LockIcon className="h-3.5 w-3.5" /> Hidden until kickoff
       </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded-full border border-line/80" /> Upcoming
-      </span>
+      {/* No "Upcoming" row. The hollow circle it described is still what an
+          `empty` cell draws, but it is the absence of a pick rather than a
+          state of its own — and "Upcoming" was the wrong word for it anyway,
+          since the same glyph marks a week that has been and gone unpicked.
+          The cell carries `sr-only` "No pick", which is the accurate reading. */}
     </div>
   );
 }
