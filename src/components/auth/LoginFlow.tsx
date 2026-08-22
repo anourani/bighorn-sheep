@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
+import { H3 } from "@/lib/type-scale";
 import { createClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/errors";
 import { verifyErrorReason } from "@/lib/auth-callback";
@@ -484,7 +485,8 @@ function InviteBanner({ invite, preview }: { invite: string; preview: Preview })
       </p>
       <p
         className={cn(
-          "w-full text-[28px] font-semibold leading-[1.2] tracking-[-0.04em] text-shell-ink",
+          "w-full text-shell-ink",
+          H3,
           // The code is a machine string wherever it stands in for a name.
           preview.status !== "found" && "font-mono text-2xl",
         )}

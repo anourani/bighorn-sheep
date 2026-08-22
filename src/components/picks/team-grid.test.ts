@@ -133,19 +133,11 @@ const recordFor = (id: TeamId): TeamRecord => RECORDS[id] ?? { w: 0, l: 0, t: 0 
 
 describe("orderGridTeams", () => {
   it("keeps every team in the layout", () => {
-    expect(orderGridTeams(cards(), "record", recordFor)).toHaveLength(TEAM_COUNT);
-    expect(orderGridTeams(cards(), "abc", recordFor)).toHaveLength(TEAM_COUNT);
-  });
-
-  it("sorts ABCs as the TEAMS order — alphabetical by city, then nickname", () => {
-    const order = orderGridTeams(cards(), "abc", recordFor);
-    expect(order.slice(0, 4)).toEqual(["ari", "atl", "bal", "buf"]);
-    // Las Vegas before Los Angeles, and the Chargers before the Rams.
-    expect(order.slice(15, 19)).toEqual(["kc", "lv", "lac", "lar"]);
+    expect(orderGridTeams(cards(), recordFor)).toHaveLength(TEAM_COUNT);
   });
 
   it("sorts Team Record best first, with a half-credit tie", () => {
-    const order = orderGridTeams(cards(), "record", recordFor);
+    const order = orderGridTeams(cards(), recordFor);
     // kc 5-1 = .833, buf 4-2 = .667, bal 3-2-1 = (3 + 0.5) / 6 = .583,
     // cin 1-5 = .167, then everyone else at .000. The half-credit tie is what
     // puts bal below buf despite the same two losses.
@@ -156,18 +148,16 @@ describe("orderGridTeams", () => {
     // The user's call: Team Record reads as a straight ranking of all 32, so a
     // card never moves merely because you happened to spend it.
     const withUsed = cards({ usedByTeam: new Map([["kc", { week: 3 }]]) });
-    expect(orderGridTeams(withUsed, "record", recordFor)[0]).toBe("kc");
+    expect(orderGridTeams(withUsed, recordFor)[0]).toBe("kc");
     // bal is on a bye in a schedule where only cin/kc games exist? No — bal
     // plays cin. sea does not, and still sorts by its record.
-    const order = orderGridTeams(cards(), "record", recordFor);
+    const order = orderGridTeams(cards(), recordFor);
     expect(order.indexOf("sea")).toBeLessThan(order.indexOf("wsh"));
   });
 
   it("falls back to the base order for teams on equal records", () => {
     // Every team outside RECORDS is 0-0; a stable sort keeps TEAMS order.
-    const order = orderGridTeams(cards(), "record", recordFor).filter(
-      (id) => !(id in RECORDS),
-    );
+    const order = orderGridTeams(cards(), recordFor).filter((id) => !(id in RECORDS));
     expect(order.slice(0, 3)).toEqual(["ari", "atl", "car"]);
   });
 });

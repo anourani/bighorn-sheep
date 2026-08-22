@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { H3 } from "@/lib/type-scale";
 
 /**
  * The account page's shared surface vocabulary.
@@ -22,14 +23,19 @@ export const CARD = "rounded-[4px] bg-fill-soft px-4 py-5";
 /**
  * A card row's value, and the section-heading and body sizes beside it.
  *
- * Figma reports letter-spacing as percent × 100, so H3's `-2` is −2% — −0.56px
- * at 28px — and H5's `-4` is −4%, or −0.8px at 20px. Transcribing those numbers
- * as pixels directly is how a headline ends up four times too tight.
+ * Figma reports letter-spacing as percent × 100, so H5's `-4` is −4%, or −0.8px
+ * at 20px. Transcribing those numbers as pixels directly is how a headline ends
+ * up four times too tight.
+ *
+ * `PAGE_TITLE` is H3, which is why it is composed from `lib/type-scale.ts`
+ * rather than spelled here: H3 moved from 28px at −2% to 32px at −4%, and it is
+ * shared with the pick filters and the login invite preview. Its tracking is
+ * written `-0.04em` there — the percentage itself, with no conversion to redo
+ * when the size next moves.
  */
 export const VALUE = "text-[18px] font-semibold leading-[1.2] tracking-[-0.18px] text-shell-ink";
 export const HEADING = "text-[20px] font-semibold leading-[1.2] tracking-[-0.8px] text-shell-ink";
-export const PAGE_TITLE =
-  "text-[28px] font-semibold leading-[1.2] tracking-[-0.56px] text-shell-ink";
+export const PAGE_TITLE = `${H3} text-shell-ink`;
 
 /** Body copy inside a card — 16px, the secondary grey unless told otherwise. */
 export const BODY = "text-[16px] leading-[1.35] tracking-[-0.16px]";

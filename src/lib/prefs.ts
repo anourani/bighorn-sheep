@@ -12,7 +12,6 @@
 
 /** Storage keys. Namespaced so they can be found and cleared as a group. */
 export const PICKS_LAYOUT_KEY = "lms:picks:layout";
-export const PICKS_SORT_KEY = "lms:picks:sort";
 
 /**
  * Narrow whatever came out of storage back to one of `allowed`.

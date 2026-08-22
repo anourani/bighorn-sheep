@@ -6,7 +6,7 @@ import { PickFilters } from "@/components/picks/PickFilters";
 import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
-import { GRID_LAYOUTS, GRID_SORTS } from "@/components/picks/team-grid";
+import { GRID_LAYOUTS } from "@/components/picks/team-grid";
 import { IDLE_QUEUE, settlePick, tapPick, type PickQueue } from "@/components/picks/pick-queue";
 import { buildChipPicks } from "@/components/picks/week-strip";
 import { Label } from "@/components/ui/Label";
@@ -34,7 +34,7 @@ import { recordsThroughWeek } from "@/lib/league/records";
 import type { LeagueData } from "@/lib/league/load";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
-import { PICKS_LAYOUT_KEY, PICKS_SORT_KEY } from "@/lib/prefs";
+import { PICKS_LAYOUT_KEY } from "@/lib/prefs";
 import { useStoredChoice } from "@/lib/use-stored-choice";
 
 /** Friendly copy for a rejected pick (mirrors the canPick reason codes). */
@@ -138,7 +138,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // have meant a migration applied to production by hand. The first paint uses
   // the defaults and swaps after hydration — see useStoredChoice.
   const [layout, setLayout] = useStoredChoice(PICKS_LAYOUT_KEY, GRID_LAYOUTS, "grid");
-  const [sort, setSort] = useStoredChoice(PICKS_SORT_KEY, GRID_SORTS, "record");
 
   const labelOpts = { maxPreWeek: practice?.maxPreWeek ?? 0 };
   const viewName = weekLabel(viewRef, labelOpts);
@@ -360,7 +359,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         {/* sr-only below lg — replaces the visible "Schedule" heading the week
             strip absorbed, so heading-jump navigation still reaches the grid.
             From lg it's revealed beside the filters (Figma's "Select a Team",
-            justify-between against the Layout/Sort row); mobile has no such
+            justify-between against the Layout row); mobile has no such
             heading in the mockups, so it stays sr-only there. The row's own
             mb-6/lg:mb-5 is the 24px/20px gap down to whatever follows —
             replaces PickFilters' old flat mb-4. */}
@@ -369,12 +368,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             Select a Team
           </h2>
 
-          <PickFilters
-            layout={layout}
-            onLayoutChange={setLayout}
-            sort={sort}
-            onSortChange={setSort}
-          />
+          <PickFilters layout={layout} onLayoutChange={setLayout} />
         </div>
 
         {!isCurrent ? (
@@ -422,7 +416,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             selectedTeam={pickTeam}
             interactive={isCurrent}
             now={now}
-            sort={sort}
             records={records}
             onSelect={handleSelect}
           />

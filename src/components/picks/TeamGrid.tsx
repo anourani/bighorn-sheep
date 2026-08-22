@@ -15,7 +15,6 @@ import {
   cardTitle,
   orderGridTeams,
   type GridCard,
-  type GridSort,
 } from "@/components/picks/team-grid";
 import { useCardReveal } from "@/components/picks/use-card-reveal";
 import { REVEAL_CLIP } from "@/components/picks/card-reveal";
@@ -49,7 +48,6 @@ export function TeamGrid({
   selectedTeam,
   interactive,
   now,
-  sort,
   records,
   onSelect,
 }: {
@@ -60,7 +58,6 @@ export function TeamGrid({
   selectedTeam: TeamId | null;
   interactive: boolean;
   now: Date;
-  sort: GridSort;
   records: Map<TeamId, TeamRecord>;
   onSelect: (teamId: TeamId) => void;
 }) {
@@ -73,18 +70,22 @@ export function TeamGrid({
   // broken screen. Building 32 bye cards for an empty week costs nothing —
   // `buildGridCards` loops TEAMS either way.
   const cards = buildGridCards({ games, usedByTeam, selectedTeam, interactive, now });
-  const order = orderGridTeams(cards, sort, (id) => records.get(id) ?? { w: 0, l: 0, t: 0 });
+  const order = orderGridTeams(cards, (id) => records.get(id) ?? { w: 0, l: 0, t: 0 });
 
   // Two keys, because the reveal treats the two kinds of change differently: a
   // new week is the one thing that animates the cards again, while a re-order
   // only rebuilds the cascade arithmetic in silence.
   //
-  // `orderKey` is the order itself rather than the inputs to it, so it covers
-  // sorting AND the fact that `record` ranks on records, which move with the
-  // week. Deliberately NOT keyed on the pick: `orderGridTeams` passes
-  // `groupUnavailable: false`, which skips the actionable-first branch, so the
-  // comparator reads records and kickoffs only and the order does not move when
-  // you tap a team. Keying on `cards` would rebuild 32 timelines on every pick.
+  // `orderKey` is the order itself rather than the inputs to it. It covered the
+  // Sort filter as well as the record ranking; with the filter gone the ranking
+  // is all that is left, and records only move across weeks — so this is now a
+  // subset of `weekKey` rather than an independent trigger. Kept anyway: it
+  // costs one string compare, and it is the honest key for "the order changed"
+  // if anything ever reorders within a week again. Deliberately NOT keyed on the
+  // pick: `orderGridTeams` passes `groupUnavailable: false`, which skips the
+  // actionable-first branch, so the comparator reads records and kickoffs only
+  // and the order does not move when you tap a team. Keying on `cards` would
+  // rebuild 32 timelines on every pick.
   // `REVEAL_CLIP`: the curtain wipe, unchanged. The matchup layout next door
   // takes `REVEAL_FADE` instead — a card here is a 155px square of logo whose
   // whole read is its edge landing, and a blur costs it that.

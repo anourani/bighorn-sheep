@@ -605,6 +605,43 @@ reading, but only the first kind is the lesson.
     deliberately with the numbers on the table — not an oversight, and not
     something to "fix" by putting the `-lit` pair back, which is strictly worse.
 
+- **H3 is 32px now, it lives in `src/lib/type-scale.ts`, and it is a class STRING
+  rather than a Tailwind token.** The design library's H3 was 28px at -2%; it is
+  32px over 120%, Inter semibold, -4% — one size at every width, with no `lg:`
+  step. Three call sites take it: the pick page's Layout options
+  (`PickFilters`, which used to be 20px stepping to 28px at `lg`), the account
+  page title (`surfaces.tsx`'s `PAGE_TITLE`, now composed from it) and the login
+  invite preview's league name (`LoginFlow.tsx`). Four things:
+  - **A `fontSize` token named `h3` would have been silently deleted, and that is
+    why this is a string.** `cn()` runs tailwind-merge, which decides what a class
+    conflicts with by parsing its NAME: `text-xs` is a font size, `text-h3` is not
+    a t-shirt size and so gets filed as a text COLOUR and dropped outright the
+    moment a caller passes one — which all three call sites do. `ui/Label.tsx`
+    documents the trap from the time it cost the app every 12px label; the four
+    `display-*` / `label-*` tokens still in `tailwind.config.ts` have zero call
+    sites for the same reason, and `PickHero`, `app/page.tsx` and `LoginHero` each
+    independently talk themselves out of adding another one. Adding a fifth dead
+    token would have been the obvious-looking move.
+  - **The tracking is `-0.04em`, not `-1.28px`.** Figma reports letter-spacing as
+    percent times 100, so this step's `-4` IS -4%; `em` is that percentage
+    directly, where px is a conversion to redo every time the size moves.
+    `surfaces.tsx` carries a paragraph about getting that arithmetic wrong — a
+    headline four times too tight. The older constants in that file are still px,
+    so the app has both spellings; the em one is right for anything shared.
+  - **It carries no colour, unlike `PAGE_TITLE` and `HEADING` beside it.**
+    `PickFilters` paints the same type in `shell-ink` or `shell-faint` depending
+    on which option is live, so a baked-in `text-shell-ink` would make the
+    constant unusable exactly where it is most wanted. Callers compose.
+  - **`src/lib/`, not `components/account/surfaces.tsx`**, which already holds
+    constants of this exact shape. That file is documented as the ACCOUNT page's
+    vocabulary, and `InviteCta` spells its `HEADING` out by hand rather than
+    import it — "a `group/ -> account/` import would quietly promote it into
+    something shared without saying so". A leaf module is that promotion, said
+    out loud.
+
+  Not H3, and deliberately left alone: `WeekStrip`'s 28px week numerals, which
+  are a numeral sized against its chip rather than a heading.
+
 - **The invite card is the "Grow the League" module, and it carries a photo.**
   `InviteCta.tsx` (was `WhosIn.tsx`, which also held the deleted roster) is now a
   heading with the headcount beside it over a white 12px-radius card: the
@@ -719,8 +756,7 @@ reading, but only the first kind is the lesson.
 - **There are two ways to make a pick, and the grid is the default.** `TeamGrid`
   draws all 32 teams as square cards, one tap to pick; `WeekSchedule` is the old
   radio-group over the week's matchups and is unchanged. `PickFilters` switches
-  between them, and orders the grid by team record or alphabetically. Six things
-  are load-bearing:
+  between them. Six things are load-bearing:
   - **Both surfaces are handed the same derived values.** `MyPicksClient` already
     computed the week's `games`, the `usedByTeam` map with its two week-scoped
     exclusions, `byes`, `pickTeam` and `interactive`, and both layouts take those
@@ -780,12 +816,13 @@ reading, but only the first kind is the lesson.
     would have been 64+ `<img>` elements. `max-w-none` is still load-bearing under
     `fill`: preflight's cap is relative to the intrinsic 500px artwork, not to the
     box.
-  - **Layout and sort live in `localStorage`** (`lms:picks:*`), so they are
-    per-device and are *not* part of `LeagueData`. `useStoredChoice` renders the
+  - **The layout choice lives in `localStorage`** (`lms:picks:layout`), so it is
+    per-device and is *not* part of `LeagueData`. `useStoredChoice` renders the
     default first and reads storage in an effect — seeding state from
     `localStorage` in a `useState` initializer is a hydration mismatch, since the
     server has no such thing. The cost is one paint for anyone who changed the
-    setting.
+    setting. `lms:picks:sort` was the other key and is gone; stale values sit in
+    people's browsers where nothing reads them.
 
 - **Team records are derived on the client, and nothing stores them.** The `games`
   table has no standings columns and neither `load-schedule` nor `poll-scores`
@@ -799,13 +836,20 @@ reading, but only the first kind is the lesson.
   regular-season game final** — which, per Open issues, has never happened. That
   is not a bug in the fold.
 
-- **`orderPickerTeams` is no longer dead code.** It was written and unit-tested
-  for a picker that was deleted, and the grid now uses it. It grew one option,
+- **`orderPickerTeams` is no longer dead code, and the Sort filter going away
+  is what nearly made it so again.** It was written and unit-tested for a picker
+  that was deleted, and the grid now uses it. It grew one option,
   `groupUnavailable`, which defaults to `true` purely so its original tests keep
   meaning what they said; the grid passes `false`, because bye and already-spent
-  cards sort *in place* — "Team Record" is a straight ranking of all 32, and a
-  card must not move merely because you spent it. "ABCs" needs no sort key of its
-  own: `TEAMS` is already alphabetical by city and then nickname.
+  cards sort *in place* — the record ranking is a straight ranking of all 32, and
+  a card must not move merely because you spent it.
+
+  `orderGridTeams` now passes `sort: "record"` outright rather than a filter's
+  choice. The alternative the filter offered, "ABCs", was `sort: "default"` — a
+  passthrough, because `TEAMS` is already alphabetical by city and then nickname
+  — so had the fixed order gone that way instead, `orderPickerTeams`, `winPct`,
+  `isActionable` and `availabilityOf` would ALL have become unreachable in one
+  move. Record was also the stored default, so nobody's grid changed.
 
 - **Both pick surfaces' cards reveal on scroll, and GSAP is in the bundle for
   it — but the two no longer reveal the SAME way.** `use-card-reveal.ts` owns
@@ -927,8 +971,8 @@ reading, but only the first kind is the lesson.
     lives in `planCardReveal`. On screen when the week turns over, a card leaves
     and returns (0.35s/0.6s on the clip, 0.3s/0.65s on the fade); below the line
     it returns to its start state and takes the ordinary scroll reveal; on any
-    other rebuild — a sort toggle, a breakpoint crossing — a revealed card holds
-    and animates nothing. The exit is dead code on the fade in practice:
+    other rebuild — a breakpoint crossing, a re-render on tap — a revealed card
+    holds and animates nothing. The exit is dead code on the fade in practice:
     `WeekSchedule` keys on `game.id`, so a week change mounts all-new nodes,
     `wasRevealed` is false for every one and `wipeOut` never comes back true. It
     is defined anyway so the reveal is complete if it is ever pointed at a
@@ -951,7 +995,11 @@ reading, but only the first kind is the lesson.
     picked. `TeamGrid` passes `order.join(",")`, which is safe precisely because
     `orderGridTeams` passes `groupUnavailable: false` and so never reorders on
     `selectedTeam`. It is separate from `weekKey` because the two mean different
-    things to the reveal: one rebuilds the cascade in silence, the other replays it.
+    things to the reveal: one rebuilds the cascade in silence, the other replays
+    it. Since the Sort filter went, the order can only move when records do,
+    which only happens across weeks — so `orderKey` is now a subset of `weekKey`
+    rather than an independent trigger. Kept regardless: it costs one string
+    compare and it is still the honest key for "the order changed".
   - **A week change preserves `TeamGrid`'s cards and replaces `WeekSchedule`'s.**
     The grid keys on `teamId` and `buildGridCards` loops `TEAMS` every week, so
     all 32 labels survive; the matchup list keys on `game.id`, which is the ESPN
