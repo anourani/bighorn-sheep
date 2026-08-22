@@ -55,11 +55,18 @@ const CHIP =
  * lookup, one class, nothing to reason about.
  *
  * The `undecided` row is what every chip printed before the redesign.
+ *
+ * `win` and `loss` now read the same either way. The `on` column used to take
+ * the `-lit` pair, which was lifted specifically to survive the chip's dark
+ * GREEN fill; against `accent` those land at 1.9:1 and 1.2:1, so the lighter
+ * pair is worse on the new fill rather than better. Keeping the table rather
+ * than collapsing the two rows: `undecided` still differs, and the shape is
+ * what the note above is about.
  */
 const CORNER_INK: Record<ChipOutcome, { off: string; on: string }> = {
   undecided: { off: "text-shell-mute", on: "text-white" },
-  win: { off: "text-result-win", on: "text-result-win-lit" },
-  loss: { off: "text-result-loss", on: "text-result-loss-lit" },
+  win: { off: "text-result-win", on: "text-result-win" },
+  loss: { off: "text-result-loss", on: "text-result-loss" },
 };
 
 export function WeekStrip({
@@ -234,7 +241,7 @@ function Chip({
         // apart, below anything anyone can see, and both tokens are load-bearing
         // across the app. A third near-identical grey would leave this chip a
         // different grey from every other flat tile on the page. Deliberate.
-        selected ? "bg-selected" : "bg-fill-soft",
+        selected ? "bg-accent" : "bg-fill-soft",
         // 2 → 4 → 6 as the state escalates, and the ladder now runs in EVERY
         // variant. It used to stop at 2px on any chip showing a logo, on the
         // grounds that a round logo shouldn't fight a rounded box; the updated
@@ -258,9 +265,12 @@ function Chip({
               The logo is untreated in EVERY state, selected included. The Figma
               spec draws `mix-blend-darken` on the filled chip; it shipped, and it
               erased the light-marked teams — `darken` takes the per-channel
-              minimum against the fill, so New Orleans' gold landed on `#0C6F28`
+              minimum against the fill, so New Orleans' gold landed on the fill
               exactly and the Colts' white horseshoe came back as an outline.
-              Don't re-add it from the spec. */}
+              (That was measured against the old green #0C6F28. The fill is
+              `accent` now and the trap is unchanged: `darken` still clamps every
+              channel to a low-green, low-blue minimum.) Don't re-add it from the
+              spec. */}
           <TeamLogo teamId={pick.teamId} size={30} />
           {/* right-[4px] resolves against the padding box — with no border, the
               border box — so this is the spec's 4px from the chip's edge and the

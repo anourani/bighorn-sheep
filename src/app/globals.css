@@ -37,11 +37,14 @@
      colour, not white — the gap is meant to be a hole in the ring, and a pure
      white one would read as a halo now that the page is #FDFDFD. */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-strong/70 ring-offset-2 ring-offset-bg;
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-bg;
   }
 
+  /* `theme()` rather than a hand-typed rgba(): this used to be a literal
+     rgba(237, 123, 70, 0.22) — the brand orange retyped — and so was the one
+     colour in the app that a palette change could not reach. */
   ::selection {
-    background-color: rgba(237, 123, 70, 0.22);
+    background-color: theme(colors.accent.DEFAULT / 22%);
   }
 
   /* Slim scrollbars inside slate panels. */

@@ -60,7 +60,9 @@ The rule "you can't see another player's current pick until that team's game kic
 
 ## Design direction — "Ecosystem Visualization"
 
-The visual language is a strict adaptation of the provided design tokens: a warm **orange accent** (`#E48B59` / `#ED7B46`) lighting **slate data-panels** (`#53617A`) that float on a **white page**, **Inter** throughout — regular for display/body, semibold for labels and metric readouts — card radius 16 / control 8 / pill. The result is an operational-dashboard aesthetic — metric tiles, nested surfaces, restrained motion — which maps naturally onto live scores and standings. Tokens live in `tailwind.config.ts`; primitives in `src/components/ui`.
+The visual language is a strict adaptation of the provided design tokens: a warm **orange accent** (`#FC5F38`) lighting **slate data-panels** (`#53617A`) that float on a **white page**, **Inter** throughout — regular for display/body, semibold for labels and metric readouts — card radius 16 / control 8 / pill. The result is an operational-dashboard aesthetic — metric tiles, nested surfaces, restrained motion — which maps naturally onto live scores and standings. Tokens live in `tailwind.config.ts`; primitives in `src/components/ui`.
+
+That accent is declared **once**, in `src/lib/accent.ts`, and everything orange is derived from it — the light ramp (`brand.*`), the `live` status hue, the button sheen, the focus ring, the text-selection colour and the PWA theme colour. Changing that one line retunes the whole app; `src/lib/palette.test.ts` pins the derivation and flags the two static assets (`public/manifest.webmanifest`, `public/icons/icon.svg`) that carry the value by hand. Use `accent` for the bright value and `accent-faded` for its 8% companion.
 
 ---
 

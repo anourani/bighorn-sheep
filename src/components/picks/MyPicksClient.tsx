@@ -332,7 +332,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
            so a top-only margin would collapse the banner onto the module and move
            a second seam. */
         <div className="my-4 rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
-          <Label className="text-[#8A4A24]">Pre-season</Label>
+          <Label className="text-accent-ink">Pre-season</Label>
           <p className="mt-1 text-sm leading-relaxed text-ink">
             The season kicks off{" "}
             <LocalTime iso={group.entryClosesAt} mode="full" className="font-semibold" />. Make your Week 1

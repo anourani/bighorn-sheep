@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AmbientBackground } from "@/components/ui/AmbientBackground";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ACCENT } from "@/lib/accent";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,7 +36,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ED7B46",
+  // The accent itself, imported rather than retyped: metadata is a plain string
+  // and no Tailwind token can reach it, so a hardcoded hex here is a colour a
+  // palette change silently leaves behind. `public/manifest.webmanifest` states
+  // the same value and CANNOT import it — keep the two in step.
+  themeColor: ACCENT,
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
