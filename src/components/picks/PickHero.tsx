@@ -44,7 +44,6 @@ export function PickHero({
   teamId,
   game,
   weekName,
-  practice = false,
   now,
   weekFinalKickoff,
 }: {
@@ -52,32 +51,16 @@ export function PickHero({
   game: Game | undefined;
   /** Formatted week label — "Week 5", "Preseason 2", "Hall of Fame". */
   weekName: string;
-  /** True when this is a practice (preseason) pick, which resets at Week 1. */
-  practice?: boolean;
   now: Date;
   weekFinalKickoff: Date | null;
 }) {
   if (!teamId || !game) {
-    return (
-      <NoPickHero
-        weekName={weekName}
-        practice={practice}
-        now={now}
-        weekFinalKickoff={weekFinalKickoff}
-      />
-    );
+    return <NoPickHero weekName={weekName} now={now} weekFinalKickoff={weekFinalKickoff} />;
   }
 
   const team = getTeam(teamId);
   if (!team) {
-    return (
-      <NoPickHero
-        weekName={weekName}
-        practice={practice}
-        now={now}
-        weekFinalKickoff={weekFinalKickoff}
-      />
-    );
+    return <NoPickHero weekName={weekName} now={now} weekFinalKickoff={weekFinalKickoff} />;
   }
   const opp = getTeam(opponentOf(game, teamId));
   const home = isHome(game, teamId);
@@ -92,7 +75,6 @@ export function PickHero({
         ink(`Locks in ${cd.label}`),
         mute("Only you can see this pick until the game kicks off"),
       ];
-  if (practice) lockLines.push(mute(PRACTICE_LINE));
 
   /* Every piece of the module replays together, off one key. See `replayFor`. */
   const replay = replayFor(weekName, teamId, game.id, kicked);
@@ -244,12 +226,10 @@ export function PickHero({
  */
 function NoPickHero({
   weekName,
-  practice,
   now,
   weekFinalKickoff,
 }: {
   weekName: string;
-  practice: boolean;
   now: Date;
   weekFinalKickoff: Date | null;
 }) {
@@ -259,7 +239,6 @@ function NoPickHero({
   const lockLines = [
     ...(cd ? [ink(`Week locks in ${cd.label}`)] : []),
     mute("Miss the final kickoff and it counts as a loss."),
-    ...(practice ? [mute(PRACTICE_LINE)] : []),
   ];
 
   /* Nothing else here can change — there is no team and no game — so the week
@@ -326,9 +305,6 @@ function NoPickHero({
 
 /** The headline of the empty state, named because its word count is counted. */
 const NO_PICK = "No Pick Made";
-
-/** Shared by both states, so the two cannot drift apart. */
-const PRACTICE_LINE = "Practice only — everyone resets for Week 1.";
 
 function eyebrowFor(weekName: string): string {
   return `Your ${weekName} Pick`;
@@ -550,12 +526,27 @@ function Rule() {
   return <div className="hidden h-full w-px shrink-0 bg-shell-line lg:block" />;
 }
 
-/** Matchup, date and kickoff — one line on a phone, three from `lg`. */
+/** Matchup, date and kickoff — one line on a phone, three from `lg`.
+ *
+ *  12px on a phone, the design's body-14 (14px / 135%) from `lg`. Both are
+ *  written with the slash shorthand that binds a leading to its size, rather
+ *  than as a size beside a separate `leading-*`, and that is load-bearing
+ *  rather than a style preference: a `text-*` utility carries a line-height of
+ *  its own, and the `lg:`-prefixed one is emitted AFTER any unprefixed
+ *  `leading-*` — so the pair silently reverts to the default 1.5 from `lg` up.
+ *  Binding both halves into one utility per breakpoint is the only form that
+ *  cannot come apart. `src/app/page.tsx` carries the same note for the same
+ *  reason.
+ *
+ *  Spelled as an arbitrary value and NOT as a new `fontSize` token: `cn()` runs
+ *  tailwind-merge, which parses a non-t-shirt name like `text-body-14` as a
+ *  COLOUR and deletes it outright the moment a caller passes one — the trap
+ *  `ui/Label.tsx` documents for `text-label-md`. */
 function Meta({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-1 py-1 text-xs font-medium leading-[1.4] text-shell-ink lg:h-full lg:flex-col lg:items-start lg:justify-center lg:gap-0.5",
+        "flex items-center gap-1 py-1 text-xs/[1.4] font-medium text-shell-ink lg:h-full lg:flex-col lg:items-start lg:justify-center lg:gap-0.5 lg:text-[14px]/[1.35]",
         className,
       )}
     >
