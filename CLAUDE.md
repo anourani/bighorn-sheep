@@ -292,7 +292,7 @@ Guessing between the two costs a round trip each time.
 dashboard does nothing until the site is rebuilt.
 
 The one that bites is `NEXT_PUBLIC_APP_URL`, which builds invite links in
-`WhosIn.tsx`, `AdminSettingsDrawer.tsx` and `MoreSection.tsx`. It is scoped
+`InviteCta.tsx`, `AdminSettingsDrawer.tsx` and `MoreSection.tsx`. It is scoped
 *"Different value for each deploy context"* in Netlify: production holds
 `https://sheepwithglasses.com`, and **previews, branch deploys, Preview Servers
 and Local development are deliberately blank.** Nothing in the repo sets it —

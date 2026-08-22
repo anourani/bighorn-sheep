@@ -6,7 +6,7 @@ import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
-import { InviteCta, WhosIn } from "@/components/group/WhosIn";
+import { InviteCta } from "@/components/group/InviteCta";
 import { StatusReport } from "@/components/app/StatusReport";
 import { buildGameIndex } from "@/lib/league/games";
 import { rankMembers, survivorCounts, type StatusLineInput } from "@/lib/league/view";
@@ -227,18 +227,19 @@ export function StandingsClient({ data }: { data: LeagueData }) {
           </section>
         )}
 
-        {/* Wrapped rather than given a `className` prop: neither component takes
-            one, and the seam belongs to the page rather than to either block.
+        {/* Wrapped rather than given a `className` prop: `InviteCta` takes none,
+            and the seam belongs to the page rather than to the block.
 
             24px on a phone, 48 from `lg` — the same step the status report takes
-            down to the table above, so all four blocks on this page sit on one
+            down to the table above, so the three blocks on this page sit on one
             rhythm rather than the table's seam being the only wide one. The
-            phone keeps its tighter 24: these two are the foot of a page that is
-            already long on a small screen. */}
-        <div className="mt-6 lg:mt-12">
-          <WhosIn members={data.members} preseason={isPreseason} />
-        </div>
+            phone keeps its tighter 24: this is the foot of a page that is
+            already long on a small screen.
 
+            The roster ("Who's In") used to sit between the table and this, on
+            the same seam. It was removed rather than hidden: every fact in it —
+            who is in the league, who is alive, who the commissioner is — is
+            already on the standings grid above or in the admin drawer. */}
         <div className="mt-6 lg:mt-12">
           <InviteCta group={group} appUrl={appUrl} now={now} />
         </div>
