@@ -194,16 +194,38 @@ function TeamCard({
         {record}
       </span>
 
-      {/* Colour is the reward for reaching a card you can act on: every logo is
-          greyscale at rest and comes up in team colours under the pointer, and
-          stays in colour once picked. Figma reaches it with
-          `mix-blend-luminosity`; over a neutral card that is the same picture as
-          a grayscale filter, without the isolation and stacking-context rules a
-          blend mode drags in. */}
+      {/* Colour is the reward for reaching a card you can act on — and where there
+          is no pointer to reach with, it is simply given. A card you could pick is
+          in team colours at rest on a touch device; the picked card is always in
+          colour; everything else (bye, already spent, locked, and every card on a
+          week you are only previewing) is greyscale on every device. So the set
+          that can EVER be in colour is unchanged — a touch device just renders the
+          pointer's hover state from the start, which is why the ternary keys on
+          `selectable` rather than being a bare `!selected`.
+
+          `[@media(hover:hover)]` and NOT `lg`: the reason is a device fact rather
+          than a width one, and an iPad past 1024px would otherwise sit at grey
+          with no hover to redeem it. It also matches how the card's other two
+          hover rules are gated. The cost is that narrowing a desktop browser does
+          not show the touch treatment — DevTools device emulation, which flips
+          `hover` to `none`, does. Measured there: `none` on a pickable card,
+          `grayscale(1)` on a bye.
+
+          A ternary rather than an opposite filter class under a `hover: none`
+          query beside the reveal, because two classes writing `--tw-grayscale` on
+          one element are resolved by CSS source order — a media query adds no
+          specificity — where this way a selectable card on touch carries no filter
+          class at all. That alternative is described rather than spelled out: the
+          content glob is `./src/**`, so Tailwind scans comments and would ship the
+          rule nothing references.
+
+          Figma reaches the greyscale with `mix-blend-luminosity`; over a neutral
+          card that is the same picture as a grayscale filter, without the
+          isolation and stacking-context rules a blend mode drags in. */}
       <span
         className={cn(
           "flex min-h-0 w-full flex-1 items-center justify-center px-5 pb-1 pt-3 lg:items-end lg:px-6 lg:pt-2",
-          !selected && "grayscale",
+          !selected && (selectable ? "[@media(hover:hover)]:grayscale" : "grayscale"),
           selectable && "[@media(hover:hover)]:group-hover:grayscale-0",
         )}
       >
