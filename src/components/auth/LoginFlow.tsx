@@ -440,17 +440,23 @@ export function LoginFlow({
 /**
  * Which league this invite is for — the design's "League-line item".
  *
- * A plain white card in the page's own hairline, not the orange notice it
+ * A recessive grey card in the page's own hairline, not the orange notice it
  * replaced. The orange was doing two jobs at once: announcing an invitation
  * (which the hero above now says, at 64px) and colouring the one league fact on
  * screen as if it were a warning. Stripped of the first job, it only had to name
  * the league — so it is typeset rather than decorated, and the accent is spent
  * on the CTA instead.
  *
- * The geometry is the design's: 16px radius on a #D9D9D9 hairline, 16/20 padding,
- * 8px between an 18px #757575 line and the 28px #1E1E1E name. Trackings are bound
- * to the em for the same reason as the hero's — the design states -0.18px at 18px
- * and -1.12px at 28px, which are the same -0.01em and -0.04em at both sizes.
+ * The fill is what separates it from the form below: #F3F3F3 against the login
+ * card's white, so the thing you READ sits back and the thing you FILL IN comes
+ * forward. `fill-soft` is that colour to the byte, so no new token was needed.
+ *
+ * The geometry is the design's: `radius/medium` (12px) on a #D9D9D9 hairline, a
+ * uniform 16px of padding, 8px between an 18px #757575 line and the 28px #1E1E1E
+ * name — and none of those four step at a breakpoint, because the phone and
+ * desktop frames specify them identically. Trackings are bound to the em, the
+ * design stating -0.18px at 18px and -1.12px at 28px: the same -0.01em and
+ * -0.04em on both artboards.
  *
  * Three states share one shell so the page does not jump as the RPC lands:
  * pending prints the raw code where the name goes and is replaced in place, and
@@ -462,8 +468,8 @@ function InviteBanner({ invite, preview }: { invite: string; preview: Preview })
   return (
     <div
       className={cn(
-        "mb-4 flex flex-col items-center gap-2 rounded-card border px-4 py-5 text-center",
-        invalid ? "border-out/30 bg-out-wash" : "border-shell-line bg-white",
+        "mb-4 flex flex-col items-center gap-2 rounded-medium border p-4 text-center",
+        invalid ? "border-out/30 bg-out-wash" : "border-shell-line bg-fill-soft",
       )}
     >
       <p

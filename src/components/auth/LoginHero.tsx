@@ -27,8 +27,12 @@ export function LoginHero({ eyebrow }: { eyebrow: string }) {
     /* `px-4` is the design's own, and it is on this block rather than on the
        page: `/login`'s `main` deliberately has no gutter so this hero can use
        the full 600px column while the card below it stays in its 480px one. See
-       login/page.tsx. */
-    <div className="mb-8 flex flex-col items-center gap-2 px-4 text-center">
+       login/page.tsx.
+
+       `mb-5`, not `mb-8`: the description carries its own 16px of bottom padding
+       and the design puts 36px between the last line of copy and the league card
+       — 16 from the description, 20 from the title block. */
+    <div className="mb-5 flex flex-col items-center gap-2 px-4 text-center">
       {/* 16px semibold uppercase #757575. `Label` is already uppercase, semibold
           and `text-shell-mute` (#757575 exactly), so only the size and leading
           are overridden — and `text-base` is a real Tailwind size, so it
@@ -36,32 +40,47 @@ export function LoginHero({ eyebrow }: { eyebrow: string }) {
           being dropped the way a `text-label-*` token would be. */}
       <Label className="text-base leading-[1.1]">{eyebrow}</Label>
       {/*
-        64px semibold, leading-none, pure black — the design's H1, and the same
+        Semibold, leading-none, pure black — the design's H1, and the same
         wordmark the landing page leads with, so the two doors match.
 
-        Tracking is `-0.05em`, NOT the flat `-3.2px` the design states. That is a
-        deliberate departure and the opposite call from the landing page's flat
-        `-2px`: there the mock-up specifies the same absolute value at BOTH 64px
-        and 88px, so it demonstrably does not scale. Here there is one size on
-        one artboard, and -3.2px at 64px IS -0.05em — so binding it to the em is
-        the only reading that survives the clamp below. A flat -3.2px would eat
-        9% of the glyph width at the 36px floor and collapse the word.
+        TWO anchors, one on each artboard: 36px at -1.44px on the phone, 64px at
+        -3.2px on the desktop. The size ramp hits both exactly — `9vw` is 36px at
+        400px and reaches the 4rem cap at a 711px viewport — and the 2.25rem
+        floor is the phone value itself, so nothing is interpolated at the ends.
+        The design's `whitespace-nowrap` is deliberately not transcribed: below
+        ~330px the word wraps rather than pushing the page sideways.
 
-        The clamp exists because 64px "Last Man Standing" measures 523px and a
-        phone has ~360px to give. 9vw reaches 64px at a 711px viewport, where the
-        column is already 568px wide; the 2.25rem floor keeps one line down to
-        ~330px and simply wraps below that rather than overflowing, which is why
-        the design's `whitespace-nowrap` is deliberately NOT transcribed.
+        The tracking needs its own ramp, because the two anchors DISAGREE about
+        the em: -1.44/36 is -0.04em and -3.2/64 is -0.05em, so no single em value
+        and no single px value hits both. Fitting a line through them gives
+        `0.823px - 0.566vw`, which lands on -1.44px at 393px and -3.2px at 711px
+        and is bounded by the anchors themselves either side. This is the same
+        job the landing page does with a flat `-2px` and the opposite answer,
+        for the honest reason that ITS two anchors agree and these two don't.
       */}
-      <h1 className="text-[clamp(2.25rem,9vw,4rem)] font-semibold leading-none tracking-[-0.05em] text-black">
+      <h1 className="text-[clamp(2.25rem,9vw,4rem)] font-semibold leading-none tracking-[clamp(-3.2px,0.823px_-_0.566vw,-1.44px)] text-black">
         Last Man Standing
       </h1>
-      {/* 18px/1.4 at 382px, inside the design's own 16px padding — so `p-4` plus
-          a 414px cap, not a 382px one. The copy is the landing page's, extended
-          by the no-repeats rule and with the closing sentence lifted onto its own
-          line: same three-tone treatment (ink / mute / ink), same voice, so the
-          invite screen and the marketing page read as one product. */}
-      <div className="max-w-[414px] p-4 text-lg/[1.4] tracking-[-0.01em]">
+      {/* 16px/1.35 full-bleed on the phone, stepping to 18px/1.4 inside a 382px
+          measure on the desktop — the cap is 414px because the design's 382px is
+          the TEXT and its 16px padding sits outside it. Only the horizontal
+          padding is held back below `md`, where the phone frame runs the copy to
+          the section's own gutter and pads vertically alone.
+
+          Tracking is flat `-0.01em`, unlike the headline above: -0.16/16 and
+          -0.18/18 are the same em, so here the two artboards agree and one value
+          serves both.
+
+          `md`, not `lg`: this route is outside /app and inherits none of its
+          `lg` turn-over rule, and 768px is where the headline has already
+          reached its 64px cap (711px) — so the two halves of the hero step up
+          together rather than 250px apart.
+
+          The copy is the landing page's, extended by the no-repeats rule and
+          with the closing sentence lifted onto its own line: same three-tone
+          treatment (ink / mute / ink), same voice, so the invite screen and the
+          marketing page read as one product. */}
+      <div className="w-full py-4 text-base/[1.35] tracking-[-0.01em] md:max-w-[414px] md:px-4 md:text-lg/[1.4]">
         <p className="text-shell-ink">A private NFL survivor league with friends.</p>
         <p className="text-shell-mute">
           Pick one team a week. Win to advance to the next week. Lose or tie and
