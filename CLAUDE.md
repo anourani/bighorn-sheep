@@ -720,24 +720,67 @@ reading, but only the first kind is the lesson.
   card must not move merely because you spent it. "ABCs" needs no sort key of its
   own: `TEAMS` is already alphabetical by city and then nickname.
 
-- **Both pick surfaces' cards wipe in on scroll, and GSAP is in the bundle for
-  it.** `use-card-reveal.ts` gives every card its own ScrollTrigger starting at
-  `top bottom-=100`, and a 1.2s `clip-path: inset(100% 0 0 0)` -> `inset(0)`
-  tween on `cubic-bezier(0.4, 0, 0.2, 1)` (registered through CustomEase, whose
-  SVG path form `M0,0 C0.4,0 0.2,1 1,1` is that curve exactly — `power2.inOut`
-  is a near neighbour, not the same). The reveal is ONE-WAY: a card wipes in the
-  first time its row crosses the line and then stays. It costs **+49KB gzipped on `/app` alone**
-  (11 -> 60KB route, 127 -> 176KB First Load; the shared chunk is untouched), and
-  the same effect is expressible in CSS + one IntersectionObserver — the
-  dependency was chosen deliberately, not by default. The arithmetic lives in the
-  pure `card-reveal.ts` beside it, because there is still no jsdom here. Seven
-  things are load-bearing:
-  - **The masked state is in CSS (`.reveal-clip` in `globals.css`), not set from
-    JS on mount.** `/app` is server-rendered, so a mask applied in an effect
-    flashes a fully drawn grid on every cold load in the window before hydration.
-    The stated cost: if the client JS ever fails to load, the pick grid renders
-    blank rather than visible-but-inert. The class doubles as the hook's query
-    target, so a card carries one new token rather than two.
+- **Both pick surfaces' cards reveal on scroll, and GSAP is in the bundle for
+  it — but the two no longer reveal the SAME way.** `use-card-reveal.ts` owns
+  *when*: every card gets its own ScrollTrigger starting at `top bottom-=100`,
+  one-way, a card arriving the first time its row crosses the line and then
+  staying. *What* arriving looks like is the caller's, passed in whole as a
+  `Reveal` from `card-reveal.ts`:
+  - **`REVEAL_CLIP` (`TeamGrid`)** — the original 1.2s `clip-path:
+    inset(100% 0 0 0)` -> `inset(0)` wipe on `cubic-bezier(0.4, 0, 0.2, 1)`
+    (registered through CustomEase, whose SVG path form `M0,0 C0.4,0 0.2,1 1,1`
+    is that curve exactly — `power2.inOut` is a near neighbour, not the same).
+  - **`REVEAL_FADE` (`WeekSchedule`)** — the fade+blur the My Picks hero
+    resolves its own pieces with: opacity 0 -> 1, `blur(12px)` -> `blur(0px)`,
+    `scale(1.04)` -> `scale(1)` on `cubic-bezier(0.16, 1, 0.3, 1)`, at the
+    hero's own 650ms. The matchup list sits directly under that module and was
+    asked to arrive the way it does. `FADE_DURATION` is `HERO_DURATION_MS / 1000`
+    rather than a retyped 0.65, and a test reads `tailwind.config.ts`'s
+    `blur-in` keyframe directly and asserts the constants still match it — the
+    hand copy cannot drift from the original in silence.
+
+  GSAP costs **+49KB gzipped on `/app` alone** (11 -> 60KB route, 127 -> 176KB
+  First Load; the shared chunk is untouched), and the same effect is expressible
+  in CSS + one IntersectionObserver — the dependency was chosen deliberately, not
+  by default. The arithmetic lives in the pure `card-reveal.ts` beside it, because
+  there is still no jsdom here. What is load-bearing:
+  - **The start state is in CSS (`.reveal-clip` / `.reveal-fade` in
+    `globals.css`), not set from JS on mount.** `/app` is server-rendered, so a
+    state applied in an effect flashes a fully drawn grid on every cold load in
+    the window before hydration. The stated cost: if the client JS ever fails to
+    load, the pick grid renders blank rather than visible-but-inert. The class
+    doubles as the hook's query target, so a card carries one new token rather
+    than two.
+  - **`.reveal-fade` also carries `pointer-events: none`, and `.reveal-clip` has
+    no need of it.** A clipped-away card is not hit-testable for free — clipped
+    regions receive no pointer events — but an `opacity: 0` card is fully live,
+    radio inputs and all. In a league where a pick spends a team for the season,
+    a tap landing on a card nobody can see is not cosmetic, and the JS-never-loads
+    case above turns "blank and inert" into "blank and live". `REVEAL_FADE.shown`
+    hands `auto` back; GSAP applies a value with no numbers in it on the FIRST
+    tick rather than the last, so the card is clickable as it starts arriving.
+  - **The fade's resolved filter is `blur(0px)`, never `blur(0)` and never
+    `none`** — even though the keyframe it mirrors is written `blur(0)`. GSAP has
+    no filter parser and tweens the string generically, measuring the unit off the
+    end value: `blur(0)` has a `)` in the way, so no unit is appended, the
+    midpoint renders `filter: blur(6)`, the browser drops it as invalid, and the
+    card sits at `blur(12px)` until the last frame snaps it clear. `none` has no
+    numbers at all, so GSAP swaps it in on the first tick and there is no blur
+    whatsoever. Both look right in review and neither errors. The test asserts the
+    literal string, because asserting the number 12 cannot catch either.
+  - **A surface passes the whole `Reveal` and reads `className` off that same
+    object** — `REVEAL_FADE.className` on the card, `reveal: REVEAL_FADE` to the
+    hook. A `variant: "clip" | "blur"` string plus a lookup table typechecks
+    perfectly while naming the wrong class, and the consequence is not a wrong
+    animation but an invisible grid (next bullet). One import, referenced twice,
+    cannot disagree with itself.
+  - **`readColumns` reads `offsetTop`, not `getBoundingClientRect().top`.** A rect
+    is the *transformed* box, so an armed card at `scale(1.04)` reports a top ~2%
+    of its height above a revealed one — about 3px, outside `countColumnsByRow`'s
+    1px tolerance. A rebuild landing mid-cascade, with part of the first row
+    revealed, would truncate the run and answer 1 column for a grid drawing three.
+    `offsetTop` is layout-derived, so no transform reaches it. `clip-path` could
+    never produce this, which is why the hook read rects for as long as it did.
   - **The stagger modulus is READ, never hardcoded.** The brief said
     `(index % 5)`; neither grid is five columns. `TeamGrid` steps 3/4/5/6 across
     `min-[480px]`, `md` and `lg`, and `WeekSchedule` is
@@ -761,6 +804,17 @@ reading, but only the first kind is the lesson.
     `if (!card) return null`, where a React index can disagree with the rendered
     position — and it is the rendered position that decides which row a card is
     in.
+
+    The cost of that query is one silent failure, and it is the worst one in
+    either surface: move the class off the grid's DIRECT child, or hand a
+    surface one reveal's class and another's styles, and `:scope > .{className}`
+    matches nothing, the hook returns before writing a single style, and
+    `globals.css` leaves every card at its invisible start state. Nothing throws;
+    typecheck and the suite stay green; the page is simply blank where the grid
+    was. Passing the whole `Reveal` closes the second route in; a
+    development-only `console.warn` when a grid has children but no cards is what
+    stops the first from being silent. Both of those exist because this has
+    always been one careless move away.
   - **`.stagger`'s 12px is observable here, and one refresh fixes it.** The hook
     builds in a layout effect, i.e. while `reveal-up`'s `translateY(12px)` is
     still applied, so every trigger start is measured 12px low — and ScrollTrigger
@@ -783,10 +837,15 @@ reading, but only the first kind is the lesson.
     the tween exactly where it is — where a bare `.kill()` would revert the
     styles and kill the animation.
   - **A week change is the ONE thing that animates a card twice**, and the rule
-    lives in `planCardReveal`. On screen when the week turns over, a card wipes
-    away (0.35s) and back (0.6s); below the line it re-masks and takes the
-    ordinary 1.2s scroll reveal; on any other rebuild — a sort toggle, a
-    breakpoint crossing — a revealed card holds and animates nothing. The
+    lives in `planCardReveal`. On screen when the week turns over, a card leaves
+    and returns (0.35s/0.6s on the clip, 0.3s/0.65s on the fade); below the line
+    it returns to its start state and takes the ordinary scroll reveal; on any
+    other rebuild — a sort toggle, a breakpoint crossing — a revealed card holds
+    and animates nothing. The exit is dead code on the fade in practice:
+    `WeekSchedule` keys on `game.id`, so a week change mounts all-new nodes,
+    `wasRevealed` is false for every one and `wipeOut` never comes back true. It
+    is defined anyway so the reveal is complete if it is ever pointed at a
+    surface that keeps its nodes across a week, as `TeamGrid` does. The
     asymmetry is load-bearing: **the week branch keys on POSITION, every other
     branch keys on REVEALED-NESS.** They were the same test while the reveal
     reversed; they stopped being the same the moment it became one-way, because
@@ -814,11 +873,13 @@ reading, but only the first kind is the lesson.
     cards simply wipe in. Not a special case, just the honest consequence.
   - **`prefers-reduced-motion` needs a manual check here, unlike everywhere
     else.** The global rule in `globals.css` clamps CSS animation and transition
-    *durations*; a GSAP tween is neither, and nor is a static `clip-path` start
-    state. The hook reads `matchMedia` itself, exactly as `WeekStrip`'s
-    programmatic scroll does — and `.reveal-clip` carries its own `clip-path:
-    none` override so a reduced-motion visitor never sees a masked card even
-    before the JS runs.
+    *durations*; a GSAP tween is neither, and nor is a static `clip-path` or
+    `opacity` start state. The hook reads `matchMedia` itself, exactly as
+    `WeekStrip`'s programmatic scroll does — and each start-state class carries
+    its own override (`.reveal-clip` a `clip-path: none`, `.reveal-fade` a reset
+    of all four of its properties, `pointer-events` included, so the card is
+    usable in exactly the state it is visible in) so a reduced-motion visitor
+    never sees a hidden card even before the JS runs.
 
   `tailwind.config.ts`'s `reveal-mask` is still there, still unused, and wipes
   the OTHER way (`inset(0 0 100% 0)`, downward, plus an opacity fade). Don't

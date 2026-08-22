@@ -112,6 +112,46 @@
     }
   }
 
+  /* The matchup cards' start state — the same fade+blur the My Picks hero
+     resolves each of its own pieces with, so the two modules on that page arrive
+     the same way. `use-card-reveal.ts` drives it with GSAP off `REVEAL_FADE`,
+     and everything said about `.reveal-clip` above applies here unchanged: the
+     start state is authored in CSS so the server-rendered HTML already carries
+     it, and the class doubles as the hook's query target.
+
+     `pointer-events: none` is the one thing this needs that a clip does not. A
+     clipped-away card is not hit-testable for free — clipped regions receive no
+     pointer events — but an `opacity: 0` one is fully live, radio inputs and
+     all. In a league where a pick spends a team for the season, a tap landing on
+     a card nobody can see is not cosmetic. `REVEAL_FADE` puts `auto` back, and
+     GSAP applies a value with no numbers in it on the first tick rather than the
+     last, so a card is clickable as it starts arriving.
+
+     NOT named `.reveal-blur`. That name is taken, ten lines down, by the
+     declaration-less marker whose whole job is to switch the hero's `blur-in`
+     OFF under reduced motion — very nearly the opposite of this.
+
+     The reduce override resets all three properties rather than only the filter:
+     the block at the top of this layer zeroes animation durations, which says
+     nothing about a static opacity, and a visitor who never runs the JS would
+     otherwise be left with an invisible grid. Restoring pointer-events with them
+     keeps the card usable in exactly the state it is visible in. */
+  .reveal-fade {
+    opacity: 0;
+    filter: blur(12px);
+    transform: scale(1.04);
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-fade {
+      opacity: 1;
+      filter: none;
+      transform: none;
+      pointer-events: auto;
+    }
+  }
+
   /* The fade+blur reveal's reduced-motion escape hatch. `BlurReveal` and the
      hero's colour strips carry this class beside `animate-blur-in`; it has no
      declarations of its own and exists only to be this selector's target.
