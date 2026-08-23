@@ -1049,10 +1049,10 @@ reading, but only the first kind is the lesson.
 
 - **The admin settings panel is a full-width bottom drawer, not a modal.**
   `AdminSettingsDrawer.tsx` (was `AdminSettingsModal.tsx`) renders
-  `ui/Drawer.tsx`. Three tabs — Members (roster, two switches per row, invite),
-  Rules (game rules **and** the buy-in amount), Data Feed — with the league name
-  above them. It opens as **ADMIN / Control Center**, matching the row that opens
-  it. Eight things are load-bearing:
+  `ui/Drawer.tsx`. Four tabs — Members (roster, two switches per row), Rules
+  (game rules **and** the buy-in amount), Name (the league's name **and** the
+  invite link), Data Feed. It opens as **ADMIN / Control Center**, matching the
+  row that opens it. Fourteen things are load-bearing:
   - **`Drawer` is a second primitive, and `Modal` is untouched.** Every geometry
     decision inverts between them (`max-w-app` → full bleed, `sm:items-center` →
     always `items-end`, `max-h-[92vh]` → `max-h-[90dvh]`), and a shared `variant`
@@ -1104,19 +1104,35 @@ reading, but only the first kind is the lesson.
     without it the panel grows past 90dvh and the page behind scrolls instead. A
     sixteen-row roster is exactly what tempts a `max-h-64` in there; there is a
     comment above the `<ul>` saying so.
-  - **The tab bar IS now sticky, inside the drawer's header — a deliberate
-    reversal.** It used to be a plain flow child, and the reasoning was sound at
-    480px: the bar was never more than a short scroll from the top of the
-    viewport, so pinning it bought nothing and cost height. At 90dvh with a long
-    roster under it, it scrolls out of sight and the other two tabs become
-    unreachable without scrolling back. Sticky is a pin, not a scroll region, so
-    the invariant above is untouched. Don't "fix" it back.
-  - **The name is above the tab bar, not in a tab.** It names the thing all three
-    tabs are about, and it replaced `Modal`'s static `description={group.name}`.
-    In a tab, "rename any time" would have meant "rename any time you're on the
-    right tab". It rides in `Drawer`'s `aside` slot, which is **one** instance
-    reordered with `order-*` — rendering it twice behind `lg:hidden` would
-    duplicate the input's `id` and split its React state.
+  - **The tab bar is pinned in the drawer's header, and NOT with `sticky`.** This
+    entry twice said sticky and was twice wrong by the time anyone read it. The
+    header is a `shrink-0` flex sibling of a `h-[90dvh]` panel, so it is
+    structurally fixed and there is nothing for a `sticky` to pin against — the
+    class came off when the panel took a fixed height, along with the translucent
+    background that only made sense while content scrolled under it. The reason
+    it needs pinning at all still stands: at 480px the bar was never more than a
+    short scroll from the top of the viewport, so pinning bought nothing; at
+    90dvh with a long roster it would scroll out of sight and the other tabs
+    become unreachable. Don't reintroduce `sticky` to "fix" a pin that is
+    already structural.
+  - **The name and the invite share the Name tab, and that is what pays for the
+    full-width roster.** The name used to sit above the bar in `Drawer`'s `aside`
+    slot, on the argument that it names the thing every tab is about; the invite
+    link, the code and four hint paragraphs sat in a ~300px rail beside the
+    roster. The rail cost Members a third of 968px — on the one tab that needs
+    the width, for two things that are not membership admin — so both moved into
+    a tab of their own and Members runs the full rail. `aside` had no other
+    caller and is **gone from `Drawer`** rather than left as an empty slot; the
+    header row it needed collapsed to a plain block with it. `GroupNameSection`'s
+    `id="group-name"` is still hardcoded, so it must render exactly once — which
+    a tab branch gives for free, since only the active tab is mounted.
+  - **The removal copy travelled with the invite; the switch copy didn't.**
+    `remove_member` closes at `entry_closes_at` exactly as `join_by_invite` does,
+    so removal is the undo for a join and reads correctly beside the link that
+    caused it. The Paid and Preseason paragraphs stayed under the roster they
+    describe, in `lg:grid-cols-3` — at the full 968px a stacked hint runs to a
+    ~130-character measure, and three columns buy back the ~45 the rail used to
+    give them. Widening that back to one column is the regression to watch for.
   - **`ui/Tabs.tsx` is a real tablist; `ui/Segmented.tsx` is not, and is still
     unused.** `Segmented` puts `role="tablist"`/`role="tab"` on a plain value
     selector with no panels, so extending it would have left every other caller

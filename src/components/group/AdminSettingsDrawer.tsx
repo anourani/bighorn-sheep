@@ -167,14 +167,22 @@ async function runAction(
 /**
  * The league's name — always editable, which is the whole point.
  *
- * Sits ABOVE the tab bar rather than inside a tab: it names the thing all three
- * tabs are about, and burying it in one of them would make "rename any time"
- * mean "rename any time you're on the right tab". It also replaces the `Modal`'s
- * static `description`, which is where the name used to be printed, unchangeably.
+ * Lives on the Name tab beside the invite. It used to sit ABOVE the tab bar, in
+ * `Drawer`'s `aside` slot, on the argument that it names the thing all the tabs
+ * are about and burying it would make "rename any time" mean "rename any time
+ * you're on the right tab". What changed is that it now shares a tab with the
+ * invite link rather than being buried in one about something else: the name and
+ * the invite are both the league's identity, where the other three tabs are the
+ * roster, the game's rules and the scorer's health. The header is back to the
+ * one thing it was always good at — saying which panel you are in.
  *
  * Writes through `set_group_name` (0011), which has no lock check — 0001's RLS
  * policy refuses every `groups` update once the season starts, and a typo in a
  * league name is exactly the thing you notice after kickoff.
+ *
+ * `id="group-name"` is hardcoded and paired with the `htmlFor` above it, so this
+ * must render exactly once. A tab branch guarantees that: only the active tab is
+ * mounted.
  */
 function GroupNameSection({ group }: { group: Group }) {
   const router = useRouter();
@@ -326,9 +334,8 @@ function RulesSection({ group }: { group: Group }) {
 
       {locked ? (
         <HintLine>
-          The season has started, so elimination and tie rules are frozen — a league can&apos;t
-          change what counts as elimination halfway through. The buy-in and the league name are
-          both still editable.
+          The season has started, so the elimination and tie rules are frozen. The buy-in and the
+          league name are still editable.
         </HintLine>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -512,9 +519,8 @@ function BuyInAmountSection({ group }: { group: Group }) {
         <p className="text-xs text-ink-mute">Shown on everyone&apos;s account page.</p>
       </div>
       <HintLine>
-        Money admin never locks: you can correct the amount after kickoff, which is usually when
-        you find out it&apos;s wrong. Changing it doesn&apos;t touch anyone&apos;s paid switch —
-        those are on the Members tab.
+        Money admin never locks, so you can correct the amount after kickoff. Changing it
+        doesn&apos;t touch anyone&apos;s paid switch. Those are on the Members tab.
       </HintLine>
       {!valid ? <ErrorLine>Enter a dollar amount of zero or more.</ErrorLine> : null}
       {error ? <ErrorLine>{error}</ErrorLine> : null}
@@ -724,14 +730,22 @@ function MembersSection({
         inside a scroller. A taller row is precisely what tempts a `max-h-64`.
       */}
 
-      {/* aria-hidden, and that is not an oversight. Every Switch below already
+      {/* The two switch tracks are 168 and 200 rather than the 112 and 140 they
+          were in the rail's shadow, and that is what the reclaimed width was
+          for. At the old widths "Paid · 8/21, 6:47 PM" and "Can see and pick
+          preseason" each wrapped to two lines under their switch, which set the
+          height of every row in the roster. Only the MEMBER track is `1fr`, so
+          widening these takes the space out of a name column that had ~900px
+          for "Jane D." and gives it to the two sub-lines that were short of it.
+
+          aria-hidden below, and that is not an oversight. Every Switch below already
           carries its member's name in its own accessible label ("Buy-in paid —
           Jane D."), so these four words are decoration for sighted readers; left
           exposed, a screen reader would announce four orphan headings before
           every roster. Hidden below `lg`, where each row still labels itself. */}
       <div
         aria-hidden
-        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px_88px]"
+        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_168px_200px_88px]"
       >
         <Label className="text-ink-mute">Member</Label>
         <span />
@@ -753,7 +767,7 @@ function MembersSection({
           return (
             <li
               key={m.id}
-              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_112px_140px_88px] lg:items-center lg:gap-x-4 lg:space-y-0"
+              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_168px_200px_88px] lg:items-center lg:gap-x-4 lg:space-y-0"
             >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
                 <span className="min-w-0 flex-1 lg:min-w-0">
@@ -912,62 +926,50 @@ function RemoveControl({
  * The paragraphs that explain the two switches, and the pointer to where the
  * buy-in AMOUNT went.
  *
- * Separated from the roster so the wide layout can put them in the 312px rail
- * beside it. That is not decoration: across the drawer's full 968px these run to
- * a ~130-character measure, which is past the point anyone reads them. In the
- * rail they are about 45.
+ * THREE COLUMNS, not a stack, and that is the same argument the 312px rail used
+ * to make. Across the drawer's full 968px a stacked hint runs to a
+ * ~130-character measure, which is past the point anyone reads it; in a third of
+ * that width it is about 45, which is what the rail gave them. The rail is gone
+ * because the roster wanted the width back, so the measure has to be bought
+ * here instead.
+ *
+ * The removal paragraph is NOT here any more. It moved to the Name tab, beside
+ * the invite: `remove_member` closes at `entry_closes_at`, exactly as
+ * `join_by_invite` does, so removal is the undo for a join and belongs with the
+ * link that caused it. What is left is the two switches directly above these
+ * lines, and the pointer to the amount.
  */
 function MembersHints({
   preseasonOpen,
-  removalOpen,
   entryClosesAt,
 }: {
   preseasonOpen: boolean;
-  removalOpen: boolean;
   entryClosesAt: string;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="grid gap-x-8 gap-y-3 lg:grid-cols-3">
       <HintLine>
-        Buy-in is yours to track by hand — flip a switch as the money lands. Members see their own
-        status on their account page and can&apos;t change it.
+        Track the buy-in by hand. Flip a switch as the money lands. Members see their own status on
+        their account page but can&apos;t change it.
       </HintLine>
       <HintLine>
         {preseasonOpen ? (
           <>
-            Preseason is practice: picks are real for the practice table, but nothing carries into
-            the season — nobody is eliminated by a preseason loss. Switch it on for whoever wants to
-            play those weeks; switching it off hides them from that member and stops them picking,
-            keeping any picks they already made.
+            Preseason is practice. Picks count on the practice table only, and nobody is eliminated
+            by a preseason loss. Switching it off hides those weeks from that member and stops them
+            picking, but keeps the picks they already made.
           </>
         ) : (
           <>
-            Preseason ended when entry closed, on{" "}
-            <LocalTime iso={entryClosesAt} mode="full" />, and these switches are closed for the
-            season. Practice never carried into the standings, so nothing was lost when it went.
-          </>
-        )}
-      </HintLine>
-      <HintLine>
-        {removalOpen ? (
-          <>
-            Remove takes a player out of the league along with their picks. It is the undo for a
-            wrong join — anyone holding the invite code can use it — and it closes when entry does,
-            on <LocalTime iso={entryClosesAt} mode="full" />. After that the roster is part of the
-            season&apos;s record. Admins can&apos;t be removed.
-          </>
-        ) : (
-          <>
-            Removing members closed with entry, on <LocalTime iso={entryClosesAt} mode="full" /> —
-            the roster is the season&apos;s record now. An eliminated player still shows as Out
-            rather than disappearing, which is the point.
+            Preseason ended when entry closed on <LocalTime iso={entryClosesAt} mode="full" />, so
+            these switches are shut for the season. Practice never counted toward the standings.
           </>
         )}
       </HintLine>
       {/* The other half of the split. Someone marking people paid is one thought
           away from wanting to change what they owe, and the Rules tab is not
           where they would look for it unaided. */}
-      <HintLine>What the buy-in costs is a rule — set the amount on the Rules tab.</HintLine>
+      <HintLine>Set what the buy-in costs on the Rules tab.</HintLine>
     </div>
   );
 }
@@ -1018,7 +1020,21 @@ function MemberToggle({
   );
 }
 
-/** Sharing the invite is membership admin, so it lives with the roster. */
+/**
+ * The invite link, the code, and what the window they open and close on means.
+ *
+ * It used to sit in the Members rail, on the argument that sharing an invite is
+ * membership admin. It is on the Name tab now with the league's name, because
+ * the roster wanted the rail's width back and these two are the pair a member
+ * actually sees: the league is called X and here is how you get into it.
+ *
+ * ONE boolean for the whole section, and it comes from `isEntryOpen` rather than
+ * the local `new Date(...) <= Date.now()` this used to compute for itself.
+ * `join_by_invite` and `remove_member` both refuse after `entry_closes_at`, so
+ * the link going dead and removal going away are the same fact, and reading it
+ * through the helper every other consumer uses is what keeps the copy and the
+ * database closing together.
+ */
 function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
   const [copied, setCopied] = useState(false);
   // `appUrl` is inlined at build time and may simply be absent; falling back to
@@ -1026,7 +1042,9 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
   // because this drawer never renders on the server — `open` starts false.
   const origin = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
   const inviteLink = `${origin}/login?invite=${group.inviteCode}`;
-  const entryClosed = new Date(group.entryClosesAt).getTime() <= Date.now();
+  // `new Date()` in a render body is a hydration mismatch anywhere else in this
+  // app; safe here for the same reason as above.
+  const entryOpen = isEntryOpen(new Date(group.entryClosesAt), new Date());
 
   async function copyInvite() {
     try {
@@ -1058,12 +1076,21 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
         <Label>Code</Label>
         <span className="font-mono text-sm font-semibold text-ink">{group.inviteCode}</span>
       </div>
-      {entryClosed ? (
-        <HintLine>
-          Entry closed <LocalTime iso={group.entryClosesAt} mode="full" /> — new members can no
-          longer join this season.
-        </HintLine>
-      ) : null}
+      <HintLine>
+        {entryOpen ? (
+          <>
+            Remove takes a player out of the league along with their picks. It&apos;s the undo for
+            a wrong join, and it closes when entry does, on{" "}
+            <LocalTime iso={group.entryClosesAt} mode="full" />. Admins can&apos;t be removed.
+          </>
+        ) : (
+          <>
+            Entry closed <LocalTime iso={group.entryClosesAt} mode="full" />. New members
+            can&apos;t join and the roster is the season&apos;s record now, so an eliminated player
+            still shows as Out.
+          </>
+        )}
+      </HintLine>
     </section>
   );
 }
@@ -1236,8 +1263,7 @@ function DataFeedSection({ groupId }: { groupId: string }) {
 
         <HintLine>
           Last checked is stamped on every run, success or not. Last success only moves when a run
-          works — a fresh check beside a stale success means the scorer is running and failing,
-          which is a different problem from nothing running at all.
+          works, so a fresh check beside a stale success means the scorer is running and failing.
         </HintLine>
       </section>
 
@@ -1249,7 +1275,7 @@ function DataFeedSection({ groupId }: { groupId: string }) {
           {loading ? "Reading…" : "Refresh"}
         </Button>
         <HintLine>
-          Check now runs the scorer immediately — it polls the provider, locks picks at kickoff and
+          Check now runs the scorer immediately: it polls the provider, locks picks at kickoff and
           updates standings. Refresh only re-reads the last run. The scorer also runs on its own
           every five minutes.
         </HintLine>
@@ -1271,21 +1297,22 @@ function FeedFact({ term, children }: { term: string; children: React.ReactNode 
   );
 }
 
-type TabValue = "members" | "rules" | "feed";
+type TabValue = "members" | "rules" | "name" | "feed";
 
 const TABS: { value: TabValue; label: string }[] = [
   { value: "members", label: "Members" },
   { value: "rules", label: "Rules" },
+  { value: "name", label: "Name" },
   { value: "feed", label: "Data Feed" },
 ];
 
 /**
- * The league admin's one surface: three tabs in a full-width bottom drawer.
+ * The league admin's one surface: four tabs in a full-width bottom drawer.
  *
  * Why tabs: five stacked sections made the panel taller than a phone, so it had
- * to be scrolled one-handed mid-week. Splitting membership, rules and feed
- * health — three genuinely unrelated concerns — is both the organising fix and
- * the scroll fix.
+ * to be scrolled one-handed mid-week. Splitting membership, rules, identity and
+ * feed health — four genuinely unrelated concerns — is both the organising fix
+ * and the scroll fix.
  *
  * Why a drawer and not `Modal`: at 480px every one of these tabs was a single
  * narrow column, and the roster in particular stacked two full-width switch rows
@@ -1300,16 +1327,28 @@ const TABS: { value: TabValue; label: string }[] = [
  * so a short tab doesn't scroll at all and a long one scrolls the whole drawer.
  * A sixteen-row roster is exactly what tempts a `max-h` in here.
  *
- * The tab bar IS now pinned, in the drawer's sticky header, which reverses what
- * this comment used to say. In a 480px modal the bar was never more than a short
- * scroll from the top of the viewport, so pinning it bought nothing; at 90dvh it
- * scrolls out of sight and the other two tabs become unreachable without
- * scrolling back up. Sticky is a pin, not a scroll region — the invariant above
- * is untouched.
+ * The tab bar IS now pinned, which reverses what this comment used to say — but
+ * NOT with `sticky`, which is what it used to say next. `Drawer`'s header is a
+ * `shrink-0` flex sibling of a `h-[90dvh]` panel, so it is structurally fixed and
+ * there is nothing for a `sticky` to pin against. The reason it needed pinning at
+ * all still holds: in a 480px modal the bar was never more than a short scroll
+ * from the top of the viewport, so pinning bought nothing; at 90dvh with a long
+ * roster it would scroll out of sight and the other tabs become unreachable.
  *
- * The league name is `aside` rather than a tab, and above the tabs rather than
- * inside one: it names the thing all three tabs are about, and burying it would
- * make "rename any time" mean "rename any time you're on the right tab".
+ * THE NAME TAB IS WHY THE MEMBERS TAB IS FULL WIDTH. The league name used to
+ * ride above the bar in `Drawer`'s `aside` slot, and the invite link, the code
+ * and four paragraphs of hint copy sat in a ~300px rail beside the roster. That
+ * rail cost the roster a third of 968px on the one tab that needs the width — a
+ * sixteen-player league with phone numbers under the names — to hold two things
+ * that are not membership admin at all. They are the league's identity, so they
+ * are a tab: name and invite together, third in the bar, and Members runs the
+ * full rail.
+ *
+ * The removal copy went with the invite rather than staying with the button it
+ * describes, because `remove_member` closes at `entry_closes_at` exactly as
+ * `join_by_invite` does — removal is the undo for a join. The copy for the two
+ * switches stayed on Members, under the roster, in three columns to keep its
+ * measure readable.
  *
  * The active tab is plain `useState` and survives close/reopen for the session:
  * `Drawer` returns null when closed, so only its subtree unmounts — this
@@ -1345,7 +1384,6 @@ export function AdminSettingsDrawer({
       onClose={onClose}
       eyebrow="Admin"
       title="Control Center"
-      aside={<GroupNameSection group={group} />}
       subheader={
         <Tabs
           options={TABS}
@@ -1353,38 +1391,30 @@ export function AdminSettingsDrawer({
           onChange={setTab}
           idBase="admin-settings"
           label="Group settings sections"
-          // Left-aligned and capped rather than stretched: three tabs spread
-          // across 968px read as a navigation bar for the page rather than a
-          // control for the panel under them.
-          className="lg:max-w-[440px]"
+          // Left-aligned and capped rather than stretched: tabs spread across
+          // 968px read as a navigation bar for the page rather than a control
+          // for the panel under them. 440 was the cap for three; a fourth at the
+          // same per-tab width wants ~587, and 560 keeps "Data Feed" on one line
+          // without reaching for the whole rail.
+          className="lg:max-w-[560px]"
         />
       }
     >
+      {/* No rail on Members, and therefore no grid: the roster is the tab.
+          `space-y-6` is safe here in a way it is not on a page root — two
+          children, one seam, and neither owns its own spacing. */}
       {tab === "members" ? (
-        <TabPanel
-          idBase="admin-settings"
-          value="members"
-          className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-8"
-        >
+        <TabPanel idBase="admin-settings" value="members" className="space-y-6">
           <MembersSection
             groupId={group.id}
             members={members}
             phase={phase}
             entryClosesAt={group.entryClosesAt}
           />
-          {/* The rail: sharing the invite is membership admin, and the two long
-              explanations are unreadable at the full width of this drawer. */}
-          <div className="space-y-5">
-            <InviteSection group={group} appUrl={appUrl} />
-            <MembersHints
-              preseasonOpen={phase === "preseason"}
-              // Derived from the deadline rather than from `phase`, matching
-              // `MembersPanel`: `seasonPhase` answers "ended" once the season is
-              // over, and removal has no third state.
-              removalOpen={isEntryOpen(new Date(group.entryClosesAt), new Date())}
-              entryClosesAt={group.entryClosesAt}
-            />
-          </div>
+          <MembersHints
+            preseasonOpen={phase === "preseason"}
+            entryClosesAt={group.entryClosesAt}
+          />
         </TabPanel>
       ) : null}
 
@@ -1398,6 +1428,24 @@ export function AdminSettingsDrawer({
               and the point is that you can see both states at once. */}
           <RulesSection group={group} />
           <BuyInAmountSection group={group} />
+        </TabPanel>
+      ) : null}
+
+      {tab === "name" ? (
+        <TabPanel
+          idBase="admin-settings"
+          value="name"
+          className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
+        >
+          {/* Two plain sections, not `SettingsCard`s. That card exists for the
+              Rules tab, where its `pill` states a per-card lock and the two
+              cards lock on DIFFERENT conditions; neither of these locks at all,
+              so a card here would carry an affordance with nothing to say. It
+              would also break the real `<label htmlFor="group-name">` wrapper
+              below, since `SettingsCard` puts its heading inside a `<Label>`
+              span. The roster's `<ul>` and the feed's sections are bare too. */}
+          <GroupNameSection group={group} />
+          <InviteSection group={group} appUrl={appUrl} />
         </TabPanel>
       ) : null}
 
