@@ -206,8 +206,9 @@ function GameCard({
           devices never get. `kicked` alone is the test, matching the lock word in
           the header above it and the request's own words, "ongoing or in the
           past". The accepted consequence: a FUTURE preview week draws white cards
-          nothing can be picked from. The row caption below splits the other way —
-          `kicked && interactive` — which is a tension this file already carried.
+          nothing can be picked from — the radios are what say you cannot act
+          there. Lock state is stated exactly once on this card, in the header;
+          the rows below stayed positional, Home and Away, in every state.
 
           Selected paints the WHOLE card `accent-faded`, and the picked row takes
           `accent-faded` again on top of it. That nesting is the design and it is
@@ -314,13 +315,18 @@ function TeamOption({
   // to hide the column — the design simply has no score node in that state.
   const score = teamScoreline(game, teamId)?.for ?? null;
 
-  const detail = used
-    ? `Used · W${used.week}`
-    : kicked && interactive
-      ? "Locked"
-      : home
-        ? "Home"
-        : "Away";
+  // Home/Away survives a kickoff, and all three designed states say so: the two
+  // LOCKED ones keep the positional label rather than swapping it for the word
+  // "Locked". This used to override it on the live week, which both contradicted
+  // the design and said a second time what the card header already says beside
+  // the clock — spending the one fact only this row can carry to repeat the one
+  // fact the line above it already carried.
+  //
+  // `Used · W3` is a different kind of override and stays: nothing else on the
+  // card carries it, it is the only explanation of why a team on an open white
+  // card cannot be picked, and no designed state contradicts it — none of the
+  // three shows a spent team.
+  const detail = used ? `Used · W${used.week}` : home ? "Home" : "Away";
 
   // `selected` first: on a week you are only previewing, your own pick is not
   // selectable, and announcing it as "not selectable" buries the one fact that
