@@ -33,13 +33,15 @@ export const DRAWER_RAIL = "mx-auto w-full max-w-shell px-4";
  * would also have to decide whether the focus trap and focus restore below apply
  * to Modal's five callers, and either answer is wrong.
  *
- * Three slots beyond `children`, all inside the fixed header:
+ * Two slots beyond `children`, both inside the fixed header:
  *   - `title`/`eyebrow` — the identity, on the first line.
- *   - `aside` — sits BESIDE the title from `lg` and wraps under it below. One
- *     instance, never two behind `lg:hidden`: the admin drawer puts its
- *     league-name field here, and a second copy would duplicate the input's `id`
- *     and split its React state.
  *   - `subheader` — a full-rail row at the foot of the header. The tab bar.
+ *
+ * There was a third, `aside`, which sat beside the title from `lg` and wrapped
+ * under it below; the admin drawer put its league-name field in it. That field
+ * has a tab of its own now, so the slot had no content and no second caller to
+ * justify it. Anything wanting a control in the header should get the slot back
+ * rather than borrowing `subheader`, which is sized and spaced for the bar.
  *
  * The close button is not a slot. It is absolutely positioned in the panel's
  * top-right corner rather than laid out with the title, because it is chrome for
@@ -69,7 +71,6 @@ export function Drawer({
   onClose,
   eyebrow,
   title,
-  aside,
   subheader,
   children,
 }: {
@@ -77,7 +78,6 @@ export function Drawer({
   onClose: () => void;
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
-  aside?: React.ReactNode;
   subheader?: React.ReactNode;
   children?: React.ReactNode;
 }) {
@@ -274,33 +274,22 @@ export function Drawer({
               background and hairline must span the full viewport width while the
               text inside them stays on the rail. */}
           <div className={cn(DRAWER_RAIL, "py-3 lg:py-4")}>
-            {/* `pr-12` on the ROW, never on DRAWER_RAIL. Padding the rail would
+            {/* `pr-12` here, never on DRAWER_RAIL. Padding the rail would
                 inset this text 48px from the body's rail and break the alignment
                 with the page behind, which is the whole premise of the drawer.
-                On the row it reclaims exactly the space the X used to occupy, so
-                nothing else moves. */}
-            <div className="flex flex-wrap items-start gap-x-4 gap-y-3 pr-12 lg:flex-nowrap lg:items-center">
-              <div className="min-w-0 flex-1 lg:flex-none">
-                {eyebrow ? <Label className="text-brand-strong">{eyebrow}</Label> : null}
-                <h2
-                  className={cn(
-                    "text-lg font-semibold leading-tight text-ink",
-                    eyebrow && "mt-0.5",
-                  )}
-                >
-                  {title}
-                </h2>
-              </div>
+                On this block it reclaims exactly the space the X used to occupy,
+                so nothing else moves.
 
-              {/* No `order-*` any more. That existed only to keep the close
-                  button at the right edge once `aside` wrapped below `lg`; with
-                  the button lifted out of this row, wrapping is the whole
-                  behaviour. */}
-              {aside ? (
-                <div className="w-full lg:w-auto lg:min-w-0 lg:max-w-[460px] lg:flex-1">
-                  {aside}
-                </div>
-              ) : null}
+                A plain block, not a flex row. The row existed to lay `aside` out
+                beside the title and let it wrap underneath below `lg`; with the
+                slot gone the title is the whole line. */}
+            <div className="min-w-0 pr-12">
+              {eyebrow ? <Label className="text-brand-strong">{eyebrow}</Label> : null}
+              <h2
+                className={cn("text-lg font-semibold leading-tight text-ink", eyebrow && "mt-0.5")}
+              >
+                {title}
+              </h2>
             </div>
 
             {subheader ? <div className="mt-3">{subheader}</div> : null}
