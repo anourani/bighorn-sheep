@@ -387,7 +387,7 @@ function TeamOption({
         </span>
       </span>
 
-      <span className="flex shrink-0 items-center justify-end gap-1">
+      <span className="flex shrink-0 items-center justify-end gap-3">
         {/* Fixed 28px from the design, and that width is the point: it holds the
             radios in a straight column whether a team has 7, 27 or 107 points.
             `text-right` so the digits sit flush against the radio rather than

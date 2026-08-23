@@ -8,6 +8,7 @@ import {
   statusLabel,
   statusLine,
   survivorCounts,
+  teamScoreline,
   type TeamAvailability,
 } from "./view";
 
@@ -288,5 +289,55 @@ describe("countNoun", () => {
 
   it("takes an explicit plural for words that do not just take an s", () => {
     expect(countNoun(2, "entry", "entries")).toBe("2 entries");
+  });
+});
+
+describe("teamScoreline", () => {
+  const scored = (status: Game["status"], homeScore: number, awayScore: number): Game => ({
+    ...game(EARLY, "kc", "buf"),
+    status,
+    homeScore,
+    awayScore,
+  });
+
+  it("reads the score from each side's perspective", () => {
+    const g = scored("final", 24, 20);
+    expect(teamScoreline(g, "kc")).toEqual({ for: 24, against: 20, opponent: "buf" });
+    expect(teamScoreline(g, "buf")).toEqual({ for: 20, against: 24, opponent: "kc" });
+  });
+
+  it("shows a real 0 once the game is under way", () => {
+    expect(teamScoreline(scored("in_progress", 0, 0), "kc")).toEqual({
+      for: 0,
+      against: 0,
+      opponent: "buf",
+    });
+    expect(teamScoreline(scored("final", 0, 3), "kc")?.for).toBe(0);
+  });
+
+  // The one this guard exists for. ESPN sends `score: "0"` on a game nobody has
+  // played and `parseScore` stores a real 0, so a null check alone would print
+  // "0" on every future week. The mocks pass no scores and land null, which is
+  // why this never reproduced locally.
+  it("hides the feed's placeholder 0 on a game that has not been played", () => {
+    expect(teamScoreline(scored("scheduled", 0, 0), "kc")).toBeNull();
+    expect(teamScoreline(scored("postponed", 0, 0), "kc")).toBeNull();
+  });
+
+  it("still hides a scheduled game carrying a non-zero score", () => {
+    expect(teamScoreline(scored("scheduled", 21, 17), "kc")).toBeNull();
+  });
+
+  it("counts a delayed game as played, so a real score survives the delay", () => {
+    expect(teamScoreline(scored("delayed", 14, 10), "kc")?.for).toBe(14);
+  });
+
+  it("is null when either side has no score at all", () => {
+    const g: Game = { ...game(EARLY, "kc", "buf"), status: "final", homeScore: 24, awayScore: null };
+    expect(teamScoreline(g, "kc")).toBeNull();
+  });
+
+  it("is null for a team that is not in the game", () => {
+    expect(teamScoreline(scored("final", 24, 20), "phi")).toBeNull();
   });
 });

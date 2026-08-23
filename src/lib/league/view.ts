@@ -319,11 +319,32 @@ export function viewCurrentPick(
   };
 }
 
+/**
+ * Whether a game has produced a score anyone should read.
+ *
+ * A null check on its own is NOT enough, and the reason is a trap that hides in
+ * development: ESPN ships `score: "0"` on a game that has not kicked off, and
+ * `parseScore` in `providers/espn.ts` turns that into a real `0` rather than
+ * null — so every unplayed game in the database carries a 0-0 that looks exactly
+ * like a real shutout. The mock fixtures pass no scores at all and land null, so
+ * nothing local reproduces it; the first place it shows is a live schedule,
+ * where every future week reads 0.
+ *
+ * `delayed` counts as played: a delay lands at or after the scheduled kickoff and
+ * the feed carries the real score through it. The residual case is a pre-kickoff
+ * weather delay, which shows 0-0 until play starts — rarer, and self-correcting,
+ * where the alternative hides a real score for a game genuinely in progress.
+ */
+function hasBeenPlayed(game: Pick<Game, "status">): boolean {
+  return game.status === "in_progress" || game.status === "final" || game.status === "delayed";
+}
+
 /** The scoreline from the picked team's perspective. */
 export function teamScoreline(
   game: Game,
   teamId: TeamId,
 ): { for: number; against: number; opponent: TeamId } | null {
+  if (!hasBeenPlayed(game)) return null;
   if (game.homeScore === null || game.awayScore === null) return null;
   if (game.home === teamId) return { for: game.homeScore, against: game.awayScore, opponent: game.away };
   if (game.away === teamId) return { for: game.awayScore, against: game.homeScore, opponent: game.home };
