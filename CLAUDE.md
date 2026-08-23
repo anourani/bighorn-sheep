@@ -587,23 +587,56 @@ reading, but only the first kind is the lesson.
     without them, which is the whole reason it reads files off disk. Every other
     assertion in it compares tokens to EACH OTHER, so switching the accent stays
     a one-line change that leaves the suite green apart from that reminder.
-  - **The week strip's `-lit` numerals are gone.** `result.win-lit` /
-    `loss-lit` (#7BE170 / #F8787A) existed only to survive the chip's dark green
-    fill; on `accent` they measure 1.88:1 and 1.16:1 — worse than the dark pair,
-    not better. `CORNER_INK`'s `on` column now takes `result.win` / `result.loss`
-    in both states. The whole ladder, measured, so nobody re-derives it:
+  - **The week strip's `-lit` numerals are gone as INK, and #7BE170 is back as a
+    FILL.** Those two facts sit together and are easy to read as contradicting
+    each other. `result.win-lit` / `loss-lit` (#7BE170 / #F8787A) were lifted to
+    survive the chip's old dark green fill; on `accent` they measure 1.88:1 and
+    1.16:1 — worse than the dark pair, not better — so `CORNER_INK`'s `on`
+    column takes `result.win` / `result.loss` in both states and always will.
+    What came back is #7BE170 as `result.win-fill`, the tile the numeral sits
+    ON, where being light is the entire point. #F8787A did not come back at all:
+    the spec's loss fill is #FC615F. `palette.test.ts` still asserts both `-lit`
+    keys are undefined, and that is not a rule this bent.
+  - **A settled week is a COLOURED CHIP now, not a coloured numeral.**
+    `CHIP_FILL` in `WeekStrip.tsx` paints the whole 52px tile green for a week
+    you got through and red for one you didn't; `CORNER_INK` is unchanged and
+    now says the same thing a second time. The reason is that colour on a 10px
+    numeral is a few dozen pixels, which is what the change was asked for. Four
+    things follow:
+    - **The selected chip is no longer always `accent`.** Selecting a won week
+      paints it #7BE170. Selection is carried by the jump to the saturated value
+      plus the 2 -> 6px radius step, and only a neutral chip still turns orange.
+      That is the spec's call, not a regression to tidy.
+    - **`chipName` is NOT retired by this.** Its doc comment justifies speaking
+      "won"/"lost" on the grounds that the outcome is carried by colour alone —
+      and a tile's worth of colour is still colour, so WCAG 1.4.1 needs that
+      line exactly as much as before. Easier to see is not the same as
+      conveyed-by-something-other-than-colour.
+    - **The `mix-blend-darken` trap is LIVE again, not historical.** It was
+      measured against the old green #0C6F28 and a won week is filled green once
+      more. `WeekStrip.tsx` says so at the logo.
+    - **The two rest fills tint different bases** — win tints the light green
+      (#7BE170/60), loss the dark red (#CD1411/40). It reads as a slip in the
+      spec's own table; it is what the file draws, and both land on a pale tint
+      of the same weight. Transcribed, not derived.
 
-    | corner numeral | on the old green | `-lit` on accent | shipped, on accent |
+    The whole ladder, measured against the fill each state actually has, so
+    nobody re-derives it:
+
+    | corner numeral | rest | hover | selected |
     | --- | --- | --- | --- |
-    | win | 3.87:1 | 1.88:1 | **2.06:1** |
-    | loss | 2.40:1 | 1.16:1 | **2.42:1** |
-    | undecided (white) | 6.33:1 | — | **3.07:1** |
+    | win #0C6F28 | **4.63:1** (was 5.70) | **3.27:1** (was 4.48) | **3.87:1** (was 2.06) |
+    | loss #A71930 | **3.55:1** (was 6.70) | **2.92:1** (was 5.27) | **2.48:1** (was 2.42) |
+    | undecided | 4.15:1 | 3.26:1 | 3.07:1 (white on accent) |
 
-    So loss is at parity with what it always was, win is the one that gave
-    ground, and the 28px week numeral clears AA-Large (3:1) at 3.07:1 while the
-    10px corner numerals clear nothing. That is a KNOWN accepted state, chosen
-    deliberately with the numbers on the table — not an oversight, and not
-    something to "fix" by putting the `-lit` pair back, which is strictly worse.
+    Read it honestly: the numeral **loses** contrast at rest, where it used to
+    sit on near-white, and **gains** it when selected, where it used to sit on
+    orange. Every state now lands between 2.5:1 and 4.6:1. At 10px none of them
+    cleared AA before or after, so that is lateral on a numeral which was
+    already non-conforming — while the thing a player reads scanning the strip
+    went from a few dozen coloured pixels to a 2,700px² tile. The 28px week
+    numeral on a pickless chip is untouched and still clears AA-Large at 3.07:1.
+    A KNOWN accepted state, chosen with the numbers on the table.
 
 - **H3 is 32px now, it lives in `src/lib/type-scale.ts`, and it is a class STRING
   rather than a Tailwind token.** The design library's H3 was 28px at -2%; it is

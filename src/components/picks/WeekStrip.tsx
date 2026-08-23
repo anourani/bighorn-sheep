@@ -28,9 +28,12 @@ import { chipName, nextIndex, scrollLeftFor, type ChipOutcome, type ChipPick } f
  * three: each chip's accessible name, and the prose in `MyPicksClient` that
  * appears precisely when you are looking at some other week.
  *
- * A week you have already played reads its result off the corner numeral's
- * colour — green if you got through it, red if you didn't, grey while it is
- * still open. The outcome is derived in `buildChipPicks`; see `ChipOutcome`.
+ * A week you have already played reads its result off the chip's FILL — green
+ * if you got through it, red if you didn't, grey while it is still open. That
+ * used to be the corner numeral's colour alone, which at 10px on a 52px tile
+ * is a few dozen pixels; the numeral keeps the same two hues and the tile
+ * behind it now carries them too. The outcome is derived in `buildChipPicks`;
+ * see `ChipOutcome`.
  */
 
 /** Named once: the visible eyebrow and the tablist's accessible name are the
@@ -56,17 +59,62 @@ const CHIP =
  *
  * The `undecided` row is what every chip printed before the redesign.
  *
- * `win` and `loss` now read the same either way. The `on` column used to take
- * the `-lit` pair, which was lifted specifically to survive the chip's dark
- * GREEN fill; against `accent` those land at 1.9:1 and 1.2:1, so the lighter
- * pair is worse on the new fill rather than better. Keeping the table rather
- * than collapsing the two rows: `undecided` still differs, and the shape is
- * what the note above is about.
+ * `win` and `loss` read the same either way, and they are no longer the only
+ * thing saying which it was — `CHIP_FILL` below now carries the same fact at
+ * tile size. The `on` column used to take a `-lit` pair, lifted to survive the
+ * chip's old dark GREEN fill. What it faces now is a LIGHT fill (#7BE170 /
+ * #FC615F), where the dark pair measures 3.87:1 and 2.48:1 and the light one
+ * would disappear into it. Retired, and still retired — `tailwind.config.ts`
+ * has the note on why #7BE170 itself is nonetheless back, as a fill. Keeping
+ * the table rather than collapsing the two rows: `undecided` still differs, and
+ * the shape is what the note above is about.
  */
 const CORNER_INK: Record<ChipOutcome, { off: string; on: string }> = {
   undecided: { off: "text-shell-mute", on: "text-white" },
   win: { off: "text-result-win", on: "text-result-win" },
   loss: { off: "text-result-loss", on: "text-result-loss" },
+};
+
+/**
+ * The chip's own fill, by outcome and by whether it is the selected chip.
+ *
+ * Same table-not-conditionals argument as `CORNER_INK` above: the six bare
+ * values land in tailwind-merge's ONE background-colour group, so an `off` and
+ * an `on` emitted together resolve by argument order and the loser vanishes.
+ * `hover` is a third column rather than an alternative to those two precisely
+ * because a variant class does NOT conflict with a bare one — it is emitted
+ * alongside `off`, not instead of it.
+ *
+ * `neutral` is what every chip painted before this: the grey/accent pair, which
+ * a week with no pick and a week whose game has not gone final both still take.
+ * The spec draws those two rows identically, so they share one row here.
+ *
+ * The greys are #F3F3F3 and #D9D9D9 against the spec's #F2F2F2 and #DADADA: one
+ * point apart, below anything anyone can see, and both tokens are load-bearing
+ * across the app. A third near-identical grey would leave this chip a different
+ * grey from every other flat tile on the page. Deliberate.
+ *
+ * The two `off` values are NOT symmetrical — win tints the light green, loss
+ * tints the dark red. That reads as a slip in the spec's own table and is what
+ * it draws; both land on a pale tint of about the same weight. Transcribed, not
+ * derived. See the note on `result` in `tailwind.config.ts`.
+ */
+const CHIP_FILL: Record<"neutral" | "win" | "loss", { off: string; hover: string; on: string }> = {
+  neutral: {
+    off: "bg-fill-soft",
+    hover: "[@media(hover:hover)]:hover:bg-shell-line",
+    on: "bg-accent",
+  },
+  win: {
+    off: "bg-result-win-fill/60",
+    hover: "[@media(hover:hover)]:hover:bg-result-win-fill-deep/50",
+    on: "bg-result-win-fill",
+  },
+  loss: {
+    off: "bg-result-loss-fill-deep/40",
+    hover: "[@media(hover:hover)]:hover:bg-result-loss-fill-deep/50",
+    on: "bg-result-loss-fill",
+  },
 };
 
 export function WeekStrip({
@@ -220,6 +268,10 @@ function Chip({
 }) {
   const meta = pick ? getTeam(pick.teamId) : undefined;
   const teamName = meta ? `${meta.location} ${meta.name}` : null;
+  // "no pick at all" and "picked, not final yet" paint the same, so three rows
+  // rather than four. Excluding `undecided` narrows `pick.outcome` to the two
+  // that are left, so the lookup needs no cast.
+  const fill = CHIP_FILL[pick && pick.outcome !== "undecided" ? pick.outcome : "neutral"];
 
   return (
     <button
@@ -237,21 +289,26 @@ function Chip({
       onClick={onSelect}
       className={cn(
         CHIP,
-        // #F3F3F3 and #D9D9D9 against the spec's #F2F2F2 and #DADADA: one point
-        // apart, below anything anyone can see, and both tokens are load-bearing
-        // across the app. A third near-identical grey would leave this chip a
-        // different grey from every other flat tile on the page. Deliberate.
-        selected ? "bg-accent" : "bg-fill-soft",
-        // 2 → 4 → 6 as the state escalates, and the ladder now runs in EVERY
+        // One of the six bare fills, never both — see CHIP_FILL. A won week is
+        // green here and a lost one red, which means the selected chip is no
+        // longer always accent: selection is carried by the jump to the
+        // saturated value plus the radius step below, and only a neutral chip
+        // still turns orange. That is what the spec draws.
+        selected ? fill.on : fill.off,
+        // 2 → 4 → 6 as the state escalates, and the ladder runs in EVERY
         // variant. It used to stop at 2px on any chip showing a logo, on the
-        // grounds that a round logo shouldn't fight a rounded box; the updated
-        // spec draws the same corner growth either way. Don't put the gate back.
+        // grounds that a round logo shouldn't fight a rounded box; the spec that
+        // replaced it draws the same corner growth either way. Don't put the
+        // gate back — and note the current frame draws a flat 4px on all twelve
+        // variants only because its radius is one bound variable it never
+        // varies by state, which is not a reversal of that.
         selected ? "rounded-md" : "rounded-sm",
         // Gated on a real pointer. Tailwind v3 does not gate `hover:` behind
         // `@media (hover: hover)` unless `future.hoverOnlyWhenSupported` is set,
         // and it isn't here — so a plain `hover:` sticks on touch after a tap,
         // leaving the last week you touched shaded as though it were focused.
-        !selected && "[@media(hover:hover)]:hover:bg-shell-line",
+        // `fill.hover` carries that gate itself; both rows need it.
+        !selected && fill.hover,
         !selected && "[@media(hover:hover)]:hover:rounded",
       )}
     >
@@ -267,10 +324,11 @@ function Chip({
               erased the light-marked teams — `darken` takes the per-channel
               minimum against the fill, so New Orleans' gold landed on the fill
               exactly and the Colts' white horseshoe came back as an outline.
-              (That was measured against the old green #0C6F28. The fill is
-              `accent` now and the trap is unchanged: `darken` still clamps every
-              channel to a low-green, low-blue minimum.) Don't re-add it from the
-              spec. */}
+              (That was measured against the old green #0C6F28 — and a won week
+              is filled GREEN again, #7BE170, so that measurement is live rather
+              than historical. On every other fill the trap is unchanged:
+              `darken` clamps each channel to the fill's own minimum whatever
+              its hue.) Don't re-add it from the spec. */}
           <TeamLogo teamId={pick.teamId} size={30} />
           {/* right-[4px] resolves against the padding box — with no border, the
               border box — so this is the spec's 4px from the chip's edge and the

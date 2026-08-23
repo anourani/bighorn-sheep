@@ -220,31 +220,49 @@ const config: Config = {
           "due-line": "#A71930",
         },
         /**
-         * Outcome ink for a played week on the week strip: what colour the
-         * corner numeral takes once the picked team's game has gone final.
+         * A settled week on the week strip: the ink its corner numeral takes,
+         * and the fill its chip takes, once the picked team's game has gone
+         * final. `WeekStrip`'s `CORNER_INK` and `CHIP_FILL` are the only
+         * readers.
          *
-         * `win` and `loss` are the same two hexes as `badge-paid-line` /
-         * `badge-due-line` and are deliberately NOT aliased to them. Those are
-         * hairlines under the account page's buy-in badge; these are text
-         * reporting a result, and they are the design library's
-         * `Semantic/Success Green - Dark` and `Semantic/Error Red - Dark` in
-         * their own right. Retuning one family must not silently repaint the
-         * other.
+         * `win` / `loss` are the same two hexes as `badge-paid-line` /
+         * `badge-due-line`, and `*-fill-deep` the same two as `badge-paid` /
+         * `badge-due`. None of the four is aliased to its twin, deliberately:
+         * those are an account-page buy-in badge, these report a result on a
+         * different screen, and retuning one family must not silently repaint
+         * the other. The dark pair is the design library's
+         * `Semantic/Success Green - Dark` / `Semantic/Error Red - Dark` in its
+         * own right.
          *
-         * There was a `-lit` pair here (#7BE170 / #F8787A, Figma's "-Extra
-         * Light"), lifted to survive on the selected chip's dark GREEN fill.
-         * That fill is `accent` now, and on orange those two read at 1.9:1 and
-         * 1.2:1 — the lighter pair is worse there than the dark one, not
-         * better. The chip takes `win` / `loss` in both states, so nothing
-         * referenced `-lit` any more.
+         * #7BE170 is back, and this is NOT the move the note it replaced
+         * forbids. It was `result.win-lit` — INK, lifted to stay legible on the
+         * chip's old dark-GREEN fill, and it lost that argument the day the
+         * fill became `accent`, where it reads 1.9:1. It returns as a FILL,
+         * where being light is the whole point: the dark `win` numeral measures
+         * 3.87:1 on it against 2.06:1 on accent. `-lit` stays retired and
+         * `palette.test.ts` still asserts both keys are gone. Its partner
+         * #F8787A does not come back at all — the spec's loss fill is #FC615F,
+         * a different colour.
+         *
+         * Six-digit hexes, never eight. The alpha is a Tailwind `/opacity`
+         * modifier at the call site, because the spec draws these at 60/50/40%.
+         * `accent-faded`'s 8-digit spelling would make `/60` a silent no-op and
+         * the chip would render fully saturated with nothing erroring anywhere.
          *
          * Not folded into `alive` / `out` either: those are the standings
-         * palette's desaturated hues, painted as a wash BEHIND a logo. These are
-         * saturated ink painted ON one.
+         * palette's desaturated hues, painted as a wash BEHIND a logo. These
+         * are saturated values painted under one and on one.
          */
         result: {
           win: "#0C6F28", // Semantic/Success Green - Dark
           loss: "#A71930", // Semantic/Error Red - Dark
+          // The `-deep` pair is what hover tints — and, for loss, what REST
+          // tints too. The spec tints the light green and the dark red, which
+          // reads as a slip in its own table and is what the file draws.
+          "win-fill": "#7BE170", // Semantic/Success Green - Extra Light
+          "win-fill-deep": "#0F9900",
+          "loss-fill": "#FC615F", // unbound in the library — a raw value
+          "loss-fill-deep": "#CD1411",
         },
         // Instrumentation status hues.
         alive: { DEFAULT: "#57A773", wash: "#E7F1EA" },

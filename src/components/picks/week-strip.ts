@@ -188,10 +188,12 @@ export function buildChipPicks(input: ChipPicksInput): Map<string, ChipPick> {
  * The chip's accessible name. The chip prints "04", which on its own names
  * nothing — so the numeral is hidden and this is supplied instead.
  *
- * The outcome is spoken because after the redesign it is carried by COLOUR
- * ALONE: green versus red ink, same numeral, same place, same size. That is a
- * WCAG 1.4.1 failure without this line, and it is the argument `cardAriaLabel`
- * already makes for the grid's greyscale logos.
+ * The outcome is spoken because it is carried by COLOUR ALONE: green versus
+ * red, same numeral in the same place at the same size. Moving that colour onto
+ * the chip's FILL made it far easier to see and did not change what it is — a
+ * tile's worth of colour is still colour — so this line is not retired by it.
+ * Without it that is a WCAG 1.4.1 failure, and it is the argument
+ * `cardAriaLabel` already makes for the grid's greyscale logos.
  *
  * Nothing is said for `undecided`, which would put a filler word on most of
  * eighteen chips. "current week" stays last: a Monday-night current week can
