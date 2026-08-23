@@ -94,10 +94,22 @@ describe("the accent is a single source of truth", () => {
     expect(ACCENT).toBe(SOURCE);
   });
 
+  it("keeps the week strip's result fills opacity-modifiable", () => {
+    // The spec draws these at 60/50/40%, and `CHIP_FILL` spells that as a
+    // Tailwind `/opacity` modifier. An 8-digit hex here — `accent.faded`'s
+    // spelling, one bullet up — makes `/60` a silent no-op: the chip renders
+    // fully saturated, nothing errors, and no other test looks at these.
+    for (const key of ["win-fill", "win-fill-deep", "loss-fill", "loss-fill-deep"]) {
+      expect(hex("result", key)).toMatch(/^#[0-9A-F]{6}$/);
+    }
+  });
+
   it("has retired the tokens the accent replaced", () => {
     // `selected` (#0C6F28) and `shell.alive` (#FC855C) were the other two "this
-    // is lit / this is yours" fills; `result.*-lit` existed only to survive the
-    // old green chip fill, which is now `accent`.
+    // is lit / this is yours" fills; `result.*-lit` was INK, lifted to survive
+    // the old dark-green chip fill. #7BE170 IS back — as `result.win-fill`, a
+    // fill, where being light is the point — and that is not this pair
+    // returning. #F8787A did not come back at all.
     expect(extend.colors.selected).toBeUndefined();
     expect(token("shell", "alive")).toBeUndefined();
     expect(token("result", "win-lit")).toBeUndefined();
