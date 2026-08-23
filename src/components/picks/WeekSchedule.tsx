@@ -127,6 +127,10 @@ function GameCard({
   onSelect: (teamId: TeamId) => void;
 }) {
   const kicked = isKickedOff(game, now);
+  // Whether the week's pick is one of THIS card's two teams — the card wears the
+  // accent edge, not the row. Cheap enough to derive here rather than thread down:
+  // `TeamOption` already gets the per-row answer as `selected`.
+  const selectedHere = selectedTeam === game.home || selectedTeam === game.away;
   // Home team first, then away — mirrors the matchup layout on the pick screen.
   const order: TeamId[] = [game.home, game.away];
 
@@ -178,8 +182,38 @@ function GameCard({
       </div>
 
       {/* No top padding of its own: the header left the card, so the rows' own
-          `py-2.5` is the whole inset. */}
-      <div className="overflow-hidden rounded-control border border-line bg-[#F6F6F6]">
+          `py-2.5` is the whole inset.
+
+          White while the game is open, grey once it locks — so "you can act on
+          this" is carried by the card itself rather than by a hover the touch
+          devices never get. `kicked` alone is the test, matching the lock badge
+          in the header directly above (which is also ungated by `interactive`)
+          and the request's own words, "ongoing or in the past". The accepted
+          consequence: a FUTURE preview week draws white cards nothing can be
+          picked from. The row caption below splits the other way — `kicked &&
+          interactive` — which is the same tension this file already carried.
+
+          The accent edge is a BORDER plus an OUTSET ring, and neither half is
+          arbitrary. `ring-inset` is what `TeamGrid` uses, and it would be painted
+          over here: an inset box-shadow draws above the element's own background
+          but below its descendants', and the picked row's opaque `bg-brand-wash`
+          spans the full width, so it would cover the ring along that row's left
+          and right edges. `border-2` would read right and cost 2px of height plus
+          1px of inset on every row, so the card twitches as you tap along it. A
+          1px border with a 1px ring outside it reads as the same 2px edge and
+          costs no layout at all, because a ring is a box-shadow. */}
+      <div
+        className={cn(
+          // The property list is spelled out because `transition-colors` does NOT
+          // include `box-shadow`, and the ring outside the border IS a box-shadow
+          // — so the two halves of one 2px accent edge would arrive at different
+          // rates, the border fading over 150ms while the ring snapped in.
+          "overflow-hidden rounded-control border",
+          "transition-[background-color,border-color,box-shadow]",
+          kicked ? "bg-[#F6F6F6]" : "bg-white",
+          selectedHere ? "border-accent ring-1 ring-accent" : "border-line",
+        )}
+      >
         <div className="divide-y divide-line/70">
           {order.map((teamId) => (
             <TeamOption
@@ -237,6 +271,15 @@ function TeamOption({
   const home = isHome(game, teamId);
   const selectable = interactive && !used && !kicked;
 
+  // The design library's Radio has a `Disabled?` variant, and the two halves of a
+  // locked card answer it differently — which is the mock-up's own reading: your
+  // pick stays accent on a game that has already kicked off, and only the team
+  // you passed on goes grey. So an UNCHECKED radio is disabled the moment its row
+  // stops being pickable, while a CHECKED one holds its colour until the WEEK
+  // itself is a preview, where every pick on screen is a record rather than a
+  // choice. Same asymmetry `detail` draws just below with `kicked && interactive`.
+  const radioDisabled = selected ? !interactive : !selectable;
+
   const detail = used
     ? `Used · W${used.week}`
     : kicked && interactive
@@ -260,7 +303,12 @@ function TeamOption({
     <label
       className={cn(
         "flex items-center gap-3 px-3 py-2.5 transition-colors",
-        selectable ? "cursor-pointer hover:bg-[#EFEFEF]" : "cursor-not-allowed",
+        // A row is only ever selectable on a card that is now WHITE, so the hover
+        // has to be re-tuned against white rather than the old #F6F6F6: #EFEFEF
+        // was a 7-unit step down from that fill and would be a 16-unit one from
+        // white, more than twice the contrast it was drawn at. `fill-raised` is
+        // 5 units, the nearest real token, and retires a hardcoded hex with it.
+        selectable ? "cursor-pointer hover:bg-fill-raised" : "cursor-not-allowed",
         selected && "bg-brand-wash",
       )}
     >
@@ -280,8 +328,12 @@ function TeamOption({
         <span className="flex items-center gap-2">
           <span
             className={cn(
+              // No accent ink on the picked team: selection is already said three
+              // ways — the row's wash, the card's accent edge, and the radio — and
+              // a fourth left the two teams' names set in different colours for a
+              // fact neither of them is about.
               "truncate text-sm font-semibold",
-              selected ? "text-accent-ink" : used ? "text-ink-mute line-through" : "text-ink",
+              used ? "text-ink-mute line-through" : "text-ink",
             )}
           >
             {team.name}
@@ -300,16 +352,48 @@ function TeamOption({
         </span>
       </span>
 
-      {/* Custom radio, driven by React state; the real input above stays for a11y. */}
+      {/* Custom radio, driven by React state; the real input above stays for a11y.
+
+          The design library's four states, transcribed: a 16px ring at 1px, and a
+          10px dot inside it when checked (Figma insets the dot 18.75% a side,
+          which is 3px of 16). Every colour lands on a token that already exists at
+          exactly the spec's hex — `accent` #FC5F38, `shell-ink` #1E1E1E,
+          `fill-soft` #F3F3F3, `shell-dark` #A5ACAF — so nothing new was added to
+          the config for this.
+
+          What it replaces was a 20px ring whose "checked" state was a 6px BORDER
+          closing over the middle, plus `opacity-40` to stand in for disabled. The
+          dot is a real element now and disabled is two real tokens, so a greyed
+          radio is the design's grey rather than the enabled one faded out.
+
+          The 4px it loses costs no row height: this is the shortest thing in a
+          `flex items-center` row whose text column runs ~38px and whose logo is
+          36px. And the tap target was never this box — it is the whole label. */}
       <span
         aria-hidden
         className={cn(
-          "grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 transition-all",
+          "grid h-4 w-4 shrink-0 place-items-center rounded-full border transition-colors",
           "peer-focus-visible:ring-2 peer-focus-visible:ring-brand-strong/60 peer-focus-visible:ring-offset-1",
-          selected ? "border-[6px] border-brand-strong" : "border-line",
-          !selectable && !selected && "opacity-40",
+          radioDisabled
+            ? "border-shell-dark bg-fill-soft"
+            : selected
+              ? "border-accent bg-white"
+              : "border-shell-ink bg-white",
         )}
-      />
+      >
+        {/* Always mounted, scaled to nothing when unchecked, so it resolves over
+            the same 150ms as the ring's border colour instead of popping in a
+            frame ahead of it. `transform` has to be NAMED — `transition-colors`
+            would leave the scale instant and reintroduce the pop. The dot sits in
+            a fixed 16px grid cell, so a scaled-away one moves no layout. */}
+        <span
+          className={cn(
+            "h-2.5 w-2.5 rounded-full transition-[transform,background-color]",
+            selected ? "scale-100" : "scale-0",
+            radioDisabled ? "bg-shell-dark" : "bg-accent",
+          )}
+        />
+      </span>
     </label>
   );
 }

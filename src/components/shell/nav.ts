@@ -13,7 +13,7 @@
  * separates "which page of the league am I reading" from "my own settings".
  */
 export const TABS = [
-  { href: "/app", label: "Your Pick" },
+  { href: "/app", label: "Picks" },
   { href: "/app/standings", label: "Standings" },
 ] as const;
 
