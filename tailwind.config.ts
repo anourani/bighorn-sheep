@@ -359,6 +359,19 @@ const config: Config = {
           from: { opacity: "1" },
           to: { opacity: "0" },
         },
+        // The toast. It fades as well as slides, unlike `drawer-up` — a drawer
+        // has a scrim to do its fading, and a toast arriving over live page
+        // content has nothing behind it, so a bare slide reads as a chunk of UI
+        // being shoved in from the edge. The travel is short (12px, the same
+        // nudge `reveal-up` uses) because it appears near where it starts.
+        "toast-in": {
+          from: { opacity: "0", transform: "translateY(12px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "toast-out": {
+          from: { opacity: "1", transform: "translateY(0)" },
+          to: { opacity: "0", transform: "translateY(12px)" },
+        },
         "reveal-mask": {
           from: { opacity: "0", clipPath: "inset(0 0 100% 0)" },
           to: { opacity: "1", clipPath: "inset(0 0 0 0)" },
@@ -398,6 +411,10 @@ const config: Config = {
         // they just dismissed.
         "drawer-down": "drawer-down 0.28s cubic-bezier(0.22,1,0.36,1) both",
         "scrim-out": "scrim-out 0.2s ease both",
+        // Same 0.32/0.28 in-then-out asymmetry as the drawer above, and for the
+        // same reason: nobody is waiting to look at the thing they dismissed.
+        "toast-in": "toast-in 0.32s cubic-bezier(0.22,1,0.36,1) both",
+        "toast-out": "toast-out 0.28s cubic-bezier(0.22,1,0.36,1) both",
         "reveal-mask": "reveal-mask 0.6s cubic-bezier(0.22,1,0.36,1) both",
         // A curve of its own — the app's other entrances use
         // cubic-bezier(0.22,1,0.36,1), and this one is flatter still at the

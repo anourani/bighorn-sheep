@@ -56,7 +56,14 @@ export function buildGridCards(input: {
   /** Teams spent in other weeks of this phase, with the week they went. */
   usedByTeam: ReadonlyMap<TeamId, { week: number }>;
   selectedTeam: TeamId | null;
-  /** False while previewing a week that isn't the live one. */
+  /**
+   * Whether this week may be WRITTEN to — false only on a week already played.
+   *
+   * Named before picking ahead existed, when "writable" and "the live week"
+   * were the same set. They are not any more: every week from the live one
+   * forward is interactive, and per-game kickoff is what locks an individual
+   * card inside it.
+   */
   interactive: boolean;
   now: Date;
 }): Map<TeamId, GridCard> {

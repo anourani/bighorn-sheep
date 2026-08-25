@@ -95,3 +95,50 @@ export function resolveWeekFromKickoffs(
   }
   return Math.min(current, finalWeek);
 }
+
+/** Why a client-supplied pick week was refused. */
+export type PickWeekRejection = "bad_week" | "week_already_started";
+
+/**
+ * Which week a pick is FOR, once the client is allowed to say.
+ *
+ * `submitPick` used to derive the week and ignore the caller entirely, which was
+ * the whole enforcement behind "you can only pick for the live week". Picking
+ * ahead means the caller now names a week — and a Server Action is a reachable
+ * HTTP endpoint, so this is the gate, not the greyed-out UI.
+ *
+ * Three refusals, deliberately not one:
+ *
+ * - A `requested` that is absent falls back to `liveWeek`. That is not laxity:
+ *   a tab loaded before this shipped sends no week at all, and answering it with
+ *   `bad_week` would break picking for everyone mid-deploy.
+ * - Outside `weeks` is `bad_week`. Callers pass the AUTHORITATIVE set — the
+ *   practice slate's own weeks, not a numeric range — so a four-week preseason
+ *   request against a three-week slate is refused here rather than surfacing
+ *   later as the much vaguer `no_game_for_team`.
+ * - Before `liveWeek` is `week_already_started`, and it is worth keeping even
+ *   though `canPick`'s `game_kicked_off` and RLS 0014's `g.kickoff > now()`
+ *   both catch the ordinary case. A POSTPONED game keeps its original `week`
+ *   with a kickoff in the future, so a pick for that week would slip past both;
+ *   and "that week has already started" is a true sentence where "that game has
+ *   kicked off" is a confusing one.
+ *
+ * Pure, because `actions.ts` is `"use server"` over a Supabase client and cannot
+ * be unit-tested. This is where the paranoia goes so it can be.
+ */
+export function resolvePickWeek(input: {
+  /** Omitted by a tab from before picking ahead shipped. */
+  requested: number | undefined;
+  liveWeek: number;
+  /** Every week this phase actually has. */
+  weeks: readonly number[];
+}): { ok: true; week: number } | { ok: false; error: PickWeekRejection } {
+  const week = input.requested ?? input.liveWeek;
+  // `Number.isInteger` and not a `typeof` test: it rejects NaN, Infinity, 1.5
+  // and the string "3" in one predicate, and every one of those can arrive on a
+  // hand-rolled POST.
+  if (!Number.isInteger(week)) return { ok: false, error: "bad_week" };
+  if (!input.weeks.includes(week)) return { ok: false, error: "bad_week" };
+  if (week < input.liveWeek) return { ok: false, error: "week_already_started" };
+  return { ok: true, week };
+}

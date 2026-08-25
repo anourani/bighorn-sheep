@@ -206,6 +206,32 @@ describe("buildChipPicks", () => {
     expect(picks.get("regular:1")).toEqual({ teamId: "kc", outcome: "undecided" });
   });
 
+  /**
+   * The load-bearing claim of picking ahead: a chip for a week that has not been
+   * played must never paint a result. `gameWinner` answers null for anything but
+   * a final game, so a scheduled fixture with no scores falls through to
+   * `undecided` — which is the state the design draws as a plain grey tile with
+   * the team's logo on it.
+   */
+  it("leaves a future week's scheduled game undecided", () => {
+    const picks = build(
+      { "regular:11": "cin" },
+      {
+        "regular:11": game({
+          home: "cin",
+          away: "bal",
+          week: 11,
+          status: "scheduled",
+          homeScore: null,
+          awayScore: null,
+        }),
+      },
+      PUSH_RULES,
+      [opt(REGULAR_WEEK(11))],
+    );
+    expect(picks.get("regular:11")).toEqual({ teamId: "cin", outcome: "undecided" });
+  });
+
   // buildGameIndex keys on the week NUMBER alone, which is why MyPicksClient
   // keeps two of them. Route on seasonType and preseason week 3 resolves against
   // the preseason schedule; route on the viewed week and every chip of the other

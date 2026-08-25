@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../supabase/types";
 import type { NflProvider } from "../providers/types";
 import { resolveWeekFromKickoffs } from "../game/season";
-import { FINAL_WEEK } from "./calendar";
+import { FINAL_WEEK, REGULAR_WEEKS } from "./calendar";
 import { getTeam } from "./teams";
 import type { Game, SeasonType } from "./types";
 
@@ -26,12 +26,13 @@ type GameInsert = Database["public"]["Tables"]["games"]["Insert"];
  * saves us hard-coding a convention we cannot verify ahead of time.
  */
 export const PRESEASON_WEEKS = [1, 2, 3, 4];
-export const REGULAR_WEEKS = Array.from({ length: 18 }, (_, i) => i + 1);
 
 export function weeksFor(seasonType: SeasonType): number[] {
   if (seasonType === "pre") return PRESEASON_WEEKS;
   if (seasonType === "post") return [1, 2, 3, 5];
-  return REGULAR_WEEKS;
+  // Copied, because `REGULAR_WEEKS` is frozen and every caller here treats the
+  // returned array as its own to filter.
+  return [...REGULAR_WEEKS];
 }
 
 export interface FetchScheduleOptions {

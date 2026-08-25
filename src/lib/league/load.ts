@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createPublicClient } from "@/lib/supabase/public";
 import type { Database } from "@/lib/supabase/types";
-import type { Game } from "@/lib/nfl/types";
+import type { Game, TeamId } from "@/lib/nfl/types";
 import { rowToGame } from "@/lib/game/score";
 import { evaluateTeamPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "@/lib/game/season";
@@ -74,6 +74,28 @@ export interface LeagueData {
   leagues: LeagueOption[];
   /** Regular-season standing. Never touched by preseason practice. */
   members: Member[];
+  /**
+   * The VIEWER's own regular-season picks — every week, resolved or not.
+   *
+   * Three reasons it is here rather than on `Member`:
+   *
+   * - `Member.history` is `HistoryPick[]`, whose `result` is not optional. A
+   *   pick for a week that has not been played has no result, so it does not
+   *   fit — and widening `HistoryPick` to make it fit would be read by
+   *   `StandingsGrid`, which folds `history` for EVERY member, and would paint
+   *   the viewer's own future plan into their standings row.
+   * - `Member.currentPick` is one week by construction.
+   * - RLS ("picks read own or revealed", 0001) hands back another member's pick
+   *   only once its game has kicked off, so this list would be the viewer's
+   *   alone whatever it was hung off. A field that can only hold one member's
+   *   data gets read as a general one eventually — the same argument
+   *   `PracticeMember` makes for not carrying a `status`.
+   *
+   * Practice's equivalent is `practice.members[viewer.id].picks`, which already
+   * carries every preseason week for the same reason: an unresolved pick still
+   * spends its team.
+   */
+  viewerPicks: { week: number; teamId: TeamId }[];
   /** Regular-season games only (`season_type = 'regular'`). */
   games: Game[];
   nowIso: string;
@@ -138,6 +160,14 @@ function historyResult(
 function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickRow[], currentWeek: number, rules: GroupRules, gameById: (id: string) => Game | undefined): Member {
   const history: HistoryPick[] = [];
   let currentPick: Member["currentPick"] = null;
+  // A pick for a week AFTER `currentWeek` matches neither branch below and is
+  // dropped here on purpose — `HistoryPick.result` is not optional and a week
+  // that has not been played has no result, so it cannot join `history` without
+  // making every consumer of `history` (StandingsGrid folds it for every
+  // member) handle a resultless entry. Those rows reach the pick screen as
+  // `LeagueData.viewerPicks` instead. There is nothing to filter for privacy:
+  // RLS returns another member's un-kicked pick to nobody, so `picks` only ever
+  // carries future rows for the viewer's own row.
   for (const p of picks) {
     if (p.week === currentWeek) {
       currentPick = { week: p.week, teamId: p.team_id, gameId: p.game_id };
@@ -306,6 +336,12 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     ),
   );
 
+  // Off the rows already fetched above — no extra query. Sorted for
+  // determinism only; `picks_one_per_week` forbids two rows for one week.
+  const viewerPicks = (picksByUser.get(viewer.id) ?? [])
+    .map((p) => ({ week: p.week, teamId: p.team_id as TeamId }))
+    .sort((a, b) => a.week - b.week);
+
   // Preserve the Standings padlock: which rivals have locked a hidden pick.
   // Uses the season-typed RPC (0006) rather than 0003's week-only one, so a
   // rival's PRACTICE pick for the same week number can never light the regular
@@ -382,6 +418,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       group,
       leagues,
       members,
+      viewerPicks,
       games,
       nowIso: now.toISOString(),
       currentWeek,
