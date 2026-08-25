@@ -80,12 +80,27 @@ describe("buildGridCards", () => {
     expect(card.selectable).toBe(false);
   });
 
-  it("does not label anything locked while previewing another week", () => {
+  it("does not label anything locked on a week already played", () => {
     // Every game in a past week has kicked off; 32 "Locked" cards would say
     // nothing the week strip hasn't already said.
     const card = cards({ now: AFTER, interactive: false }).get("cin")!;
     expect(card.state).toBe("available");
     expect(card.selectable).toBe(false);
+  });
+
+  /**
+   * Picking ahead in one assertion. A week ahead of the live one is handed
+   * `interactive: true` and nothing in it has kicked off, so every card is
+   * ordinary and pickable — and because `TeamGrid`'s greyscale ternary keys on
+   * `selectable`, those cards come up in team colours too.
+   */
+  it("keeps a future week's cards selectable", () => {
+    const all = [...cards({ now: BEFORE, interactive: true }).values()];
+    const playing = all.filter((c) => c.game !== undefined);
+
+    expect(playing.length).toBeGreaterThan(0);
+    expect(playing.every((c) => c.selectable)).toBe(true);
+    expect(cards({ now: BEFORE, interactive: true }).get("cin")!.state).toBe("available");
   });
 
   it("shows your pick as selected even once its game has kicked off", () => {
@@ -117,7 +132,7 @@ describe("buildGridCards", () => {
     expect(card.state).toBe("used");
   });
 
-  it("makes nothing selectable while previewing", () => {
+  it("makes nothing selectable on a week already played", () => {
     const all = [...cards({ interactive: false }).values()];
     expect(all.every((c) => !c.selectable)).toBe(true);
   });
@@ -224,7 +239,7 @@ describe("cardAriaLabel", () => {
     );
   });
 
-  it("says not selectable while previewing", () => {
+  it("says not selectable on a week already played", () => {
     const previewing = cards({ interactive: false });
     expect(label(previewing.get("cin")!)).toBe(
       "Cincinnati Bengals, record 5-1, Home vs. Ravens, not selectable",

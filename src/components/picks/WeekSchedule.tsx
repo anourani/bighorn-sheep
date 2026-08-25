@@ -32,8 +32,9 @@ export interface UsedPick {
 /**
  * The week's matchups as a radio group — one pick per week across every game.
  * Selecting a team's radio sets the pick immediately (editable until that game
- * kicks off). Teams already used this season, teams whose game has kicked off,
- * and every team while browsing a non-current week are shown but not selectable.
+ * kicks off). Teams already spent this season, teams whose game has kicked off,
+ * and every team on a week already played are shown but not selectable. A week
+ * ahead of the live one IS selectable — that is picking ahead.
  *
  * `weekRef` identifies the week including its phase, so preseason week 2 and
  * regular week 2 get distinct radio-group names and distinct copy. `weekName` is
@@ -205,8 +206,11 @@ function GameCard({
           this" is carried by the card itself rather than by a hover the touch
           devices never get. `kicked` alone is the test, matching the lock word in
           the header above it and the request's own words, "ongoing or in the
-          past". The accepted consequence: a FUTURE preview week draws white cards
-          nothing can be picked from — the radios are what say you cannot act
+          past". A future week therefore draws white cards, which is now simply
+          true of them: nothing there has kicked off and every one is pickable.
+          (It used to be an accepted cost — white cards nothing could be picked
+          from — and the radios were the only thing saying so.) A week already
+          played draws grey ones, and its radios are what say you cannot act
           there. Lock state is stated exactly once on this card, in the header;
           the rows below stayed positional, Home and Away, in every state.
 

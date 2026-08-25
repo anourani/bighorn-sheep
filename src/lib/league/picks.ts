@@ -4,16 +4,19 @@ import type { TeamId } from "../nfl/types";
 /**
  * The viewer's own picks along the week axis.
  *
- * The pick screen has two different weeks in play at once: the week that is
- * LIVE (the only one you may pick for — the server derives it and never trusts
- * the client) and the week you have SELECTED in the week strip. The pick module
- * used to be wired to the live week while the schedule below it
- * followed the selection, so switching weeks left it showing a team from
- * a week that was no longer on screen — and re-derived its opponent and kickoff
- * from the live week's fixture, rendering a game the member never picked.
+ * The pick screen has two different weeks in play at once: the week you have
+ * SELECTED in the week strip, and the week that is LIVE. The pick module used to
+ * be wired to the live week while the schedule below it followed the selection,
+ * so switching weeks left it showing a team from a week that was no longer on
+ * screen — and re-derived its opponent and kickoff from the live week's fixture,
+ * rendering a game the member never picked.
  *
  * Fixing that needs a pick per week rather than a pick per phase, which is what
  * this module is. Pure, so it unit-tests without a component-test stack.
+ *
+ * Every week that has not kicked off is now writable, so "the week you may pick
+ * for" is no longer one number and the live week's only remaining job here is to
+ * mark the floor: `resolvePickWeek` in game/season.ts refuses anything below it.
  */
 
 /** Keyed by `weekKey(ref)` — "pre:1", "regular:1". */
@@ -27,17 +30,23 @@ export type PicksByWeek = ReadonlyMap<string, TeamId>;
 export type PendingPicks = ReadonlyMap<string, TeamId | null>;
 
 export interface ViewerPickSources {
-  /** Resolved regular-season picks — weeks < currentWeek only (see load.ts). */
-  history?: readonly { week: number; teamId: TeamId }[];
   /**
-   * The live regular week's pick. A pick for a FUTURE regular week cannot exist:
-   * `submitPick` re-derives the week server-side from the schedule.
+   * EVERY regular-season pick, any week, resolved or not
+   * (`LeagueData.viewerPicks`).
+   *
+   * This replaced a `history` + `currentPick` pair, which could not answer the
+   * question between them: `Member.history` carries only picks whose game has
+   * produced a RESULT and only weeks before the current one, and `currentPick`
+   * is one week by construction — so a pick made for a week ahead appeared in
+   * neither, and an unresolved past pick appeared in neither either. One source
+   * per phase, and no precedence rule to get wrong.
    */
-  currentPick?: { week: number; teamId: TeamId } | null;
+  regularPicks?: readonly { week: number; teamId: TeamId }[];
   /**
-   * EVERY preseason pick, resolved or not (`PracticeMember.picks`). Not
-   * `history`, which only carries picks whose game has produced a result — with
-   * no scorer running that is currently none of them.
+   * EVERY preseason pick, resolved or not (`PracticeMember.picks`). Same
+   * contract as `regularPicks` above; practice has always been shaped this way,
+   * because with no scorer running nothing resolves and a result-gated list
+   * would be permanently empty.
    */
   practicePicks?: readonly { week: number; teamId: TeamId }[];
 }
@@ -52,13 +61,35 @@ export interface ViewerPickSources {
  */
 export function viewerPicksByWeek(src: ViewerPickSources): Map<string, TeamId> {
   const out = new Map<string, TeamId>();
-  for (const h of src.history ?? []) out.set(weekKey(REGULAR_WEEK(h.week)), h.teamId);
-  // Last of the two regular sources, so it wins if a week ever appears in both.
-  if (src.currentPick) {
-    out.set(weekKey(REGULAR_WEEK(src.currentPick.week)), src.currentPick.teamId);
-  }
+  for (const p of src.regularPicks ?? []) out.set(weekKey(REGULAR_WEEK(p.week)), p.teamId);
   for (const p of src.practicePicks ?? []) out.set(weekKey(PRE_WEEK(p.week)), p.teamId);
   return out;
+}
+
+/**
+ * The OTHER week this team is already committed to, if any.
+ *
+ * A team may be spent once per phase (`picks_team_once_per_phase`), so picking
+ * one that is already booked elsewhere has to do something about the other week.
+ * The rule is that the week you tap wins: the earlier commitment is released and
+ * a toast names it. This answers "which week is about to lose its pick", for the
+ * copy and for the optimistic overlay that clears its chip.
+ *
+ * Whether that release is ALLOWED is a separate question and not this function's
+ * — a team whose game has already kicked off is genuinely spent, and both the
+ * caller and `submitPick` test kickoff themselves. Returning the week either way
+ * keeps this a lookup rather than a second, drifting copy of the lock rule.
+ *
+ * `picks` is one phase's list; `targetWeek` is excluded because replacing your
+ * own pick for the week on screen is not a release.
+ */
+export function committedWeek(
+  picks: readonly { week: number; teamId: TeamId }[],
+  teamId: TeamId,
+  targetWeek: number,
+): number | null {
+  const found = picks.find((p) => p.teamId === teamId && p.week !== targetWeek);
+  return found ? found.week : null;
 }
 
 /**

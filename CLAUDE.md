@@ -549,6 +549,100 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **A member can pick for any week that has not kicked off, and the week strip
+  draws each of those picks.** Before this, `submitPick` DERIVED the week and
+  discarded the client's opinion — that was the entire enforcement behind "you
+  may only pick the live week" — and every other chip was a read-only preview.
+  Now the caller names a week and `resolvePickWeek` (game/season.ts) refuses it.
+  Nine things:
+  - **`WeekStrip.tsx` was not touched, and that is the headline.** The Figma
+    variant for a planned week (*Previously selected? = Yes, Previous outcome
+    decided? = False*) is `CHIP_FILL.neutral` + `CORNER_INK.undecided`, which the
+    strip has drawn since the redesign — `#F3F3F3` fill, 30px logo, 10px
+    `#757575` corner numeral, `#FC5F38` and white when selected.
+    `buildChipPicks` already ran `pickFor(ref)` over EVERY option, so the chip lit
+    up the moment a future pick reached `pickForWeek`. The whole feature was a
+    data path and a guard, not a design.
+  - **No migration.** 0014's insert/update `with check` gates on
+    `g.kickoff > now() and g.status = 'scheduled'` plus week/season_type/team
+    consistency, all of which a future-week row satisfies; 0001's delete policy
+    carries the same kickoff test, which is what makes the release below legal.
+    Don't add one out of caution — `docs/prd-rls-write-hardening.md` had already
+    blessed "pre-fill future weeks" as conferring no advantage.
+  - **Privacy needed nothing either.** 0001's `"picks read own or revealed"`
+    returns another member's pick only once its game has kicked off, so a rival's
+    planned pick is unreadable *in SQL*. `toMember` dropping `week > currentWeek`
+    was never the privacy mechanism, and `hiddenPickUserIds` is still
+    current-week-only.
+  - **`LeagueData.viewerPicks` exists because `Member` structurally cannot hold
+    this.** `HistoryPick.result` is not optional and an unplayed week has no
+    result; `currentPick` is one week. Worse, `StandingsGrid` folds `history` for
+    EVERY member, so widening it would paint the viewer's own plan into their own
+    standings row. It is derived from the `pickRows` the loader already fetches —
+    **zero new queries**.
+  - **It fixed a bug that was live before the feature existed.** `usedByTeam`'s
+    regular branch read `me.history`, which holds only picks whose game produced
+    a RESULT — and per Open issues no regular game ever has, so that list was
+    always empty in production: the grid drew a spent team as available and the
+    database answered `23505`. The practice branch had read `picks` for exactly
+    this reason since it shipped. Both branches read every pick now.
+  - **The week you tap WINS, and the loser gets a toast.** A team may be spent
+    once per phase (`picks_team_once_per_phase`), so picking one booked elsewhere
+    releases that week — *if its game has not kicked off*. After kickoff the team
+    is genuinely spent and the answer is `team_already_used`, which is also what
+    RLS would say. `usedByTeam` is now precisely "spent for good", and
+    `handleSelect` reads that same map rather than re-testing kickoff, so the
+    grid cannot offer a card the overlay then treats differently.
+  - **The chip clears optimistically; the TOAST waits for the server.** A
+    confirmation should follow the fact, and only the server sees every release:
+    a trailing tap recurses into `launchPick` with no `releaseKey`, because
+    `settlePick` knows the team it is sending and nothing about what that team
+    was booked against. `submitPick` therefore returns `releasedWeek`, which
+    raises the sentence AND clears any chip this tab failed to predict. Raising
+    it optimistically instead was tried first and had to apologise on failure.
+  - **The release is delete-then-upsert, and it is not atomic.** PostgREST has no
+    transaction, and `picks_team_once_per_phase` rejects the new row while the
+    old one holds the team, so the order is forced. It runs only after every
+    guard has passed, and a failure after the delete returns `release_failed` —
+    the one code that reports a PARTIAL write, because "something went wrong"
+    would leave a member to discover the hole themselves. A single `UPDATE`
+    moving the row's week is atomic but only covers an empty target week, and two
+    write paths for one action is worse. A definer RPC would be atomic outright;
+    0014 already refused one.
+  - **`interactive` means WRITABLE, not LIVE.** `MyPicksClient` derives
+    `writable = isCurrent || viewingFuture` — stated positively rather than as
+    `!viewingPast`, so a future change to the ref sanitising fails CLOSED. Its
+    second job in `buildGridCards` (gating the `locked` label so a played week
+    isn't 32 "Locked" cards) needed no split: nothing in a future week has kicked
+    off, so that branch is unreachable there and was always about past weeks.
+  - **All 18 regular weeks are writable during the preseason**, because
+    `resolveCurrentWeek` returns 1 in phase `preseason` so nothing is ever
+    `viewingPast`. That is the feature arriving early, not a bug. The other
+    consequence worth knowing: you can clear your LIVE week's pick from a future
+    tab while that game is still scheduled, and the toast is the only warning.
+
+- **`ui/Toast.tsx` is the app's first floating message, and it MUST portal.**
+  One at a time, replaced rather than stacked — the app raises exactly one kind
+  (a pick released from another week), and a stack is a scheduling problem bought
+  for a queue that never holds two things. Four things:
+  - **`createPortal` to `document.body`, like `Drawer`.** Its only caller renders
+    inside `MyPicksClient`'s `.stagger` root, and `globals.css` gives each direct
+    child `reveal-up 0.5s both` at an `:nth-child` delay — inline, the toast would
+    sit invisible for up to 275ms while its own 320ms slide played underneath.
+  - **`role="status"`, not `role="alert"`.** It confirms something the reader just
+    did, so it should follow what the screen reader is already saying rather than
+    interrupt it.
+  - **`ToastMessage` carries an `id`, and that is not decoration.** Releasing the
+    same team from the same week twice running produces an identical sentence,
+    and a card keyed on the text alone would not replay its entrance — the second
+    release would look like nothing happened.
+  - **Two-phase dismissal**, the same `rendered`-outlives-`open` shape as
+    `Drawer`, with an `animationend` listener and a `setTimeout` backstop:
+    unmounting on the timer alone cuts the exit off at its first frame, and a
+    missed event would otherwise park a toast over the page for the session.
+    `prefers-reduced-motion` needs no case — `globals.css` clamps every duration
+    to `0.001ms`.
+
 - **There is one accent colour now, it lives in `src/lib/accent.ts`, and every
   orange in the app is derived from it.** `ACCENT` is `#FC5F38` (the design
   library's `Text Color/Accent`); `tailwind.config.ts` imports it and mixes the
@@ -813,9 +907,11 @@ reading, but only the first kind is the lesson.
     hover; on a device with no hover it is in colour from the start, because
     otherwise the treatment is a reward a phone can never claim and the whole grid
     is 32 grey logos. The picked card is always in colour. Everything else — bye,
-    already spent, locked, and every card on a week you are only previewing — is
+    already spent, locked, and every card on a week **already played** — is
     greyscale on **every** device, so colour keeps meaning "you can act on this".
-    Three things:
+    That set grew when picking ahead shipped (a week ahead of the live one is
+    writable, so its cards are selectable, so they are in colour) and keying on
+    `selectable` is what made it grow for free. Three things:
     - **The trigger is `[@media(hover:hover)]`, never `lg`.** The reason is a
       device fact, not a width one: an iPad past 1024px would sit at grey with no
       hover to redeem it. It is also how the card's other two hover rules are
@@ -825,9 +921,11 @@ reading, but only the first kind is the lesson.
       string containing `grayscale(1)`), not by eye: a typo in an arbitrary
       variant compiles to nothing and presents as "the change didn't take".
     - **It keys on `selectable`, not on `outOfPlay`.** `buildGridCards` gives a
-      preview week `state: "available"` with `selectable: false`, so those cards
-      are neither selected nor out of play and a test on `outOfPlay` would light
-      all 32 of them up on a phone.
+      week **already played** `state: "available"` with `selectable: false`, so
+      those cards are neither selected nor out of play and a test on `outOfPlay`
+      would light all 32 of them up on a phone. (That worked example used to say
+      "a preview week", which covered future weeks too; a future week is
+      `selectable: true` now and is *supposed* to light up.)
     - **One class, chosen by a ternary — not a bare `grayscale` plus a
       `[@media(hover:none)]:grayscale-0`.** Two classes writing `--tw-grayscale`
       on one element are resolved by generated CSS source order, because a media

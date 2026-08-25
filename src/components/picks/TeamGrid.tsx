@@ -199,10 +199,16 @@ function TeamCard({
           is no pointer to reach with, it is simply given. A card you could pick is
           in team colours at rest on a touch device; the picked card is always in
           colour; everything else (bye, already spent, locked, and every card on a
-          week you are only previewing) is greyscale on every device. So the set
-          that can EVER be in colour is unchanged — a touch device just renders the
+          week already played) is greyscale on every device. So the set that can
+          EVER be in colour is unchanged — a touch device just renders the
           pointer's hover state from the start, which is why the ternary keys on
           `selectable` rather than being a bare `!selected`.
+
+          That set GREW when picking ahead shipped, and keying on `selectable` is
+          what made it grow for free: a week ahead of the live one is writable, so
+          its cards are selectable, so they come up in colour. Which is the rule
+          working, not an exception to it — colour still means "you can act on
+          this".
 
           `[@media(hover:hover)]` and NOT `lg`: the reason is a device fact rather
           than a width one, and an iPad past 1024px would otherwise sit at grey

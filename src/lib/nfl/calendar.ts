@@ -17,6 +17,22 @@ import type { SeasonType } from "./types";
 export const FINAL_WEEK = 18;
 
 /**
+ * Every regular-season week, in order.
+ *
+ * Derived from `FINAL_WEEK` rather than spelled `{ length: 18 }`, which is how
+ * `nfl/schedule.ts` used to declare it — two independent 18s that nothing forced
+ * to agree. It lives here, in the leaf, so `submitPick` can validate a
+ * client-supplied week without pulling in `schedule.ts` and its provider and
+ * Supabase types.
+ *
+ * Frozen: it is the range a week is validated against, and a caller that sorted
+ * or spliced it in place would silently move that goalpost for everyone.
+ */
+export const REGULAR_WEEKS: readonly number[] = Object.freeze(
+  Array.from({ length: FINAL_WEEK }, (_, i) => i + 1),
+);
+
+/**
  * A week, disambiguated by phase.
  *
  * Note the vocabulary clash this exists to survive: `SeasonPhase` in
@@ -160,9 +176,12 @@ export interface WeekStripOptionsInput {
  * member cannot browse to a week they have already played. The strip drops that
  * rule, because it draws a played week as the team you spent there — a state
  * that could never appear in a list starting at the current week, since a pick
- * only ever exists for the current week or earlier. Past weeks are previews:
- * `MyPicksClient` already refuses to write to any week that isn't live, and the
- * server re-derives the week regardless of what the client sends.
+ * only ever exists for the current week or earlier.
+ *
+ * Every week on the strip that has not kicked off is now WRITABLE, not merely
+ * browsable — `MyPicksClient`'s `writable` gate admits the live week and every
+ * week after it, and `submitPick` takes the week from the client and validates
+ * it against `resolvePickWeek`. A past week is the only read-only kind left.
  *
  * Flat rather than grouped, because a row of equal squares has nowhere to put an
  * `<optgroup>` heading. The phase distinction survives in `chipLabel` instead —

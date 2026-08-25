@@ -188,6 +188,13 @@ function derivePracticeMember(args: {
    *
    * Weeks before a member's first pick are therefore skipped, not forgiven: once
    * you are in, a missed week is a loss like anywhere else.
+   *
+   * Picking ahead gives that a second, odder reading: make P3 your FIRST practice
+   * pick while P1 is still live and P1/P2 are skipped rather than counted
+   * against you. Left alone deliberately — it is already how a late joiner
+   * behaves, nothing eliminates in practice, and the stake is a number on a
+   * table that resets at Week 1. The regular season has no equivalent hole:
+   * `recomputeSeason` folds every week from 1 with no first-pick clamp.
    */
   const firstPickWeek = picks.reduce<number | null>(
     (min, p) => (min === null || p.week < min ? p.week : min),

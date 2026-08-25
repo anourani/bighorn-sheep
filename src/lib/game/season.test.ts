@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isEntryOpen, resolveCurrentWeek, resolveWeekFromKickoffs, seasonPhase } from "./season";
+import {
+  isEntryOpen,
+  resolveCurrentWeek,
+  resolvePickWeek,
+  resolveWeekFromKickoffs,
+  seasonPhase,
+} from "./season";
+import { REGULAR_WEEKS } from "../nfl/calendar";
 
 const ENTRY = new Date("2025-09-05T00:20:00.000Z"); // first Week 1 kickoff
 
@@ -109,5 +116,79 @@ describe("resolveWeekFromKickoffs", () => {
 
     expect(resolveWeekFromKickoffs(regularOnly, august)).toBe(1);
     expect(resolveWeekFromKickoffs(mixed, august)).toBe(3);
+  });
+});
+
+describe("resolvePickWeek", () => {
+  const regular = { liveWeek: 4, weeks: REGULAR_WEEKS };
+
+  it("falls back to the live week when the caller names none", () => {
+    // The mid-deploy case: a tab loaded before picking ahead shipped sends no
+    // week at all, and must keep working. `??` rather than `||`, so a null over
+    // the wire reads as "unspecified" too — and week 0 could never mean it.
+    expect(resolvePickWeek({ requested: undefined, ...regular })).toEqual({ ok: true, week: 4 });
+    expect(resolvePickWeek({ requested: null as unknown as undefined, ...regular })).toEqual({
+      ok: true,
+      week: 4,
+    });
+  });
+
+  it("accepts the live week itself", () => {
+    expect(resolvePickWeek({ requested: 4, ...regular })).toEqual({ ok: true, week: 4 });
+  });
+
+  it("accepts a week ahead of the live one", () => {
+    expect(resolvePickWeek({ requested: 5, ...regular })).toEqual({ ok: true, week: 5 });
+    expect(resolvePickWeek({ requested: 18, ...regular })).toEqual({ ok: true, week: 18 });
+  });
+
+  it("refuses a week that has already started", () => {
+    expect(resolvePickWeek({ requested: 3, ...regular })).toEqual({
+      ok: false,
+      error: "week_already_started",
+    });
+    expect(resolvePickWeek({ requested: 1, ...regular })).toEqual({
+      ok: false,
+      error: "week_already_started",
+    });
+  });
+
+  it("refuses a week past the end of the season", () => {
+    expect(resolvePickWeek({ requested: 19, ...regular })).toEqual({
+      ok: false,
+      error: "bad_week",
+    });
+  });
+
+  /**
+   * The practice case, and the reason callers pass the authoritative slate
+   * rather than a numeric range: a season that loaded three preseason weeks has
+   * no P4 to pick, and saying so here beats the vaguer `no_game_for_team` the
+   * guard would otherwise reach.
+   */
+  it("refuses a week the phase does not have", () => {
+    expect(resolvePickWeek({ requested: 4, liveWeek: 1, weeks: [1, 2, 3] })).toEqual({
+      ok: false,
+      error: "bad_week",
+    });
+    expect(resolvePickWeek({ requested: 3, liveWeek: 1, weeks: [1, 2, 3] })).toEqual({
+      ok: true,
+      week: 3,
+    });
+  });
+
+  /**
+   * `submitPick` is a Server Action, i.e. a reachable HTTP endpoint — every one
+   * of these can arrive on a hand-rolled POST, and `Number.isInteger` is what
+   * takes them all in one predicate.
+   */
+  it("refuses anything that is not a whole week number", () => {
+    const junk: unknown[] = [1.5, NaN, Infinity, -Infinity, -1, 0, "5"];
+    for (const requested of junk) {
+      expect(resolvePickWeek({ requested: requested as number, ...regular })).toEqual({
+        ok: false,
+        error: "bad_week",
+      });
+    }
   });
 });

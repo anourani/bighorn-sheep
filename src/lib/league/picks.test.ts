@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { PRE_WEEK, REGULAR_WEEK, weekKey } from "../nfl/calendar";
 import type { TeamId } from "../nfl/types";
-import { pickForWeek, pruneAgreedPicks, viewerPicksByWeek, type PendingPicks } from "./picks";
+import {
+  committedWeek,
+  pickForWeek,
+  pruneAgreedPicks,
+  viewerPicksByWeek,
+  type PendingPicks,
+} from "./picks";
 
 const NOTHING_PENDING: PendingPicks = new Map();
 
@@ -15,7 +21,7 @@ describe("viewerPicksByWeek", () => {
   // time; they are separate games and must not overwrite each other.
   it("keeps preseason week 1 and regular week 1 apart", () => {
     const picks = viewerPicksByWeek({
-      currentPick: { week: 1, teamId: "kc" },
+      regularPicks: [{ week: 1, teamId: "kc" }],
       practicePicks: [{ week: 1, teamId: "phi" }],
     });
 
@@ -24,29 +30,27 @@ describe("viewerPicksByWeek", () => {
     expect(pickForWeek(REGULAR_WEEK(1), picks, NOTHING_PENDING)).toBe("kc");
   });
 
-  it("indexes resolved history alongside the live week's pick", () => {
+  /**
+   * The week AHEAD is the case the old `history` + `currentPick` pair could not
+   * express at all — `history` stops below the current week and `currentPick` is
+   * a single row — so a pick made for a later week reached neither, and its chip
+   * on the week strip stayed empty through a refresh.
+   */
+  it("indexes every regular week: played, live and planned ahead", () => {
     const picks = viewerPicksByWeek({
-      history: [
+      regularPicks: [
         { week: 3, teamId: "buf" },
         { week: 4, teamId: "dal" },
+        { week: 5, teamId: "sf" },
+        { week: 11, teamId: "cin" },
       ],
-      currentPick: { week: 5, teamId: "sf" },
     });
 
+    expect(picks.size).toBe(4);
     expect(pickForWeek(REGULAR_WEEK(3), picks, NOTHING_PENDING)).toBe("buf");
     expect(pickForWeek(REGULAR_WEEK(4), picks, NOTHING_PENDING)).toBe("dal");
     expect(pickForWeek(REGULAR_WEEK(5), picks, NOTHING_PENDING)).toBe("sf");
-  });
-
-  // history is weeks < currentWeek, so this cannot happen today. Pinned anyway:
-  // currentPick is the live row, history is a derived read of older ones.
-  it("lets currentPick win if a week somehow appears in both", () => {
-    const picks = viewerPicksByWeek({
-      history: [{ week: 5, teamId: "buf" }],
-      currentPick: { week: 5, teamId: "sf" },
-    });
-
-    expect(pickForWeek(REGULAR_WEEK(5), picks, NOTHING_PENDING)).toBe("sf");
+    expect(pickForWeek(REGULAR_WEEK(11), picks, NOTHING_PENDING)).toBe("cin");
   });
 
   it("takes every practice pick, not just the live week's", () => {
@@ -62,7 +66,7 @@ describe("viewerPicksByWeek", () => {
 
   it("copes with a member who has picked nothing", () => {
     expect(viewerPicksByWeek({}).size).toBe(0);
-    expect(viewerPicksByWeek({ currentPick: null }).size).toBe(0);
+    expect(viewerPicksByWeek({ regularPicks: [] }).size).toBe(0);
   });
 });
 
@@ -102,7 +106,7 @@ describe("pickForWeek", () => {
   it("confines an in-flight pick to the week it was made for", () => {
     const picks = viewerPicksByWeek({
       practicePicks: [{ week: 1, teamId: "kc" }],
-      currentPick: { week: 2, teamId: "dal" },
+      regularPicks: [{ week: 2, teamId: "dal" }],
     });
     const inFlight = pending([[weekKey(PRE_WEEK(2)), "buf"]]);
 
@@ -130,7 +134,7 @@ describe("pickForWeek", () => {
 
 describe("pruneAgreedPicks", () => {
   it("drops entries the server has caught up with, keeping the rest", () => {
-    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const server = viewerPicksByWeek({ regularPicks: [{ week: 2, teamId: "kc" }] });
     const overlay = pending([
       [weekKey(REGULAR_WEEK(2)), "kc"], // landed — server agrees
       [weekKey(PRE_WEEK(1)), "sea"], // still in flight — server has nothing
@@ -151,7 +155,7 @@ describe("pruneAgreedPicks", () => {
   });
 
   it("keeps an entry that disagrees with a populated server value", () => {
-    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const server = viewerPicksByWeek({ regularPicks: [{ week: 2, teamId: "kc" }] });
     const overlay = pending([[weekKey(REGULAR_WEEK(2)), "sea"]]);
 
     expect(pruneAgreedPicks(overlay, server)).toBe(overlay);
@@ -163,8 +167,46 @@ describe("pruneAgreedPicks", () => {
     const empty = pending([]);
     expect(pruneAgreedPicks(empty, new Map())).toBe(empty);
 
-    const server = viewerPicksByWeek({ currentPick: { week: 2, teamId: "kc" } });
+    const server = viewerPicksByWeek({ regularPicks: [{ week: 2, teamId: "kc" }] });
     const disagreeing = pending([[weekKey(REGULAR_WEEK(2)), "sea"]]);
     expect(pruneAgreedPicks(disagreeing, server)).toBe(disagreeing);
+  });
+
+  /**
+   * Load-bearing for picking ahead: the overlay is keyed by week and cleared
+   * only when the server agrees. If a future week's pick never reached
+   * `viewerPicks`, this entry would never prune and would shadow the server for
+   * the life of the mounted screen — the exact failure this function exists to
+   * prevent, one week further out.
+   */
+  it("prunes a future week's overlay once the server carries it", () => {
+    const server = viewerPicksByWeek({ regularPicks: [{ week: 11, teamId: "cin" }] });
+    const pending = new Map([[weekKey(REGULAR_WEEK(11)), "cin" as const]]);
+
+    expect(pruneAgreedPicks(pending, server).size).toBe(0);
+  });
+});
+
+describe("committedWeek", () => {
+  const booked = [
+    { week: 2, teamId: "kc" as const },
+    { week: 10, teamId: "cin" as const },
+  ];
+
+  it("names the other week a team is already spent in", () => {
+    expect(committedWeek(booked, "cin", 3)).toBe(10);
+    expect(committedWeek(booked, "kc", 3)).toBe(2);
+  });
+
+  it("says nothing about a team that is free", () => {
+    expect(committedWeek(booked, "sf", 3)).toBeNull();
+    expect(committedWeek([], "kc", 3)).toBeNull();
+  });
+
+  // Replacing your own pick for the week on screen is not a release, so it must
+  // not raise a toast saying a week was deselected — it is the same week.
+  it("ignores the target week's own pick", () => {
+    expect(committedWeek(booked, "cin", 10)).toBeNull();
+    expect(committedWeek(booked, "kc", 2)).toBeNull();
   });
 });

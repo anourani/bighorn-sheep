@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canPick } from "@/lib/game/elimination";
-import { resolveCurrentWeek, seasonPhase } from "@/lib/game/season";
+import { resolveCurrentWeek, resolvePickWeek, seasonPhase } from "@/lib/game/season";
 import { rowToGame } from "@/lib/game/score";
-import { FINAL_WEEK } from "@/lib/nfl/calendar";
-import type { SeasonType } from "@/lib/nfl/types";
+import { FINAL_WEEK, REGULAR_WEEKS } from "@/lib/nfl/calendar";
+import { isKickedOff, type SeasonType } from "@/lib/nfl/types";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
 import { isFavoriteAnimal } from "@/lib/profile/animals";
@@ -93,25 +93,48 @@ function rpcErrorCode(
 }
 
 /**
- * Set (or change) the viewer's pick for the current week. Every survival rule is
- * re-checked here server-side — never trusted to the greyed-out UI — and RLS +
- * the picks unique constraints are the final backstop.
+ * Set (or change) the viewer's pick for a week. Every survival rule is re-checked
+ * here server-side — never trusted to the greyed-out UI — and RLS + the picks
+ * unique constraints are the final backstop.
  *
  * `seasonType` selects which of the two independent games this pick belongs to:
  * "regular" is the real league, "pre" is the practice round that resets at Week 1.
- * The week is still DERIVED here rather than accepted from the client — that is
- * what stops anyone submitting a pick for a future week — so `seasonType` is the
- * only new degree of freedom the caller gets.
+ *
+ * `week` is NEW, and it used to be the enforcement: the week was derived here and
+ * the caller's opinion discarded, which is what confined a member to the live
+ * week. Picking ahead means the caller names a week, so the refusal moves into
+ * `resolvePickWeek` — a Server Action is a reachable HTTP endpoint, and the
+ * greyed-out UI gates nothing. Omitting it still means "the live week", because a
+ * tab loaded before this shipped sends no week at all.
+ *
+ * A team may be spent once per phase (`picks_team_once_per_phase`), so a pick for
+ * a team already booked in another week has to do something about that week. The
+ * rule is that the WEEK YOU TAP WINS: the other pick is released and its week
+ * comes back in `releasedWeek` so the caller can say so. A release is only
+ * possible while that game has not kicked off — after that the team is genuinely
+ * spent and this returns `team_already_used`, which is also what RLS would say.
  */
 export async function submitPick(input: {
   groupId: string;
   teamId: string;
   seasonType?: SeasonType;
-}): Promise<ActionResult> {
+  /** Omit for the live week — a tab from before picking ahead shipped. */
+  week?: number;
+}): Promise<ActionResult<{ releasedWeek: number | null }>> {
   return attempt(async () => {
     const seasonType: SeasonType = input.seasonType ?? "regular";
     if (seasonType !== "regular" && seasonType !== "pre") {
       return { ok: false, error: "bad_season_type" };
+    }
+    // Shape before substance, and before `createClient()`: a hand-rolled POST
+    // carrying `week: 1e9` should not cost a database round trip. The phase's
+    // real week set is checked further down, where it is known.
+    if (
+      input.week !== undefined &&
+      input.week !== null &&
+      (!Number.isInteger(input.week) || input.week < 1 || input.week > FINAL_WEEK)
+    ) {
+      return { ok: false, error: "bad_week" };
     }
 
     const supabase = await createClient();
@@ -221,7 +244,16 @@ export async function submitPick(input: {
         now,
       });
       if (!practice) return { ok: false, error: "no_practice_schedule" };
-      week = practice.currentWeek;
+      // `practice.weeks` and not a numeric range: the preseason is three weeks in
+      // seasons without a Hall of Fame game and four in seasons with one, so this
+      // is the only list that knows whether a P4 exists to be picked.
+      const resolved = resolvePickWeek({
+        requested: input.week,
+        liveWeek: practice.currentWeek,
+        weeks: practice.weeks,
+      });
+      if (!resolved.ok) return { ok: false, error: resolved.error };
+      week = resolved.week;
       const me = practice.members[user.id];
       // NOTHING ELIMINATES IN PRACTICE, so the guard's status test is satisfied
       // outright — same shape as the `entryOpen: true` below it, and for the same
@@ -233,8 +265,17 @@ export async function submitPick(input: {
       memberStatus = "alive";
       usedHistory = practiceUsedTeams(me, { excludeWeek: week });
     } else {
-      week = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
-      // Teams spent in OTHER weeks count as used; the current week's own pick may
+      // REGULAR_WEEKS, deliberately not the weeks present in `games`: an unloaded
+      // schedule makes that list empty, which would turn today's honest
+      // `no_game_for_team` into `bad_week` for a caller who named no week at all.
+      const resolved = resolvePickWeek({
+        requested: input.week,
+        liveWeek: resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK }),
+        weeks: REGULAR_WEEKS,
+      });
+      if (!resolved.ok) return { ok: false, error: resolved.error };
+      week = resolved.week;
+      // Teams spent in OTHER weeks count as used; the TARGET week's own pick may
       // be freely replaced, so exclude it from the used set.
       usedHistory = (myPicks ?? [])
         .filter((p) => p.week !== week)
@@ -244,6 +285,28 @@ export async function submitPick(input: {
     const game = games.find(
       (g) => g.week === week && (g.home === input.teamId || g.away === input.teamId),
     );
+
+    /*
+     * The release: this team booked in some other week of this phase.
+     *
+     * A row whose game has not kicked off is a PLAN, and the week you tap wins —
+     * so it comes out of `usedHistory` (or `canPick` would refuse before we ever
+     * got to delete it) and is deleted below. A row whose game HAS kicked off is
+     * a team genuinely spent, so it stays in the used list and `canPick` answers
+     * `team_already_used`. That split is not a convenience: 0001's delete policy
+     * carries the same `g.kickoff > now()` test, so a released row that had
+     * started would be refused by RLS anyway and we would be reporting a success
+     * the database declined.
+     */
+    const booked = (myPicks ?? []).find((p) => p.team_id === input.teamId && p.week !== week);
+    const bookedGame = booked ? games.find((g) => g.id === booked.game_id) : undefined;
+    const releasable =
+      booked !== undefined &&
+      bookedGame !== undefined &&
+      !isKickedOff({ status: bookedGame.status, kickoff: bookedGame.kickoff }, now);
+    if (releasable) {
+      usedHistory = usedHistory.filter((h) => h.teamId !== input.teamId);
+    }
 
     const guard = canPick({
       member: { status: memberStatus, history: usedHistory },
@@ -256,6 +319,37 @@ export async function submitPick(input: {
       now,
     });
     if (!guard.ok) return { ok: false, error: guard.reason };
+
+    /*
+     * Freeing the team has to happen BEFORE the upsert, because
+     * `picks_team_once_per_phase` would reject the new row while the old one
+     * still holds the team. That makes this two statements with no transaction
+     * between them — PostgREST offers none — so it runs only after every guard
+     * above has passed, leaving infrastructure as the sole realistic failure.
+     *
+     * When the upsert then fails anyway, the member has lost a pick and gained
+     * nothing, and saying "something went wrong" would leave them to discover
+     * that themselves. `release_failed` says it outright.
+     *
+     * Rejected alternatives: a single UPDATE moving the old row's week is atomic
+     * but only covers the case where the target week is empty, and two write
+     * paths for one action is the worse trade. A definer RPC would be atomic
+     * outright, but 0014's own notes already refused a `submit_pick` function —
+     * it duplicates canPick into SQL and adds a round trip at the kickoff spike.
+     */
+    if (releasable && booked) {
+      const { error: releaseError } = await supabase
+        .from("picks")
+        .delete()
+        .eq("group_id", input.groupId)
+        .eq("user_id", user.id)
+        .eq("season_type", seasonType)
+        .eq("week", booked.week);
+      if (releaseError) {
+        console.error("[submitPick] release failed", { week: booked.week, error: releaseError });
+        return { ok: false, error: "team_already_used" };
+      }
+    }
 
     const { error } = await supabase.from("picks").upsert(
       {
@@ -271,6 +365,17 @@ export async function submitPick(input: {
       { onConflict: "group_id,user_id,season_type,week" },
     );
     if (error) {
+      // A release already went through, so the member is now short a pick with
+      // nothing to show for it. Say that, rather than letting them read
+      // "something went wrong" and assume nothing changed.
+      if (releasable) {
+        console.error("[submitPick] upsert failed after release", {
+          released: booked?.week,
+          week,
+          error,
+        });
+        return { ok: false, error: "release_failed" };
+      }
       // 23505 = unique_violation. Key off the SQLSTATE code rather than the message
       // text: 0006 renamed this constraint to `picks_team_once_per_phase`, and the
       // previous /team_id/ match silently stopped matching — turning "you've already
@@ -287,7 +392,7 @@ export async function submitPick(input: {
 
     revalidatePath("/app");
     revalidatePath("/app/standings");
-    return { ok: true };
+    return { ok: true, data: { releasedWeek: releasable && booked ? booked.week : null } };
   });
 }
 
