@@ -4,23 +4,26 @@
  * shade of black.
  *
  * Both are overrides on the existing `Button` primitive rather than new
- * variants or a new size axis. 40px sits between `sm` (36) and `md` (44) and
- * exists on exactly two controls here; adding a size to a primitive every screen
- * uses would be the more expensive answer for a page-local spec. Each class
- * below lands in the same tailwind-merge group as the one it replaces, and
+ * variants or a new size axis. 40px sits between `sm` (36) and `md` (44) and is
+ * what four of the five controls here take; adding a size to a primitive every
+ * screen uses would be the more expensive answer for a page-local spec. Each
+ * class below lands in the same tailwind-merge group as the one it replaces, and
  * `className` is applied last in `Button`, so every one of them takes effect.
  */
 
 /**
  * The design's white-on-white control: 40px tall, 16px semibold, a `#D9D9D9`
- * hairline. Used on "Copy Link". Pair with `variant="outline" size="sm"`.
+ * hairline. Used on "Copy Link" and "Feedback". Pair with
+ * `variant="outline" size="sm"` — or, for "Feedback", with `buttonVariants()`
+ * on an `<a>`, since that control navigates and cannot be a `<button>`.
  */
 export const SPEC_BUTTON_LIGHT =
   "h-10 border-shell-line px-3 text-base font-semibold text-shell-ink";
 
 /**
- * The filled black control: `#1E1E1E`, white 16px semibold. Used on "Edit" (40px,
- * `size="sm"`) and "Log Out" (48px, `size="lg"`). Pair with **`variant="ghost"`**.
+ * The filled black control: `#1E1E1E`, white 16px semibold. Used on "Edit" and
+ * "Enter" (both 40px, `size="sm"`) and "Log Out" (48px, `size="lg"`). Pair with
+ * **`variant="ghost"`**.
  *
  * **Not `variant="primary"`, and that is the whole point of this constant.**
  * `primary` carries `bg-brand-sheen` (a background *image* gradient) and

@@ -45,7 +45,7 @@ export const VENMO_URL = "https://www.venmo.com/u/Alex-Nourani-1";
 export const VENMO_HANDLE = "alex-nourani-1";
 
 /**
- * Where "Leave Feedback" goes.
+ * Where the "Feedback" control in Additional Settings goes.
  *
  * ⚠️ PLACEHOLDER. This is meant to be a form (Google Forms, Tally, Typeform) and
  * is a `mailto:` until that URL exists — the tile is in the design and shipping

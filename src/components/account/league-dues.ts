@@ -1,5 +1,5 @@
 // Relative, not the `@/` alias: there is no vitest config in this repo, so the
-// alias does not resolve when `common-good.test.ts` imports this module. Every
+// alias does not resolve when `league-dues.test.ts` imports this module. Every
 // other tested module under src/components does the same.
 import { formatMoney } from "../../lib/money";
 

@@ -10,7 +10,7 @@ export default async function AccountPage() {
   // must not disagree about where such a visitor belongs.
   if (!account) redirect("/");
 
-  // The Admin Control Center row opens `AdminSettingsDrawer`, which needs the
+  // The Admin Control Center card opens `AdminSettingsDrawer`, which needs the
   // league's full roster — and `loadAccount` deliberately doesn't carry one
   // (`LeagueSummary` has aliveCount/memberCount, not `Member[]`). Fetch it from
   // the canonical producer, and only for an admin: `loadLeague` is seven queries
@@ -18,7 +18,9 @@ export default async function AccountPage() {
   // a row they never see.
   //
   // Null here therefore means "no control center", either way round — an
-  // unresolved league, a non-admin, or a load that failed. Failing CLOSED is the
+  // unresolved league, a non-admin, or a load that failed. `AccountClient`
+  // renders the card at the top of the page off this same value, so the card and
+  // the panel behind it cannot disagree about who is an admin. Failing CLOSED is the
   // right side to err on for one admin control, and is the opposite of
   // `accountClosed()`, where the same error must not lock a league out.
   const active = account.leagues.find((l) => l.group.id === account.activeGroupId) ?? null;
