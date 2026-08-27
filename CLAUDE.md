@@ -1416,21 +1416,32 @@ reading, but only the first kind is the lesson.
     key.
   - **The function takes no arguments.** A group id or invite code parameter
     would make it a universal standings reader for every league in the project.
-- **The account page is two 322px columns in a 656px block, and every number in
-  it is transcribed from the mock-ups.** `/app/account` is title → [Personal
-  Details | For the Common Good] → More → Log Out on desktop, and reorders to
-  … → Log Out → More on a phone. `SHOW_LEAGUE_AND_PREFERENCES` and its two hidden
-  sections are **gone** — the redesign supersedes them, and `git log` is where
-  they live now. Seven things are load-bearing:
+- **The account page is ONE 656px column of stacked blocks, and every number in
+  it is transcribed from the mock-ups.** `/app/account` is title →
+  [Admin Control Center] → Personal Details → League Dues → Additional Settings →
+  Log Out on desktop, and reorders to … → Log Out → Additional Settings on a
+  phone. It used to be two 322px columns — title → [Personal Details | For the
+  Common Good] → More → Log Out — and the restack deleted that grid outright.
+  `SHOW_LEAGUE_AND_PREFERENCES` and its two hidden sections are **gone** — the
+  redesign supersedes them, and `git log` is where they live now. Eight things
+  are load-bearing:
   - **`lg` is where it turns over**, as everywhere else in the app, and the
     column is `max-w-[656px]` inside `main`'s 968 (`max-w-shell` less its
-    `px-4`). The two columns are 322 + 12 + 322. Blocks are 32px apart on a phone
-    and 48px on a desktop; the two columns are 32px apart stacked and 12px apart
-    side by side, which is a real difference in the mock-ups and not rounding.
+    `px-4`). **Blocks are 32px apart on a phone and 40px on a desktop**,
+    uniformly. Nothing splits into columns any more, so exactly four things turn
+    over at `lg` and all four are *inside* a block: Personal Details lays its
+    four fields two across (a `lg:grid lg:grid-cols-2`, tracks measured at
+    300px), League Dues becomes a row with a full-height rule down it, the Admin
+    Control Center centres its button, and Log Out moves below Additional
+    Settings.
   - **DOM order is not visual order.** Log Out carries `order-3 lg:order-4` and
     Additional Settings `order-4 lg:order-3`, rather than the button being
     rendered twice. `.stagger` animates on `:nth-child`, which `order` leaves
-    alone.
+    alone. Those numbers are a sort key, not an index — every other block sits at
+    the default `order: 0`, which flexbox places ahead of any positive value, so
+    the pair kept sorting correctly when the restack grew the root from four
+    children to five (six for an admin, whose card shifts every later block one
+    `:nth-child` slot along; the helper defines eight).
   - **`variant="primary"` cannot be repainted black**, which is why
     `SPEC_BUTTON_DARK` in `src/components/account/spec.ts` pairs with
     `variant="ghost"`. `bg-brand-sheen` is a background *image*, so a background
@@ -1447,9 +1458,32 @@ reading, but only the first kind is the lesson.
     so the iOS wheel and the platform keyboard behaviour are unchanged.
   - **The unpaid buy-in card wears a 5px `#A71930` cap and squares its top
     corners; the paid one has neither.** That cap is the only thing that
-    distinguishes the two states from across the page.
-  - **The "Additional Settings" rows are 8px radius where every card above them
-    is 4px.** In the design at both widths — not a slip waiting to be unified.
+    distinguishes the two states from across the page. Unaffected by the restack
+    — only the card's *interior* flips to a row at `lg`.
+  - **"For the Common Good" is "League Dues" now, and the file, its pure module
+    and that module's test were renamed with it** (`LeagueDues.tsx`,
+    `league-dues.ts`, `league-dues.test.ts`) — `WhosIn` → `InviteCta` and
+    `AdminSettingsModal` → `AdminSettingsDrawer` are the precedent for renaming
+    on redesign rather than leaving a file lying about its contents. It lost the
+    "Say Something Nice" card it used to carry, which is now a row with a
+    "Feedback" button in Additional Settings. Two things inside it:
+    - **The buy-in figure is `H3` from `src/lib/type-scale.ts`, composed, not
+      retyped.** It went 24px → 32px at −4%, which is that constant exactly, and
+      that constant carries no colour precisely so callers can paint it.
+    - **The desktop rule between the two halves reaches full height off the flex
+      row's default `align-items: stretch`.** So `lg:h-auto` is load-bearing — it
+      is the base `h-px` that would otherwise defeat the stretch — and **nothing
+      in that card's class list may become `items-start`**, which would collapse
+      the rule to nothing with no error anywhere. Measured at 1x122.4.
+  - **Every surface on the page is 8px now — cards and rows alike.** This entry
+    used to say the opposite, and said it emphatically: 4px cards against 8px
+    rows, "in the design at both widths — not a slip waiting to be unified". That
+    was true of the old mock-ups. The restack's Figma then gave League Dues 8px
+    while leaving Personal Details at 4, i.e. disagreed with itself, and carrying
+    two card radii to reproduce a slip was not worth the constant. `CARD` in
+    `surfaces.tsx` is `rounded-control` and so is `MoreRow`. **Unified
+    deliberately, with the number chosen rather than inherited — don't re-split
+    it on the strength of one frame.**
   - **The invite row hides once entry closes**, matching `InviteCta` on
     Standings: the code still exists but `join_by_invite` refuses it. Its link is
     built from `NEXT_PUBLIC_APP_URL || window.location.origin`, which is now
@@ -1463,15 +1497,21 @@ reading, but only the first kind is the lesson.
     mock-up. The Favorite Animal row is still the app's only avatar picker, so a
     player chooses their animal here and sees it on Standings.
   - **The flag never gated the way into a league, and still doesn't.** A viewer
-    who belongs to none gets "Join an Existing League" in the Common Good column
-    instead, on `!activeLeague` alone. `/app` and `/app/standings` offer the same
+    who belongs to none gets "Join an Existing League" in League Dues' slot
+    instead, full width, on `!activeLeague` alone. `/app` and `/app/standings` offer the same
     `JoinByCode` through `NoLeagueState`; three entry points is intentional.
 
-- **The way into the admin drawer is a labelled row on the account page, and the
-  gear on Standings is gone.** `LeagueDetails` no longer takes `isAdmin` or
+- **The way into the admin drawer is a card at the TOP of the account page, and
+  the gear on Standings is gone.** `LeagueDetails` no longer takes `isAdmin` or
   `onOpenSettings`, `StandingsClient` no longer mounts `AdminSettingsDrawer`, and
-  the section formerly titled "More" is now **Additional Settings** with an Admin
-  Control Center row above Invite Link. Four things are load-bearing:
+  the section formerly titled "More" is now **Additional Settings**. The control
+  center started life as that section's first row; the restack promoted it to a
+  bare card directly under the page title, above Personal Details, with no
+  section heading of its own — so Additional Settings now runs Invite Link → Say
+  Something Nice → Danger Zone, and nothing left in it is gated on who you are.
+  It lives in `AdminControlCenterCard.tsx` rather than in `MoreSection.tsx`,
+  because a module named after the bottom-of-page section is the wrong home for a
+  top-of-page card. Five things are load-bearing:
   - **The roster is loaded for admins only, and null means "no control center".**
     The drawer needs `Member[]`, and `loadAccount()` deliberately carries
     `aliveCount`/`memberCount` instead — so `app/account/page.tsx` calls
@@ -1484,18 +1524,27 @@ reading, but only the first kind is the lesson.
     would lock the whole league out of the app.
   - **`AccountClient` derives `isAdmin` from that roster, not from
     `activeLeague.role`.** Both are true statements about the same membership,
-    but only one of them is also the drawer's data — gating the row on the role
-    and the panel on the roster is how you get a row that opens an empty drawer.
+    but only one of them is also the drawer's data — gating the card on the role
+    and the panel on the roster is how you get a card that opens an empty drawer.
   - **The drawer is a sibling of the two modals, outside `.stagger`**, and mounts
     on `admin ? … : null` rather than on `settingsOpen && …` — the same two rules
     `StandingsClient` followed, for the same reasons (a `.stagger` child sits at
     opacity 0 for 220ms while its own 320ms slide plays invisibly; unmounting on
     close would throw away the active tab).
-  - **The row is `p-4` with a content-driven height where `MoreRow` is `h-16`.**
+  - **The card is `p-4` with a content-driven height where `MoreRow` is `h-16`.**
     Same `bg-fill-soft`, same `rounded-control`, deliberately not the same row:
     the second line of copy is what makes the mock-up's card 80px at 656 and
     102px at 361, and a pinned height would clip the wrap at the phone width.
     Measured at both: 656x79.2 and 361x100.8.
+  - **Those two heights are also why it is `items-start lg:items-center`.** The
+    copy wraps to two lines at 361 (a 68.8px stack) and the design tops the 40px
+    button out with it at y=16; at 656 it is one line (47.2px) and the button
+    centres, which is Figma's y=20 because 16 + (47.2 − 40)/2 = 19.6. One
+    alignment for both widths is wrong at one of them, and this used to claim the
+    design "tops them out together" in both frames — only ever true on the phone.
+    Its "Enter" is **black** (`SPEC_BUTTON_DARK`): the desktop frame drew
+    Button/Primary where the mobile frame drew the outline control, the two
+    mock-ups disagreed, and black was the call.
 
 - **The header's account button wears a red dot while the viewer's buy-in is
   unpaid**, and `AppHeader` is `async` for it. That is the one piece of league

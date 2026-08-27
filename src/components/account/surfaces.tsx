@@ -4,21 +4,26 @@ import { H3 } from "@/lib/type-scale";
 /**
  * The account page's shared surface vocabulary.
  *
- * Three column-level components on this page (Personal Details, For the Common
- * Good, More) draw the same title-over-cards shape at the same sizes, and the
- * mock-ups are exact about all of it. Spelling the numbers once here is what
- * stops the second column drifting a pixel off the first — the failure mode is
- * invisible in isolation and obvious side by side.
+ * Three block-level components on this page (Personal Details, League Dues,
+ * Additional Settings) draw the same title-over-cards shape at the same sizes,
+ * and the mock-ups are exact about all of it. Spelling the numbers once here is
+ * what stops one block drifting a pixel off the one above it — the failure mode
+ * is invisible in isolation and obvious when they are stacked.
  */
 
 /**
- * The grey card: `#F3F3F3`, 4px radius, 16px sides, 20px top and bottom.
+ * The grey card: `#F3F3F3`, 8px radius, 16px sides, 20px top and bottom.
  *
- * **4px, not `rounded-control` (8px)** — and the "More" rows below genuinely are
- * 8px. That difference is in the design at both widths, so the two are not a
- * mistake waiting to be unified.
+ * **One radius for the whole page**, `radius/small`, cards and Additional
+ * Settings rows alike. This entry used to argue the opposite at length — 4px
+ * cards against 8px rows, "in the design at both widths, so the two are not a
+ * mistake waiting to be unified" — and that was true of the old mock-ups. The
+ * restack's Figma then gave League Dues 8px while leaving Personal Details at 4,
+ * i.e. it disagreed with itself, and carrying two card radii to reproduce a slip
+ * is not worth the constant it would take. Unified deliberately, with the number
+ * chosen rather than inherited; don't re-split it on the strength of one frame.
  */
-export const CARD = "rounded-[4px] bg-fill-soft px-4 py-5";
+export const CARD = "rounded-control bg-fill-soft px-4 py-5";
 
 /**
  * A card row's value, and the section-heading and body sizes beside it.

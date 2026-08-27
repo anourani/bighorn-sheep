@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buyInView } from "./common-good";
+import { buyInView } from "./league-dues";
 
 function view(over: Partial<Parameters<typeof buyInView>[0]> = {}) {
   return buyInView({
