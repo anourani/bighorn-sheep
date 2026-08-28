@@ -557,7 +557,7 @@ reading, but only the first kind is the lesson.
 
 - **The My Picks page has a second, condensed pick module that pins to the top
   of a phone once the real one scrolls away.** `PickStickyBar` — 89px, the
-  eyebrow over a 57px row of [three team-colour strips with the logo centred on
+  eyebrow over a 51px row of [three team-colour strips with the logo centred on
   them] [city / team name] [rule] [matchup / date / kickoff]. It slides in the
   moment `PickHero`'s bottom edge passes the top of the viewport, slides out on
   the way back, is `lg:hidden`, and **renders nothing at all when the week has no
@@ -623,6 +623,24 @@ reading, but only the first kind is the lesson.
     full-width surface, and a tap falling through it lands on a team card the
     reader cannot see — which on this page spends a team for the season. It
     swallows taps. Off screen it is unhittable regardless.
+  - **The fill is `bg-bg/80` behind a 4px blur, and it is the PAGE colour, not
+    white.** #FDFDFD at 80%, so the grid reads faintly through it — the same
+    family as `AppHeader`'s `bg-bg/[0.12]`. It arrived together with the matchup
+    block going from #858585 at 14px to **`shell-ink` at 12px**, and the pair is
+    the point: at #858585 that line measured 3.5:1 on solid white and would have
+    lost contrast the moment the fill let the page through. Note `80` IS on
+    Tailwind's opacity scale where `12` is not — `bg-bg/12` compiles to nothing,
+    which is the trap `AppHeader` carries an arbitrary value for.
+  - **The row's 51px is the matchup stack's own height (3 × 12px at 1.4), and it
+    is still stated rather than derived.** So is the column's 89 — the frame
+    declares it and centres a 67px container in it. Both were `py-*` with a
+    content-driven height for one revision, and when the matchup block dropped
+    from 14px to 12px the bar silently shrank to 83. The height is also the slide
+    distance, so exactly one thing is allowed to decide it.
+  - **`tracking-[-0.01em]` did not have to change when that size did**, and a
+    `-0.14px` would have. Figma reports letter-spacing as percent × 100, so `em`
+    IS the percentage and survives a size move; px is a conversion to redo. The
+    reason `type-scale.ts` and `surfaces.tsx` both insist on it, demonstrated.
   - **The bar measures 90px, not the frame's 89.** `border-b` sits outside an
     auto height even under `border-box`; the content column is exactly 89. A
     known, accepted 1px — spell the hairline as an inset shadow if it ever has to

@@ -158,7 +158,7 @@ export function PickStickyBar({
       */
       aria-hidden
       className={cn(
-        "fixed inset-x-0 top-0 z-30 border-b border-shell-line bg-white lg:hidden",
+        "fixed inset-x-0 top-0 z-30 border-b border-shell-line bg-bg/80 backdrop-blur-sm lg:hidden",
         // Portalled to `body`, so it inherits nothing from the shell's own
         // safe-area padding and must add its own. On the outer element, so the
         // white runs up through the status-bar inset to the screen edge —
@@ -179,15 +179,21 @@ export function PickStickyBar({
         // the season. It must swallow taps. Off screen it is unhittable anyway.
       )}
     >
-      <div className="mx-auto flex max-w-shell items-center px-4 py-2">
+      {/* h-[89px] with `items-center`, not padding: the frame states the height
+          outright and centres a 67px container in it (11px each side). Letting
+          it fall out of `py-2` gave 83 once the matchup block dropped to 12px,
+          and the bar's height is also its slide distance. */}
+      <div className="mx-auto flex h-[89px] max-w-shell items-center px-4">
         <div className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1">
           <Label>{eyebrowFor(weekName)}</Label>
 
-          {/* h-[57px] rather than letting the matchup stack set it: the bar must
+          {/* h-[51px] rather than letting the matchup stack set it: the bar must
               be the same height for every team, or the slide distance changes
               with the pick. Same invariant `PickHero`'s fixed row height keeps,
-              and it is what lets the strips and the rule take `h-full`. */}
-          <div className="flex h-[57px] items-center gap-2">
+              and it is what lets the strips and the rule take `h-full`. The 51
+              IS the matchup stack's own height (3 x 12px at 1.4 = 50.4), so the
+              two agree — but only one of them is allowed to decide it. */}
+          <div className="flex h-[51px] items-center gap-2">
             {/* 3 × 12 + 2 × 4 = 44 wide, per the frame. `isolate` scopes the
                 logo's z-10 to this group. */}
             <div className="relative isolate flex h-full shrink-0 items-center gap-1">
@@ -245,17 +251,22 @@ export function PickStickyBar({
 
               <div className="h-full w-px shrink-0 bg-shell-line" />
 
-              {/* The slash shorthand, not `text-[14px] leading-[1.35]` — a
+              {/* Body 12 — 12px over 1.4 at -1%, in the PRIMARY ink, so it is
+                  darker than the city label above it rather than lighter. That
+                  is the design's call and it pairs with the translucent
+                  background above: at #858585 this line measured 3.5:1 on solid
+                  white and would have lost contrast the moment the fill let the
+                  page through; #1E1E1E clears 16:1 with room to spare.
+
+                  The slash shorthand, not `text-[12px] leading-[1.4]` — a
                   `text-*` utility carries a line-height of its own, so a separate
                   `leading-*` can be beaten by a later-emitted `text-*`. Matches
                   `PickHero`'s `Meta`, which documents the trap. Tracking as
-                  `-0.01em`, not `-0.14px`: Figma reports letter-spacing as
-                  percent × 100, and `em` is that percentage directly, where a
-                  pixel value is a conversion to redo whenever the size moves.
-                  Not shared with `Meta` as a constant: that one has no tracking
-                  and takes `shell-ink`, so a shared value would have to lie
-                  about one of them. */}
-              <div className="flex h-full flex-col justify-center whitespace-nowrap text-[14px]/[1.35] font-medium tracking-[-0.01em] text-shell-faint">
+                  `-0.01em`, not `-0.12px`: Figma reports letter-spacing as
+                  percent × 100, and `em` is that percentage directly — which is
+                  why this class did NOT have to change when the size did, where
+                  a pixel value would have. */}
+              <div className="flex h-full flex-col justify-center whitespace-nowrap text-[12px]/[1.4] font-medium tracking-[-0.01em] text-shell-ink">
                 <span>{matchupLine(pickGame, teamId, "long")}</span>
                 <LocalTime iso={pickGame.kickoff} mode="date" />
                 <LocalTime iso={pickGame.kickoff} mode="clockzone" />
