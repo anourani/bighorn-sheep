@@ -696,12 +696,12 @@ reading, but only the first kind is the lesson.
     swallows taps. Off screen it is unhittable regardless.
   - **The fill is `bg-bg/80` behind a 4px blur, and it is the PAGE colour, not
     white.** #FDFDFD at 80%, so the grid reads faintly through it — the same
-    family as `AppHeader`'s `bg-bg/[0.12]`, and now the exact pair
-    `BottomTabBar`'s track takes at the other edge of the same screen, so the two
-    pieces of mobile chrome read as one material. **The tab bar's blur sits on
-    its rounded TRACK, not on the full-width bar**, so its gutters and its
-    home-indicator strip are transparent; a `backdrop-filter` clips to its own
-    element's border box, radius included, so that frosting rounds with no
+    family as `AppHeader`'s old `bg-bg/[0.12]`. It was briefly the exact pair
+    `BottomTabBar`'s track took at the other edge of the same screen; that bar is
+    the desktop header's solid white pill now, so **this is the only frosted
+    surface left**, and the picks screen carries a translucent bar at the top
+    with a solid pill at the foot. Decided, not drifted into. The blur still sits
+    on this element's own rounded box, so it clips to the radius with no
     `overflow` involved. It arrived together with the matchup
     block going from #858585 at 14px to **`shell-ink` at 12px**, and the pair is
     the point: at #858585 that line measured 3.5:1 on solid white and would have
@@ -747,11 +747,44 @@ reading, but only the first kind is the lesson.
   under vitest. `team-grid.ts` and `week-strip.ts` already spell theirs
   `../../lib/...`; anything imported by a test must.
 
-- **The app has navigation in two places again, deliberately, and they are
-  mutually exclusive by width.** Below `lg` there is NO header at all —
+- **The mobile bar IS the desktop pill, at the other edge.** Figma
+  `4033:121668`. Same white fill, `border-shell-line/50`, 6px shadow,
+  `rounded-card`, `h-10` buttons at 16/600/1.2, the same three inks and the same
+  `bg-fill-soft` selected tab — off the same `NAV_TABS`. Four differences, all
+  from its own frame: no app mark, `px-3` on the pill rather than `px-4`, **no
+  gap** between the buttons, and the row's vertical padding inverted (`pt-1 pb-2`
+  against the header's `pt-2 pb-1`). Anything that changes one and not the other
+  is a bug unless a frame says so. Five things:
+  - **It hugs and centres at every width — `shrink-0`, never full-bleed.** That
+    is what the last full-width track got worst: at 1023px it drew three 325px
+    tabs across 1000px. The pill is 335.9 there, centred, the same as on a phone.
+  - **The frame's button box holds only from `min-[375px]`.** 2 + 24 + 100 + 110
+    + 100 = 336 against the 336 a 360px viewport leaves after the row's `px-3` —
+    a rounding error, not slack, and 40px short at 320. Below 375 the buttons
+    take their content width at `px-3`, bringing the pill to 282.6. Measured at
+    393 / 375 / 360 / 320: nothing scrolls sideways at any of them.
+  - **40px drawn, 44px tapped**, via `after:inset-x-0 after:-inset-y-0.5`. The
+    2px lands inside the pill's own `py-2` so it can never overhang, and
+    `inset-x-0` rather than a full `-inset` is load-bearing: the buttons are
+    adjacent with no gap, so a horizontal extension would steal its neighbour's
+    taps. The desktop pill deliberately does NOT do this — the floor is a touch
+    guideline and that surface is pointer-driven.
+  - **It still swallows taps where the header passes them through.** `AppHeader`
+    takes `pointer-events-none` because it spans 1000px while drawing ~400. This
+    bar's undrawn band is ~28px per side, at the bottom edge where a thumb rests,
+    and on the picks page a tap falling through spends a team for the season. A
+    dead 28px corner is the cheaper mistake. A deliberate divergence.
+  - **The icons are gone**, and `CheckCircleIcon` / `GridIcon` / `UserIcon` with
+    them have no call site left. Kept: `icons.tsx` is a set, and nine other
+    glyphs in it are already in that position. `TabKey` did NOT survive — the
+    icon `Record` was its only consumer, and `key` still types itself through
+    `as const`.
+
+- **The app has navigation in two places, deliberately, and they are mutually
+  exclusive by width.** Below `lg` there is NO header at all —
   `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
   destinations (Picks / Standings / Account) in a bar pinned to the foot of the
-  screen. The design is Figma `4033:121667`; `lg` is the breakpoint because it is
+  screen. The design was Figma `4033:121667` and is now `4033:121668`; `lg` is the breakpoint because it is
   the app's single turn-over width, and this was the user's call rather than an
   inference. Eight things:
   - **`sticky bottom-0`, NOT `fixed`, and that is what kept `main`'s padding
@@ -759,7 +792,7 @@ reading, but only the first kind is the lesson.
     bar's flow position IS the foot of the document, so `bottom: 0` — which only
     ever shifts a sticky box up toward the viewport, never down — pins it at
     every scroll offset, and at full scroll it is simply sitting where it lives.
-    Because it also RESERVES its 64px there, `pb-20 lg:pb-32` did not have to
+    Because it also RESERVES its height there, `pb-20 lg:pb-32` did not have to
     move a third time (it was `pb-28` under the app's first, fixed, bottom bar
     and `pb-12` after that), and the page-frame measurement above still reads
     40/80 and 64/128. Measured in Chromium at 393×852: `barBottom === innerHeight`
@@ -790,10 +823,13 @@ reading, but only the first kind is the lesson.
     is `display: standalone`, so an installed PWA runs under the status bar and
     `main`'s 40px would otherwise be the only clearance. It resolves to 0 in a
     browser, so the measurement above is unchanged there.
-  - **`bg-fill-deep` (#EAEAEA) is the selected tab**, a new third step in the
-    `fill` family. Unlike the `shell` greys, those three DO run light to dark:
-    `raised` → `soft` → `deep`. Named after `surface.deep` so both neutral ramps
-    end the same way.
+  - **The selected tab is `bg-fill-soft`**, the same token the desktop pill
+    uses — the two navs are the same component in all but four numbers. It was
+    `fill-deep` (#EAEAEA) while the bar sat on a translucent blurred track and
+    needed more separation. `fill-deep` survives as `ui/Button`'s soft-variant
+    hover, which had been retyping that hex as an arbitrary value all along.
+    Unlike the `shell` greys, those three DO run light to dark: `raised` →
+    `soft` → `deep`.
   - **Figma's `overflow-clip` on the track is deliberately not transcribed.**
     There is nothing to clip — the active tab carries the track's own 16px
     radius — and an overflow there WOULD clip the global focus ring's

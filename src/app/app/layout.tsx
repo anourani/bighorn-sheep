@@ -66,9 +66,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           A bottom bar is back below `lg` and the number did NOT have to move a
           third time, which is the whole reason `BottomTabBar` is sticky rather
-          than fixed: it reserves its own 64px at the foot of the document, so
+          than fixed: it reserves its own height at the foot of the document, so
           the 80px here is still the gap between the last block and the chrome
-          rather than a guess at how much to hide behind. */}
+          rather than a guess at how much to hide behind. That held when the bar
+          grew from 64px to 70, which is the point of reserving rather than
+          overlaying. */}
       <main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">{children}</main>
       {/* Last child, and that is not a free ordering — `sticky bottom-0` works
           because this element's flow position is the foot of the document. */}
