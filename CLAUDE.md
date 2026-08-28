@@ -591,6 +591,26 @@ reading, but only the first kind is the lesson.
     the chrome only as the mark's `aria-label`. `APP_SHORT_NAME` is NOT dead:
     `LandingHeader` still reads it, which its docstring in `lib/app.ts` denied
     even before this.
+  - **The transparent bar would have swallowed clicks, and the fix belongs one
+    level up from where it looks like it does.** The `<header>` spans the whole
+    1000px shell while only its middle ~400px is drawn, so the band beside the
+    pill reads as live content; `pointer-events-none` on the header with `auto`
+    on the pill lets clicks through. That is `Toast`'s argument (a full-width
+    positioner around a small card), not `PickStickyBar`'s (which swallows taps
+    *because* it is the full-width opaque surface). Putting it on the row inside
+    the header does NOT work — `elementFromPoint` in the gutter still returned
+    the `<header>`, because a parent receives what its `none` child declines.
+    Measured, after the first attempt got it wrong.
+  - **The `<nav>` scopes to the three buttons; the pill is a plain div.** The
+    mark links to `/app` and so does the Picks button, so wrapping the whole pill
+    in the landmark would put two links to one destination inside it, one
+    `aria-current="page"` and one not. The old header had the mark outside the
+    `<nav>` and this keeps that true, at the cost of one extra `gap-1`.
+  - **Beware the comment scanner here.** Rewriting this header left four class
+    names alive only in prose — and removing the account circle orphaned a fifth
+    in `BottomTabBar` — each shipping a real rule, because `content` is
+    `./src/**/*.{ts,tsx,mdx}` and Tailwind scans comments. Describe a class you
+    do not use; never spell it.
   - **The header is 70px now, and nothing noticed.** Verified by search rather
     than assumed: no `scroll-mt`, no `--header-h`, no `top-[…]` offset anywhere
     in `src/` reads it, and `main`'s `lg:pt-16` comes from the mockups' page
