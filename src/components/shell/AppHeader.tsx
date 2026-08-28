@@ -4,20 +4,28 @@ import { APP_NAME, APP_SHORT_NAME } from "@/lib/app";
 import { viewerBuyInUnpaid } from "@/lib/league/load";
 
 /**
- * The app shell header — 62px of chrome carrying all of the app's navigation.
+ * The app shell header — 62px of chrome carrying the app's navigation **from
+ * `lg` up**, and hidden outright below it.
  *
  * Three blocks on one row: the app's mark and initials on the left, the tab pill
  * centred on the shell, and the account button on the right. It is one row at
- * every width; below 480px the wordmark drops and the mark stands alone, which
- * is what keeps a 360px viewport from overflowing.
+ * every width it renders at; below 480px the wordmark drops and the mark stands
+ * alone, which is what keeps a 360px viewport from overflowing. That breakpoint
+ * is now unreachable — the whole header is `display: none` under 1024px — and is
+ * kept rather than removed, since it is still correct and costs nothing.
  *
- * Two things used to live here and no longer do. The bottom `TabBar` folded into
- * the pill, so the app no longer has navigation in two places. And the
- * `LeagueSwitcher` is gone with it: this season there is only one league, so the
- * control disclosed a single already-selected option. The account page does not
- * switch leagues either — its league card is a read-only summary — so nothing in
- * the app calls `selectLeague` today; `resolveActiveGroupId` falls back to the
- * earliest-joined membership, which with one league is the same answer.
+ * The mobile design has no header at all: `BottomTabBar` carries all three
+ * destinations at the foot of the screen and the top of the page goes back to
+ * the content. So the app DOES have navigation in two places again, deliberately
+ * — and they are mutually exclusive by width, which is what keeps two
+ * `aria-label="Primary"` landmarks from ever being exposed at once.
+ *
+ * The `LeagueSwitcher` that once sat here is gone for an unrelated reason: this
+ * season there is only one league, so the control disclosed a single
+ * already-selected option. The account page does not switch leagues either — its
+ * league card is a read-only summary — so nothing in the app calls
+ * `selectLeague` today; `resolveActiveGroupId` falls back to the earliest-joined
+ * membership, which with one league is the same answer.
  *
  * The survivor tally that once stacked underneath is `StatusReport`, rendered by
  * Standings; it is a *reading* of the league, which is page content.
@@ -60,8 +68,16 @@ export async function AppHeader() {
 
       `sticky top-0 z-30` stays: that is behaviour, and a still frame has no
       opinion about it.
+
+      `hidden … lg:block` is the mobile navigation change, and it is the whole of
+      it in this file — `HeaderNav` is untouched, so from `lg` up everything here
+      renders byte-identically to before. Hiding in CSS rather than branching is
+      forced: the viewport is unknown on the server. The cost is that this
+      markup and `HeaderNav`'s client JS still ship to a phone that never draws
+      them; `viewerBuyInUnpaid()` is free either way, being the same `cache()`d
+      read the layout makes for `BottomTabBar`.
     */
-    <header className="sticky top-0 z-30 bg-bg/[0.12] backdrop-blur-sm">
+    <header className="sticky top-0 z-30 hidden bg-bg/[0.12] backdrop-blur-sm lg:block">
       {/* 8 + 50 + 4 = 62px, falling out of the 50px mark rather than being
           hardcoded — the pill grew from 44px to 48px with the taller chips and
           is still the shorter of the two. See HeaderNav for why the pill's

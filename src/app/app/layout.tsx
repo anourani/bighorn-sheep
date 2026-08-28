@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/shell/AppHeader";
-import { accountClosed } from "@/lib/league/load";
+import { BottomTabBar } from "@/components/shell/BottomTabBar";
+import { accountClosed, viewerBuyInUnpaid } from "@/lib/league/load";
 
 /**
  * The authenticated shell is per-user (it reads the Supabase session from
@@ -30,8 +31,23 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (await accountClosed()) redirect("/account-closed");
 
+  // Read after the redirect, so a closed account never pays for it. This is the
+  // same `cache()`d, one-indexed-read call `AppHeader` makes for its own dot, so
+  // the two cost one query between them and can never disagree — and it fails
+  // closed, so an error hides the dot in both places at once.
+  const buyInUnpaid = await viewerBuyInUnpaid();
+
   return (
-    <div className="relative mx-auto flex min-h-dvh max-w-shell flex-col">
+    /* `pt-[env(safe-area-inset-top)]` is a consequence of `AppHeader` being
+       hidden below `lg`, not decoration. The root layout sets
+       `viewportFit: "cover"` with `statusBarStyle: "black-translucent"` and the
+       manifest is `display: standalone`, so in an installed PWA the page runs
+       UNDER the status bar — and with no header left to absorb it on a phone,
+       `main`'s 40px would be the only clearance. The inset resolves to 0 in a
+       desktop or mobile browser, so the measurement below is unchanged there,
+       and `lg:pt-0` keeps desktop byte-identical. Preflight's global
+       `border-box` puts this padding inside `min-h-dvh`, so it adds no scroll. */
+    <div className="relative mx-auto flex min-h-dvh max-w-shell flex-col pt-[env(safe-area-inset-top)] lg:pt-0">
       <AppHeader />
       {/* The page rhythm, straight off the mockups: 40px above the first block
           and 80px below the last on a phone, 64/128 from `lg`. The desktop pair
@@ -46,8 +62,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           Historical note, since the number has now moved twice: this was `pb-28`
           while a fixed bottom tab bar sat over the page, then `pb-12` once
-          navigation folded into the header. Neither was a design value. */}
+          navigation folded into the header. Neither was a design value.
+
+          A bottom bar is back below `lg` and the number did NOT have to move a
+          third time, which is the whole reason `BottomTabBar` is sticky rather
+          than fixed: it reserves its own 64px at the foot of the document, so
+          the 80px here is still the gap between the last block and the chrome
+          rather than a guess at how much to hide behind. */}
       <main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">{children}</main>
+      {/* Last child, and that is not a free ordering — `sticky bottom-0` works
+          because this element's flow position is the foot of the document. */}
+      <BottomTabBar buyInUnpaid={buyInUnpaid} />
     </div>
   );
 }

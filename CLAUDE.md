@@ -396,6 +396,12 @@ Five more rules, roughly in the order they come up:
   before the animation settles reads 12px low — `reveal-up` starts at
   `translateY(12px)` — which looks exactly like a padding bug.
 
+**A bottom bar exists again below `lg`, and it changed none of the above.**
+`BottomTabBar` is `sticky`, so it reserves its own height at the foot of the
+document instead of floating over it — the reason `main`'s `pb-*` did not have
+to move for it, and the reason the measurement above is still the right check.
+The full entry is under "Things that are true now and weren't".
+
 **Routes outside `/app` inherit none of this.** `/`, `/login`, `/account-closed` and
 `/offline` each render their own `<main>`, and `<body>` carries no padding.
 `global-error.tsx` ships its own `<html>`/`<body>` with inline styles, and Tailwind
@@ -548,6 +554,70 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The app has navigation in two places again, deliberately, and they are
+  mutually exclusive by width.** Below `lg` there is NO header at all —
+  `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
+  destinations (Picks / Standings / Account) in a bar pinned to the foot of the
+  screen. From `lg` up nothing changed: same 62px header, same 218px pill, same
+  40px account button, same dot. `HeaderNav` was not touched at all. The design
+  is Figma `4033:121667`; `lg` is the breakpoint because it is the app's single
+  turn-over width, and this was the user's call rather than an inference. Eight
+  things:
+  - **`sticky bottom-0`, NOT `fixed`, and that is what kept `main`'s padding
+    still.** As the last child of the layout's `min-h-dvh flex-col` wrapper the
+    bar's flow position IS the foot of the document, so `bottom: 0` — which only
+    ever shifts a sticky box up toward the viewport, never down — pins it at
+    every scroll offset, and at full scroll it is simply sitting where it lives.
+    Because it also RESERVES its 64px there, `pb-20 lg:pb-32` did not have to
+    move a third time (it was `pb-28` under the app's first, fixed, bottom bar
+    and `pb-12` after that), and the page-frame measurement above still reads
+    40/80 and 64/128. Measured in Chromium at 393×852: `barBottom === innerHeight`
+    at scroll 0, 500, 1500 and max, and on a short page the document is exactly
+    one viewport with no scroll at all. The fallback, if an ancestor ever gains
+    an `overflow`, is an in-flow spacer wrapping a `fixed` child — which keeps
+    the same property; going straight to `fixed` does not.
+  - **The bar reserves space, but content still passes BEHIND it mid-scroll.**
+    That is the design (4px backdrop blur under an 85% white track), not a
+    defect. What cannot happen is content stranded underneath at the page foot.
+  - **`--tab-bar-h: 64px` in `globals.css` is the one place that number lives.**
+    The bar sizes its row from it and `Toast` lifts itself clear with
+    `bottom-[calc(1.5rem_+_var(--tab-bar-h))] lg:bottom-6`. On `:root` rather
+    than the shell because `Toast` portals to `document.body` and inherits
+    nothing from that subtree. **Underscores, not spaces, inside the `calc()`**:
+    Tailwind turns `_` into a space and CSS `calc` needs whitespace around the
+    `+`, so either other spelling compiles to nothing and presents as "the toast
+    didn't move". The safe-area inset is deliberately NOT folded into the
+    variable — the bar and the toast each add it themselves, and folding it in
+    would count it twice.
+  - **`pb-[env(safe-area-inset-bottom)]` goes on the bar's outer element**, so
+    the 64px row sits entirely above the home indicator (the design height is
+    preserved rather than eaten), the blur runs through the inset to the screen
+    edge, and the flow space it reserves grows by the inset for free.
+  - **The shell wrapper took `pt-[env(safe-area-inset-top)] lg:pt-0`, and that
+    is a consequence of deleting the mobile header rather than decoration.** The
+    root layout is `viewportFit: "cover"` + `black-translucent` and the manifest
+    is `display: standalone`, so an installed PWA runs under the status bar and
+    `main`'s 40px would otherwise be the only clearance. It resolves to 0 in a
+    browser, so the measurement above is unchanged there.
+  - **`bg-fill-deep` (#EAEAEA) is the selected tab**, a new third step in the
+    `fill` family. Unlike the `shell` greys, those three DO run light to dark:
+    `raised` → `soft` → `deep`. Named after `surface.deep` so both neutral ramps
+    end the same way.
+  - **Figma's `overflow-clip` on the track is deliberately not transcribed.**
+    There is nothing to clip — the active tab carries the track's own 16px
+    radius — and an overflow there WOULD clip the global focus ring's
+    `ring-offset-2` on the end tabs. Same family as the standing rule that
+    nothing in a notification dot's subtree may take `overflow-hidden`.
+  - **Two `<nav aria-label="Primary">` exist in the DOM and only ever one is
+    exposed**, because both hides are `display: none`, which removes the element
+    from the accessibility tree. Swapping either for `sr-only`, `visibility` or
+    an opacity trick would put two identically named landmarks on screen at
+    once. Relatedly, the Account tab's unpaid state is an `aria-label` carrying
+    the header's exact string — legal only because the visible "Account" is a
+    substring of it, which is the WCAG 2.5.3 test `MoreSection` still fails. The
+    labels are stored sentence-case and uppercased in CSS to keep that true, and
+    there is a test pinning it.
 
 - **A member can pick for any week that has not kicked off, and the week strip
   draws each of those picks.** Before this, `submitPick` DERIVED the week and
