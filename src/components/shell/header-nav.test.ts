@@ -137,7 +137,8 @@ describe("AppHeader's wrapper contract", () => {
   });
 
   it("no longer fills the full width behind the pill", async () => {
-    // The bar used to be `bg-bg/[0.12] backdrop-blur-sm`. The pill carries its
+    // The bar used to fill itself with the page colour at 12% behind a blur.
+    // The pill carries its
     // own fill now and the gutters are transparent, so content scrolls through
     // them — if this fill comes back, that reading is gone.
     const src = await code(HEADER);

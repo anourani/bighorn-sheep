@@ -157,15 +157,19 @@ export function BottomTabBar({
                   // the last redesign said out loud when it dropped the ring
                   // from the old account circle. This surface is the one the
                   // floor exists for.
-                  "after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']",
+                  "after:absolute after:inset-x-0 after:-inset-y-0.5",
                   // The frame's 100px minimum and 16px padding hold from 375px
                   // up, which covers every width it draws. Below that they do
                   // not fit: 2 + 24 + 100 + 110 + 100 = 336 against the 336 a
                   // 360px viewport leaves after this row's `px-3`, i.e. a
                   // rounding error rather than slack, and 40px short at 320.
                   // Under 375 the buttons take their content width at `px-3`
-                  // instead, which brings the pill to ~278 and overflows
-                  // nothing. Beyond the frame, which is 393 wide.
+                  // instead, which brings the pill to 282.6 and overflows
+                  // nothing down to 320. (Measured; below ~304 of viewport even
+                  // the compact pill runs out of room and clips its own padding
+                  // evenly on both sides, which a 280px Fold cover screen would
+                  // reach. Accepted — the labels survive it.) Beyond the frame,
+                  // which is 393 wide.
                   "min-[375px]:min-w-[100px] min-[375px]:px-4",
                   // Three inks across three states, each stated as a complete
                   // branch rather than a base this overrides — the design uses
@@ -179,6 +183,13 @@ export function BottomTabBar({
                   // and a base ink sit in different tailwind-merge groups, so
                   // both would survive in the shared string — and hovering the
                   // SELECTED button would then drop it from #000 to #1E1E1E.
+                  //
+                  // A bare `hover:`, where `TeamGrid` and `PickFilters` gate
+                  // theirs on a hover-capable pointer. Deliberate on both
+                  // counts: this bar draws up to 1023px, which includes an iPad
+                  // with a trackpad, and a hover stuck after a tap is
+                  // unobservable here because the tapped button immediately
+                  // takes the active branch, which carries no hover class.
                   //
                   // The selected fill is `fill-soft` #F3F3F3 where the frame
                   // says #F5F5F5 — that hex is Figma's Simple Design System
