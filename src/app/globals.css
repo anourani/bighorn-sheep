@@ -5,6 +5,21 @@
 @layer base {
   :root {
     color-scheme: light;
+
+    /* The mobile tab bar's height — 4 + 56 + 4, straight off the Figma frame —
+       and the ONE place that number is written. `BottomTabBar` sizes its row
+       from it; `Toast` lifts itself clear of it.
+
+       It deliberately does NOT fold in env(safe-area-inset-bottom): the bar
+       pads itself by the inset and the toast already does the same, so
+       including it here would count it twice.
+
+       On `:root` rather than the app shell, and that is forced rather than
+       chosen — `Toast` portals to `document.body` and so inherits nothing from
+       the shell's subtree. It stays 64px at every width; the bar is hidden from
+       `lg` with `lg:hidden` and the toast drops its offset with a plain `lg:`
+       variant, so the variable never has to mean two different things. */
+    --tab-bar-h: 64px;
   }
 
   html {

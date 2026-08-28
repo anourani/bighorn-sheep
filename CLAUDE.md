@@ -396,6 +396,12 @@ Five more rules, roughly in the order they come up:
   before the animation settles reads 12px low — `reveal-up` starts at
   `translateY(12px)` — which looks exactly like a padding bug.
 
+**A bottom bar exists again below `lg`, and it changed none of the above.**
+`BottomTabBar` is `sticky`, so it reserves its own height at the foot of the
+document instead of floating over it — the reason `main`'s `pb-*` did not have
+to move for it, and the reason the measurement above is still the right check.
+The full entry is under "Things that are true now and weren't".
+
 **Routes outside `/app` inherit none of this.** `/`, `/login`, `/account-closed` and
 `/offline` each render their own `<main>`, and `<body>` carries no padding.
 `global-error.tsx` ships its own `<html>`/`<body>` with inline styles, and Tailwind
@@ -548,6 +554,260 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The desktop header is a centred floating pill, and it renders the same three
+  destinations as the phone's bottom bar.** Figma `4048:60997`, button
+  `4048:61019`. `AppHeader` is now a positioning wrapper and nothing else —
+  `sticky top-0 z-30 hidden lg:block` — and `HeaderNav` draws the whole of it:
+  the app mark as a 40px circle, then Picks / Standings / Account as `h-10
+  min-w-[100px]` text buttons, inside a `rounded-card border border-shell-line/50
+  bg-white` pill with a `shadow-[0_6px_6px_rgba(0,0,0,0.08)]`. Seven things:
+  - **The header carries no background any more.** It was `bg-bg/[0.12]
+    backdrop-blur-sm` across its full width; the pill has its own fill now and
+    everything around it is transparent, so page content scrolls through the
+    gutters and vanishes behind the pill. Same floating-pill reading
+    `BottomTabBar` takes at the other edge. The whole `bg-bg/[0.12]`-not-`bg-bg/12`
+    paragraph went with the fill it described.
+  - **The pill is OPAQUE where the two mobile surfaces are frosted.** Figma puts
+    `backdrop-blur-[4px]` on a `bg-white` fill, where it cannot show through;
+    the blur is dropped rather than shipped as dead CSS, and the border plus the
+    shadow are what make it a card rather than glass. Deliberate, and confirmed
+    with the user — the app now has both treatments on purpose.
+  - **`box-shadow`, not Figma's `drop-shadow` filter.** Indistinguishable on an
+    opaque rounded rectangle, and a `filter` would make the pill a containing
+    block for fixed descendants and a stacking context for nothing.
+  - **`HeaderNav` returns ONE element now**, where it used to return a fragment
+    of two so `AppHeader`'s `flex-1` rails could centre a pill on the shell's
+    true midpoint. That whole apparatus — the rail formula, the 218px pill, the
+    356px intrinsic row, the wordmark's `min-[480px]` breakpoint, the account
+    circle's `after:-inset-[3px]` tap ring and the dot's `-0.5` padding-box
+    offset — is gone, because `justify-center` on one pill replaces all of it.
+  - **`TABS` is gone and `BOTTOM_TABS` is now `NAV_TABS`.** The two-item list
+    existed only while desktop pulled Account out as a round button and mobile
+    carried it as a peer; both navs draw the same three now, so one list, and a
+    name that is not a lie about which surface uses it.
+  - **The wordmark is gone from the signed-in app entirely** — the variant is
+    "Logged in - Minimal" and mobile has no header — so `APP_NAME` survives in
+    the chrome only as the mark's `aria-label`. `APP_SHORT_NAME` is NOT dead:
+    `LandingHeader` still reads it, which its docstring in `lib/app.ts` denied
+    even before this.
+  - **The transparent bar would have swallowed clicks, and the fix belongs one
+    level up from where it looks like it does.** The `<header>` spans the whole
+    1000px shell while only its middle ~400px is drawn, so the band beside the
+    pill reads as live content; `pointer-events-none` on the header with `auto`
+    on the pill lets clicks through. That is `Toast`'s argument (a full-width
+    positioner around a small card), not `PickStickyBar`'s (which swallows taps
+    *because* it is the full-width opaque surface). Putting it on the row inside
+    the header does NOT work — `elementFromPoint` in the gutter still returned
+    the `<header>`, because a parent receives what its `none` child declines.
+    Measured, after the first attempt got it wrong.
+  - **The `<nav>` scopes to the three buttons; the pill is a plain div.** The
+    mark links to `/app` and so does the Picks button, so wrapping the whole pill
+    in the landmark would put two links to one destination inside it, one
+    `aria-current="page"` and one not. The old header had the mark outside the
+    `<nav>` and this keeps that true, at the cost of one extra `gap-1`.
+  - **Beware the comment scanner here.** Rewriting this header left four class
+    names alive only in prose — and removing the account circle orphaned a fifth
+    in `BottomTabBar` — each shipping a real rule, because `content` is
+    `./src/**/*.{ts,tsx,mdx}` and Tailwind scans comments. Describe a class you
+    do not use; never spell it.
+  - **The header is 70px now, and nothing noticed.** Verified by search rather
+    than assumed: no `scroll-mt`, no `--header-h`, no `top-[…]` offset anywhere
+    in `src/` reads it, and `main`'s `lg:pt-16` comes from the mockups' page
+    rhythm rather than from the header. The one real cost is that the account
+    control drops from a 44px tap area to the 40px its two neighbours already
+    had — a pointer-driven desktop surface, and now consistent with them.
+
+  Measured in Chromium at 1280×900 with the real self-hosted Inter: header
+  1000 × **70**, pill **395.9 × 58** (the frame says 397; Chromium renders
+  "Standings" 1.1px narrower than Figma and the pill hugs its content), children
+  40 / 100 / 109.9 / 100 at `gap-1`, shadow `rgba(0,0,0,0.08) 0px 6px 6px`,
+  `backdropFilter: none`, rest `#757575` → hover `#1E1E1E` → selected black on
+  `#F3F3F3`, dot 12px `#CD1411` inset 2/2. At 1023px the header is
+  `display: none` and nothing about mobile moved.
+
+- **The My Picks page has a second, condensed pick module that pins to the top
+  of a phone once the real one scrolls away.** `PickStickyBar` — 89px, the
+  eyebrow over a 51px row of [three team-colour strips with the logo centred on
+  them] [city / team name] [rule] [matchup / date / kickoff]. It slides in the
+  moment `PickHero`'s bottom edge passes the top of the viewport, slides out on
+  the way back, is `lg:hidden`, and **renders nothing at all when the week has no
+  pick**. Not tappable. Figma `4042:123420`. Nine things:
+  - **It MUST portal, and the usual reason is the weaker of two.** The familiar
+    one is that `.stagger > *` hands every direct child `reveal-up` at an
+    `:nth-child` delay, so a fixed root would sit invisible through its own
+    slide. The harder one: that animation's fill-mode is `both`, so a transform
+    is applied to every direct child for the life of the page — and **any
+    non-`none` transform is a containing block for `position: fixed`
+    descendants**. So a fixed element anywhere in the `.stagger` SUBTREE, not
+    merely a direct child, is pinned to a page block instead of the viewport.
+    Measured in Chromium at 393×852: a `fixed inset-x-0 top-0` element rendered
+    inside `.stagger` reports `top: 12`, where the portalled one reports `top:
+    -90` (correctly off screen). That disposes of "render it inside the grid's
+    `mt-4` wrapper to avoid renumbering the delays", which otherwise looks
+    clever.
+  - **An `IntersectionObserver`, the app's first, chosen over the ScrollTrigger
+    already in this route's bundle.** The reason is that **ScrollTrigger caches
+    start positions and IO caches nothing**. `use-card-reveal.ts` measures what
+    that costs inside `.stagger` — starts 12px low, cards masked indefinitely
+    without a manual `refresh()` wired to an `animationend`. The same 12px settle
+    is visible in this bar's own trace and IO simply re-evaluated through it. The
+    hero also genuinely moves after first paint here, because the preseason
+    banner mounts and unmounts above it. **Not** an argument for it: reduced
+    motion, which is a property of how you animate rather than how you detect
+    scroll.
+  - **The predicate is one clause — `rect.bottom <= 0` — and it is pure and
+    tested.** `!isIntersecting && top < 0` says the same thing only while the
+    module is shorter than the viewport (242 against ~852). `heroScrolledPast`
+    in `pick-hero.ts` is the literal transcription instead.
+  - **A CSS transition, not a keyframe pair, and the reason is INTERRUPTION.**
+    The trigger is a position the thumb oscillates around: a class-swapped
+    animation restarts from its first keyframe on every class change, so
+    re-crossing mid-slide snaps the bar off screen and replays. A transition
+    reverses from wherever it is. `Drawer` and `Toast` need keyframe pairs
+    because they mount and unmount and the element has to survive its own exit;
+    this one is mounted continuously. Their 320/280 asymmetry is still honoured,
+    stated per branch rather than as a reversed direction — which would reverse
+    the easing with it.
+  - **`ref` is a plain prop on `PickHero` (React 19, no `forwardRef`), and the
+    caller holds it in STATE via a callback ref.** That is correctness, not
+    style: stepping between a picked and an unpicked week swaps `Shell` for
+    `NoPickHero` at the same position, so React replaces the `<section>` DOM
+    node, and a `useRef` plus a mount-once effect would leave the observer
+    watching a detached element forever. Rejected alternative: wrapping
+    `<PickHero>` in a ref'd div. It does not renumber anything (it replaces
+    PickHero in the slot rather than adding one) — but it would move `reveal-up`
+    onto the wrapper and quietly falsify the "its root `<section>` is a direct
+    `.stagger` child, so remounting replays `reveal-up`" comment that the no-`key`
+    rule rests on.
+  - **`aria-hidden`, permanently, and legal only because nothing inside is
+    focusable.** Every string is a verbatim restatement of `PickHero`, which is
+    not removed when this appears — only scrolled above the fold — so it is still
+    in the tree with the same six strings. Portalled to the end of `body` while
+    painting at the top of the screen, it would also read detached from what it
+    describes. **If it ever becomes tappable the `aria-hidden` must come off**;
+    there is a test pinning the pair, and another stopping the team name becoming
+    a heading element (a duplicate of the hero's `<h1>` would corrupt
+    heading-jump navigation the moment it were exposed).
+  - **No `pointer-events-none`, and that INVERTS `Toast`.** Toast disables them
+    because it is a full-width positioner around a small card. This *is* the
+    full-width surface, and a tap falling through it lands on a team card the
+    reader cannot see — which on this page spends a team for the season. It
+    swallows taps. Off screen it is unhittable regardless.
+  - **The fill is `bg-bg/80` behind a 4px blur, and it is the PAGE colour, not
+    white.** #FDFDFD at 80%, so the grid reads faintly through it — the same
+    family as `AppHeader`'s `bg-bg/[0.12]`, and now the exact pair
+    `BottomTabBar`'s track takes at the other edge of the same screen, so the two
+    pieces of mobile chrome read as one material. **The tab bar's blur sits on
+    its rounded TRACK, not on the full-width bar**, so its gutters and its
+    home-indicator strip are transparent; a `backdrop-filter` clips to its own
+    element's border box, radius included, so that frosting rounds with no
+    `overflow` involved. It arrived together with the matchup
+    block going from #858585 at 14px to **`shell-ink` at 12px**, and the pair is
+    the point: at #858585 that line measured 3.5:1 on solid white and would have
+    lost contrast the moment the fill let the page through. Note `80` IS on
+    Tailwind's opacity scale where `12` is not — `bg-bg/12` compiles to nothing,
+    which is the trap the old header's own fill carried an arbitrary value for.
+  - **The row's 51px is the matchup stack's own height (3 × 12px at 1.4), and it
+    is still stated rather than derived.** So is the column's 89 — the frame
+    declares it and centres a 67px container in it. Both were `py-*` with a
+    content-driven height for one revision, and when the matchup block dropped
+    from 14px to 12px the bar silently shrank to 83. The height is also the slide
+    distance, so exactly one thing is allowed to decide it.
+  - **`tracking-[-0.01em]` did not have to change when that size did**, and a
+    `-0.14px` would have. Figma reports letter-spacing as percent × 100, so `em`
+    IS the percentage and survives a size move; px is a conversion to redo. The
+    reason `type-scale.ts` and `surfaces.tsx` both insist on it, demonstrated.
+  - **The bar measures 90px, not the frame's 89.** `border-b` sits outside an
+    auto height even under `border-box`; the content column is exactly 89. A
+    known, accepted 1px — spell the hairline as an inset shadow if it ever has to
+    be exactly 89.
+  - **`w-max` on the logo wrapper is PROPHYLAXIS here, not load-bearing**, and
+    that is measured rather than assumed. It and `TeamLogo`'s baked-in
+    `max-w-none` are redundant: all four combinations at this geometry
+    (36-in-44) and at `PickHero`'s (80-in-68) give 36/36/36/22 and 80/80/80/68 —
+    **only removing BOTH** reproduces the squash-and-offset. Kept because it
+    costs nothing and a future call site could drop `TeamLogo` for a bare
+    `<img>`. Do not describe it as load-bearing; `PickHero`'s case is the one
+    where the trap actually fired.
+
+  Two things moved into `pick-hero.ts` to get there, and both are tested for the
+  first time: `matchupLine` (the "vs."/"@" convention and the `TBD` fallback —
+  **not** `team-grid.ts`'s `matchupLabel`, which prints "Home vs. Ravens";
+  named apart deliberately) and `resolvePick` (the one definition of "there is a
+  pick to draw", so the bar cannot claim a pick the hero is drawing as "No Pick
+  Made"). The bar takes `matchupLine`'s `long` form — `abbr + name`, "vs. LAC
+  Chargers" — because that is already how the team cards on this same page read,
+  and `location + name` overflows the matchup column below 360px.
+
+- **`pick-hero.ts` has value imports now, and they are RELATIVE on purpose.**
+  There is no `vitest.config.ts` in this repo, so vitest never reads tsconfig's
+  `paths`. `@/` survives in tested modules today only where it is an `import
+  type`, which esbuild erases — a `@/` VALUE import resolves under Next and fails
+  under vitest. `team-grid.ts` and `week-strip.ts` already spell theirs
+  `../../lib/...`; anything imported by a test must.
+
+- **The app has navigation in two places again, deliberately, and they are
+  mutually exclusive by width.** Below `lg` there is NO header at all —
+  `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
+  destinations (Picks / Standings / Account) in a bar pinned to the foot of the
+  screen. The design is Figma `4033:121667`; `lg` is the breakpoint because it is
+  the app's single turn-over width, and this was the user's call rather than an
+  inference. Eight things:
+  - **`sticky bottom-0`, NOT `fixed`, and that is what kept `main`'s padding
+    still.** As the last child of the layout's `min-h-dvh flex-col` wrapper the
+    bar's flow position IS the foot of the document, so `bottom: 0` — which only
+    ever shifts a sticky box up toward the viewport, never down — pins it at
+    every scroll offset, and at full scroll it is simply sitting where it lives.
+    Because it also RESERVES its 64px there, `pb-20 lg:pb-32` did not have to
+    move a third time (it was `pb-28` under the app's first, fixed, bottom bar
+    and `pb-12` after that), and the page-frame measurement above still reads
+    40/80 and 64/128. Measured in Chromium at 393×852: `barBottom === innerHeight`
+    at scroll 0, 500, 1500 and max, and on a short page the document is exactly
+    one viewport with no scroll at all. The fallback, if an ancestor ever gains
+    an `overflow`, is an in-flow spacer wrapping a `fixed` child — which keeps
+    the same property; going straight to `fixed` does not.
+  - **The bar reserves space, but content still passes BEHIND it mid-scroll.**
+    That is the design (a 4px backdrop blur behind a `bg-bg/80` track), not a
+    defect. What cannot happen is content stranded underneath at the page foot.
+  - **`--tab-bar-h: 64px` in `globals.css` is the one place that number lives.**
+    The bar sizes its row from it and `Toast` lifts itself clear with
+    `bottom-[calc(1.5rem_+_var(--tab-bar-h))] lg:bottom-6`. On `:root` rather
+    than the shell because `Toast` portals to `document.body` and inherits
+    nothing from that subtree. **Underscores, not spaces, inside the `calc()`**:
+    Tailwind turns `_` into a space and CSS `calc` needs whitespace around the
+    `+`, so either other spelling compiles to nothing and presents as "the toast
+    didn't move". The safe-area inset is deliberately NOT folded into the
+    variable — the bar and the toast each add it themselves, and folding it in
+    would count it twice.
+  - **`pb-[env(safe-area-inset-bottom)]` goes on the bar's outer element**, so
+    the 64px row sits entirely above the home indicator (the design height is
+    preserved rather than eaten), the blur runs through the inset to the screen
+    edge, and the flow space it reserves grows by the inset for free.
+  - **The shell wrapper took `pt-[env(safe-area-inset-top)] lg:pt-0`, and that
+    is a consequence of deleting the mobile header rather than decoration.** The
+    root layout is `viewportFit: "cover"` + `black-translucent` and the manifest
+    is `display: standalone`, so an installed PWA runs under the status bar and
+    `main`'s 40px would otherwise be the only clearance. It resolves to 0 in a
+    browser, so the measurement above is unchanged there.
+  - **`bg-fill-deep` (#EAEAEA) is the selected tab**, a new third step in the
+    `fill` family. Unlike the `shell` greys, those three DO run light to dark:
+    `raised` → `soft` → `deep`. Named after `surface.deep` so both neutral ramps
+    end the same way.
+  - **Figma's `overflow-clip` on the track is deliberately not transcribed.**
+    There is nothing to clip — the active tab carries the track's own 16px
+    radius — and an overflow there WOULD clip the global focus ring's
+    `ring-offset-2` on the end tabs. Same family as the standing rule that
+    nothing in a notification dot's subtree may take `overflow-hidden`.
+  - **Two `<nav aria-label="Primary">` exist in the DOM and only ever one is
+    exposed**, because both hides are `display: none`, which removes the element
+    from the accessibility tree. Swapping either for `sr-only`, `visibility` or
+    an opacity trick would put two identically named landmarks on screen at
+    once. Relatedly, the Account tab's unpaid state is an `aria-label` carrying
+    the header's exact string — legal only because the visible "Account" is a
+    substring of it, which is the WCAG 2.5.3 test `MoreSection` still fails. The
+    labels are stored sentence-case and uppercased in CSS to keep that true, and
+    there is a test pinning it.
 
 - **A member can pick for any week that has not kicked off, and the week strip
   draws each of those picks.** Before this, `submitPick` DERIVED the week and

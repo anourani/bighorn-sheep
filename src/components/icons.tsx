@@ -44,6 +44,22 @@ export const CheckIcon = (p: IconProps) => (
   </Base>
 );
 
+/**
+ * A tick inside a circle — the mobile tab bar's Picks glyph. Distinct from
+ * `CheckIcon` above, which is the bare tick and has its own call sites; this is
+ * a separate export rather than a prop on that one because the two are used to
+ * mean different things (a tick confirms an action, this labels a destination).
+ *
+ * `r=8.5` is the radius `ClockIcon`, `InfoIcon` and `BanIcon` all share, so the
+ * glyph carries the same optical weight as the rest of the set at `h-5 w-5`.
+ */
+export const CheckCircleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M8.5 12.3l2.5 2.5 4.5-5" />
+  </Base>
+);
+
 export const XIcon = (p: IconProps) => (
   <Base {...p}>
     <path d="M6 6l12 12M18 6L6 18" />

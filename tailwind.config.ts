@@ -167,6 +167,13 @@ const config: Config = {
         fill: {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
+          // The mobile tab bar's SELECTED tab, and the darkest of the three.
+          // Unlike the `shell` greys below — whose names deliberately do not
+          // order them — these three do run light to dark: `raised` #FAFAFA,
+          // `soft` #F3F3F3, `deep` #EAEAEA. Named after `surface.deep`, the
+          // darkest step of the slate family, so both neutral ramps end the
+          // same way.
+          deep: "#EAEAEA",
         },
         // The design spec's own greys — the app shell (AppHeader,
         // LeagueStatusBar), every `Label` in the app, and the account page's

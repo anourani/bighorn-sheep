@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { PickHero } from "@/components/picks/PickHero";
+import { PickStickyBar } from "@/components/picks/PickStickyBar";
 import { PickFilters } from "@/components/picks/PickFilters";
 import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
@@ -23,6 +24,7 @@ import {
   sameWeek,
   weekKey,
   weekLabel,
+  weekShortName,
   weekStripOptions,
   type WeekRef,
 } from "@/lib/nfl/calendar";
@@ -153,6 +155,22 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
 
   const labelOpts = { maxPreWeek: practice?.maxPreWeek ?? 0 };
   const viewName = weekLabel(viewRef, labelOpts);
+  // The sticky bar's frame abbreviates where the hero spells it out — "WK6"
+  // against "Week 6". Both come off the same `viewRef`, so they cannot name
+  // different weeks.
+  const viewShortName = weekShortName(viewRef, labelOpts);
+
+  /*
+    `PickHero`'s root <section>, held in STATE rather than a `useRef` object, and
+    that is a correctness requirement rather than a style: stepping between a
+    picked week and an unpicked one swaps `PickHero`'s internals for
+    `NoPickHero`, which is a different component type at the same position — so
+    React replaces the DOM node. A ref object plus a mount-once effect would
+    leave the observer watching a detached element forever. A callback ref
+    re-runs on every swap, and `setHeroEl` returns undefined, which satisfies
+    React 19's ref-cleanup convention.
+  */
+  const [heroEl, setHeroEl] = useState<HTMLElement | null>(null);
 
   // Everything below is "whichever phase you're looking at".
   const activeIdx = viewingPractice && practiceIdx ? practiceIdx : idx;
@@ -448,6 +466,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       ) : null}
 
       <PickHero
+        ref={setHeroEl}
         weekName={viewName}
         teamId={pickTeam}
         game={pickGame}
@@ -550,6 +569,22 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           the two say different things (one confirms, one refuses) and a failed
           release clears the toast so only the error remains. */}
       <Toast message={toast} onDismiss={() => setToast(null)} />
+
+      {/* Also portalled, and here for a second reason beyond Toast's: `.stagger`
+          retains `reveal-up`'s `transform: translateY(0)` on every direct child
+          for the life of the page (fill-mode `both`), and a non-`none` transform
+          is a containing block for `position: fixed` — so a fixed bar rendered
+          anywhere in this subtree would pin to a page block instead of the
+          viewport. Its docblock has the full argument.
+
+          NO `key`: remounting would reset `visible` and replay the slide on
+          every tap. Same rule as `<PickHero>` above, for a different reason. */}
+      <PickStickyBar
+        weekName={viewShortName}
+        teamId={pickTeam}
+        game={pickGame}
+        anchor={heroEl}
+      />
     </div>
   );
 }

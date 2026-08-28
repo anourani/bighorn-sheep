@@ -219,9 +219,9 @@ Everything goes through one interface — `getWeekGames()` in `src/lib/providers
 ```
 src/
   app/
-    (app)/            # authenticated shell: header + bottom tab bar
+    app/              # authenticated shell: header from lg, bottom tab bar below it
       page.tsx        # My Picks (home)
-      group/          # Group / standings
+      standings/      # Standings
       account/        # Account
     login/            # Login / Join (standalone)
     offline/          # PWA offline fallback

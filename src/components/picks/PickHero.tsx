@@ -9,11 +9,10 @@ import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { cn } from "@/lib/cn";
-import { getTeam, type TeamId } from "@/lib/nfl/teams";
+import type { TeamId } from "@/lib/nfl/teams";
 import { isKickedOff, type Game } from "@/lib/nfl/types";
 import { countdown } from "@/lib/time";
-import { isHome, opponentOf } from "@/lib/league/view";
-import { stripGradient } from "./pick-hero";
+import { eyebrowFor, matchupLine, resolvePick, stripGradient } from "./pick-hero";
 
 /**
  * The My Picks hero: who you are riding with this week.
@@ -46,6 +45,7 @@ export function PickHero({
   weekName,
   now,
   weekFinalKickoff,
+  ref,
 }: {
   teamId: TeamId | null;
   game: Game | undefined;
@@ -53,22 +53,32 @@ export function PickHero({
   weekName: string;
   now: Date;
   weekFinalKickoff: Date | null;
+  /**
+   * The root `<section>`. `PickStickyBar` observes it to know when this module
+   * has scrolled off the top. A plain prop, not `forwardRef` — React 19.
+   *
+   * It must land on BOTH branches: swapping between a picked and an unpicked
+   * week changes the component type at this position, so React replaces the DOM
+   * node, and a caller holding the old one would be observing a detached
+   * element. That is why the caller keeps it in state via a callback ref.
+   */
+  ref?: React.Ref<HTMLElement>;
 }) {
-  if (!teamId || !game) {
-    return <NoPickHero weekName={weekName} now={now} weekFinalKickoff={weekFinalKickoff} />;
+  const view = resolvePick(teamId, game);
+  // `!teamId` is redundant at runtime — `resolvePick` already returns null for
+  // it — and is here so TypeScript narrows `teamId` for `matchupLine` below.
+  if (!view || !teamId) {
+    return (
+      <NoPickHero weekName={weekName} now={now} weekFinalKickoff={weekFinalKickoff} ref={ref} />
+    );
   }
+  const { team, game: pickGame } = view;
 
-  const team = getTeam(teamId);
-  if (!team) {
-    return <NoPickHero weekName={weekName} now={now} weekFinalKickoff={weekFinalKickoff} />;
-  }
-  const opp = getTeam(opponentOf(game, teamId));
-  const home = isHome(game, teamId);
-  const kicked = isKickedOff(game, now);
-  const cd = countdown(new Date(game.kickoff), now);
+  const kicked = isKickedOff(pickGame, now);
+  const cd = countdown(new Date(pickGame.kickoff), now);
 
   const eyebrow = eyebrowFor(weekName);
-  const matchup = `${home ? "vs." : "@"} ${opp?.name ?? "TBD"}`;
+  const matchup = matchupLine(pickGame, teamId, "short");
   const lockLines = kicked
     ? [ink("This game has kicked off — your pick is now visible to the group.")]
     : [
@@ -77,7 +87,7 @@ export function PickHero({
       ];
 
   /* Every piece of the module replays together, off one key. See `replayFor`. */
-  const replay = replayFor(weekName, teamId, game.id, kicked);
+  const replay = replayFor(weekName, teamId, pickGame.id, kicked);
 
   /* The cascade, in the order it reads: the eyebrow, a wave across the three
      colour strips, the mark landing on them, then the name and everything to
@@ -117,7 +127,7 @@ export function PickHero({
   ]);
 
   return (
-    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay}>
+    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay} ref={ref}>
       <PickRow>
         {/* The key is on the GROUP, not on each strip and the logo separately:
             the three strips and the mark over them are one object, and one key
@@ -201,11 +211,11 @@ export function PickHero({
                 own text in an effect once it knows the viewer's zone, so there
                 is nothing stable to split. */}
             <BlurReveal start={dateAt} replayKey={replay}>
-              <LocalTime iso={game.kickoff} mode="date" />
+              <LocalTime iso={pickGame.kickoff} mode="date" />
             </BlurReveal>
             <MetaDivider />
             <BlurReveal start={timeAt} replayKey={replay}>
-              <LocalTime iso={game.kickoff} mode="clockzone" />
+              <LocalTime iso={pickGame.kickoff} mode="clockzone" />
             </BlurReveal>
           </Meta>
         </Identity>
@@ -228,10 +238,12 @@ function NoPickHero({
   weekName,
   now,
   weekFinalKickoff,
+  ref,
 }: {
   weekName: string;
   now: Date;
   weekFinalKickoff: Date | null;
+  ref?: React.Ref<HTMLElement>;
 }) {
   const cd = weekFinalKickoff ? countdown(weekFinalKickoff, now) : null;
 
@@ -268,7 +280,7 @@ function NoPickHero({
   ]);
 
   return (
-    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay}>
+    <Shell eyebrow={eyebrow} start={eyebrowAt} replay={replay} ref={ref}>
       <PickRow>
         <Strips key={replay}>
           {/* Inert: no gradient, no logo. The strips are still here because
@@ -305,10 +317,6 @@ function NoPickHero({
 
 /** The headline of the empty state, named because its word count is counted. */
 const NO_PICK = "No Pick Made";
-
-function eyebrowFor(weekName: string): string {
-  return `Your ${weekName} Pick`;
-}
 
 /** A lock-column line and the ink it takes. */
 type LockLine = { text: string; mute: boolean };
@@ -406,6 +414,7 @@ function Shell({
   start,
   replay,
   children,
+  ref,
 }: {
   /** Built by the caller, not from `weekName` here, because the caller has to
    *  count its words to lay out the rest of the cascade behind it. */
@@ -413,6 +422,8 @@ function Shell({
   start: number;
   replay: string;
   children: React.ReactNode;
+  /** Threaded from `PickHero` so `PickStickyBar` can observe this element. */
+  ref?: React.Ref<HTMLElement>;
 }) {
   return (
     // `[--blur-ms:650ms]` sets this module's reveal pace, and only this
@@ -423,7 +434,10 @@ function Shell({
     // afford to take its time. A custom property declaration is not an
     // animation, so it does not collide with the `reveal-up` that `.stagger`
     // applies to this same element.
-    <section className="space-y-2 py-10 [--blur-ms:650ms] lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12">
+    <section
+      ref={ref}
+      className="space-y-2 py-10 [--blur-ms:650ms] lg:space-y-3 lg:border-b lg:border-shell-line lg:py-12"
+    >
       <Label className="lg:text-base lg:leading-[1.1]">
         <BlurReveal text={eyebrow} start={start} replayKey={replay} />
       </Label>

@@ -95,10 +95,23 @@ export function Toast({
 
   return createPortal(
     /*
-      Bottom-centre and `fixed`. `bottom-6` clears nothing in particular today —
-      there is no fixed bottom chrome — so it is simply breathing room from the
-      edge, and `pb-[env(safe-area-inset-bottom)]` keeps it off the home
-      indicator on iOS.
+      Bottom-centre and `fixed`. `bottom-6` is 24px of breathing room from
+      whatever is below, and `pb-[env(safe-area-inset-bottom)]` keeps it off the
+      home indicator on iOS.
+
+      Below `lg` there IS bottom chrome now — `BottomTabBar` — so the 24px is
+      measured from the top of that bar instead of from the screen edge.
+      `var(--tab-bar-h)` rather than a retyped 64: `globals.css` owns that number
+      and the bar sizes its own row from the same variable, so the two cannot
+      drift. The inset is not double-counted, because the variable is the bar's
+      DESIGN height and the bar adds the inset below itself exactly as this
+      positioner does. From `lg` the bar is `display: none`, so `lg:bottom-6`
+      puts the toast back on the screen edge.
+
+      Underscores, not spaces, inside the `calc()`: Tailwind turns `_` into a
+      space, and CSS `calc` requires whitespace around the `+`. Written with
+      neither, the arbitrary value is invalid, compiles to nothing, and presents
+      as "the toast didn't move".
 
       `pointer-events-none` on the positioner and `auto` on the card: the row
       spans the viewport so the card can centre in it, and without this it would
@@ -106,7 +119,7 @@ export function Toast({
       up — on a phone, right where the pick grid is.
     */
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4 pb-[env(safe-area-inset-bottom)]"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(1.5rem_+_var(--tab-bar-h))] z-50 flex justify-center px-4 pb-[env(safe-area-inset-bottom)] lg:bottom-6"
       role="status"
       aria-live="polite"
     >

@@ -37,3 +37,20 @@
  * `surfaces.tsx` carries a whole paragraph about getting that arithmetic wrong.
  */
 export const H3 = "text-[32px] font-semibold leading-[1.2] tracking-[-0.04em]";
+
+/**
+ * H4 — 24px over 120%, semibold, -4%. The same design-library step as `H3`, one
+ * size down; the two differ by nothing but the size.
+ *
+ * One call site today (`PickStickyBar`'s team name), and that is the honest
+ * argument for adding it rather than against: a lone hand-typed
+ * `text-[24px] font-semibold leading-[1.2] tracking-[-0.04em]` sitting in a
+ * component is exactly the retyped step this module exists to stop, and two
+ * adjacent steps make the scale legible where one does not.
+ *
+ * No colour, like `H3` — `PickStickyBar` composes `cn(H4, "text-shell-ink")`,
+ * which merges correctly because `text-[24px]` is an arbitrary LENGTH and
+ * tailwind-merge reads it as the font size it is. A `text-h4` token would be
+ * filed as a colour and deleted; see `H3` above.
+ */
+export const H4 = "text-[24px] font-semibold leading-[1.2] tracking-[-0.04em]";
