@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 import { CheckCircleIcon, GridIcon, UserIcon } from "@/components/icons";
 import { cn } from "@/lib/cn";
-import { BOTTOM_TABS, type TabKey, isActive } from "./nav";
+import { NAV_TABS, type TabKey, isActive } from "./nav";
 
 /**
  * The app's navigation below `lg`: a bar pinned to the foot of the viewport
@@ -131,7 +131,7 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
           positioned against its own `relative` icon wrapper, not against this.
         */}
         <div className="flex flex-1 rounded-card bg-bg/80 backdrop-blur-sm">
-          {BOTTOM_TABS.map(({ key, href, label }) => {
+          {NAV_TABS.map(({ key, href, label }) => {
             const active = isActive(href, pathname);
             const Icon = ICON[key];
             const dot = key === "account" && buyInUnpaid;

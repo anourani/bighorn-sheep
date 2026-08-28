@@ -555,6 +555,57 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The desktop header is a centred floating pill, and it renders the same three
+  destinations as the phone's bottom bar.** Figma `4048:60997`, button
+  `4048:61019`. `AppHeader` is now a positioning wrapper and nothing else —
+  `sticky top-0 z-30 hidden lg:block` — and `HeaderNav` draws the whole of it:
+  the app mark as a 40px circle, then Picks / Standings / Account as `h-10
+  min-w-[100px]` text buttons, inside a `rounded-card border border-shell-line/50
+  bg-white` pill with a `shadow-[0_6px_6px_rgba(0,0,0,0.08)]`. Seven things:
+  - **The header carries no background any more.** It was `bg-bg/[0.12]
+    backdrop-blur-sm` across its full width; the pill has its own fill now and
+    everything around it is transparent, so page content scrolls through the
+    gutters and vanishes behind the pill. Same floating-pill reading
+    `BottomTabBar` takes at the other edge. The whole `bg-bg/[0.12]`-not-`bg-bg/12`
+    paragraph went with the fill it described.
+  - **The pill is OPAQUE where the two mobile surfaces are frosted.** Figma puts
+    `backdrop-blur-[4px]` on a `bg-white` fill, where it cannot show through;
+    the blur is dropped rather than shipped as dead CSS, and the border plus the
+    shadow are what make it a card rather than glass. Deliberate, and confirmed
+    with the user — the app now has both treatments on purpose.
+  - **`box-shadow`, not Figma's `drop-shadow` filter.** Indistinguishable on an
+    opaque rounded rectangle, and a `filter` would make the pill a containing
+    block for fixed descendants and a stacking context for nothing.
+  - **`HeaderNav` returns ONE element now**, where it used to return a fragment
+    of two so `AppHeader`'s `flex-1` rails could centre a pill on the shell's
+    true midpoint. That whole apparatus — the rail formula, the 218px pill, the
+    356px intrinsic row, the wordmark's `min-[480px]` breakpoint, the account
+    circle's `after:-inset-[3px]` tap ring and the dot's `-0.5` padding-box
+    offset — is gone, because `justify-center` on one pill replaces all of it.
+  - **`TABS` is gone and `BOTTOM_TABS` is now `NAV_TABS`.** The two-item list
+    existed only while desktop pulled Account out as a round button and mobile
+    carried it as a peer; both navs draw the same three now, so one list, and a
+    name that is not a lie about which surface uses it.
+  - **The wordmark is gone from the signed-in app entirely** — the variant is
+    "Logged in - Minimal" and mobile has no header — so `APP_NAME` survives in
+    the chrome only as the mark's `aria-label`. `APP_SHORT_NAME` is NOT dead:
+    `LandingHeader` still reads it, which its docstring in `lib/app.ts` denied
+    even before this.
+  - **The header is 70px now, and nothing noticed.** Verified by search rather
+    than assumed: no `scroll-mt`, no `--header-h`, no `top-[…]` offset anywhere
+    in `src/` reads it, and `main`'s `lg:pt-16` comes from the mockups' page
+    rhythm rather than from the header. The one real cost is that the account
+    control drops from a 44px tap area to the 40px its two neighbours already
+    had — a pointer-driven desktop surface, and now consistent with them.
+
+  Measured in Chromium at 1280×900 with the real self-hosted Inter: header
+  1000 × **70**, pill **395.9 × 58** (the frame says 397; Chromium renders
+  "Standings" 1.1px narrower than Figma and the pill hugs its content), children
+  40 / 100 / 109.9 / 100 at `gap-1`, shadow `rgba(0,0,0,0.08) 0px 6px 6px`,
+  `backdropFilter: none`, rest `#757575` → hover `#1E1E1E` → selected black on
+  `#F3F3F3`, dot 12px `#CD1411` inset 2/2. At 1023px the header is
+  `display: none` and nothing about mobile moved.
+
 - **The My Picks page has a second, condensed pick module that pins to the top
   of a phone once the real one scrolls away.** `PickStickyBar` — 89px, the
   eyebrow over a 51px row of [three team-colour strips with the logo centred on
@@ -680,11 +731,9 @@ reading, but only the first kind is the lesson.
   mutually exclusive by width.** Below `lg` there is NO header at all —
   `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
   destinations (Picks / Standings / Account) in a bar pinned to the foot of the
-  screen. From `lg` up nothing changed: same 62px header, same 218px pill, same
-  40px account button, same dot. `HeaderNav` was not touched at all. The design
-  is Figma `4033:121667`; `lg` is the breakpoint because it is the app's single
-  turn-over width, and this was the user's call rather than an inference. Eight
-  things:
+  screen. The design is Figma `4033:121667`; `lg` is the breakpoint because it is
+  the app's single turn-over width, and this was the user's call rather than an
+  inference. Eight things:
   - **`sticky bottom-0`, NOT `fixed`, and that is what kept `main`'s padding
     still.** As the last child of the layout's `min-h-dvh flex-col` wrapper the
     bar's flow position IS the foot of the document, so `bottom: 0` — which only
