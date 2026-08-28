@@ -88,6 +88,36 @@ describe("the tab bar's surface", () => {
     expect(await code(BAR)).toContain("after:inset-x-0");
   });
 
+  it("swallows taps where the header passes them through", async () => {
+    // The header takes `pointer-events-none` because its undrawn band is
+    // ~600px of plainly live content. This bar's is ~28px at the bottom edge
+    // where a thumb rests, and a fall-through on the picks page spends a team
+    // for the season — so it swallows. Beyond the design and the INVERSE of the
+    // header's call, which makes it exactly the kind of thing a reader who knows
+    // the header would "correct".
+    expect(await code(BAR)).not.toContain("pointer-events");
+  });
+
+  it("inverts the header's vertical row padding", async () => {
+    // 4px above the pill and 8px below, against the header's 8/4. A 4px
+    // difference between two files that are otherwise the same pill is the most
+    // likely silent copy error in this whole component.
+    const src = await code(BAR);
+    expect(src).toContain("pb-2 pt-1");
+    expect(await code(NAV)).toContain("pb-1 pt-2");
+  });
+
+  it("keeps the height and the geometry that has to add up to it in step", async () => {
+    // 4 (pt-1) + 58 (the pill: 8 + 40 + 8 + 2 border) + 8 (pb-2) = 70, the
+    // value of --tab-bar-h. Nothing else ties these together: swap the row's
+    // padding for a symmetric `p-2` and every other assertion here still passes
+    // while the pill sits 2px off centre in its own bar.
+    const src = await code(BAR);
+    expect(src, "row padding + pill height must sum to --tab-bar-h").toContain("pb-2 pt-1");
+    expect(src, "the pill's own 8px").toContain("py-2");
+    expect(src, "the button's 40px").toContain("h-10");
+  });
+
   it("stays mobile-only and pinned", async () => {
     const src = await code(BAR);
     expect(src).toContain("lg:hidden");
@@ -105,7 +135,7 @@ describe("the tab bar's height", () => {
   });
 
   it("is read, not retyped, by both consumers", async () => {
-    // The drift this exists to stop: someone hardcodes `bottom-[88px]` on the
+    // The drift this exists to stop: someone hardcodes a pixel offset on the
     // toast, the bar's height later changes, and the toast quietly overlaps it.
     expect(await code(BAR)).toContain("h-[var(--tab-bar-h)]");
     expect(await read(TOAST)).toContain("var(--tab-bar-h)");
@@ -117,5 +147,57 @@ describe("the tab bar's height", () => {
     // neither the value is invalid CSS. Either way it compiles to nothing and
     // presents as "the toast didn't move".
     expect(await read(TOAST)).toContain("bottom-[calc(1.5rem_+_var(--tab-bar-h))]");
+  });
+});
+
+/**
+ * The two navs are the same pill drawn at opposite edges, and their docblocks
+ * say so in as many words. Nothing enforced that until this block: the model
+ * cannot drift (one `NAV_TABS`, one `isActive`), but the markup could, and a
+ * change to one file that the other does not get is exactly the failure the
+ * cross-references were written to prevent.
+ *
+ * The deliberate differences are NOT asserted here — no mark, the pill's
+ * padding, the gap, the row's inverted padding, and the tap-target pseudo. Each
+ * has its own reason in its own file.
+ */
+describe("the two navs stay the same pill", () => {
+  const SHARED = [
+    "h-10",
+    "rounded-control",
+    "text-base font-semibold leading-[1.2]",
+    "bg-fill-soft text-black",
+    "text-shell-mute hover:text-shell-ink",
+    "h-3 w-3 rounded-full bg-badge-due",
+    "rounded-card",
+    "border-shell-line/50",
+    "shadow-[0_6px_6px_rgba(0,0,0,0.08)]",
+  ];
+
+  it.each(SHARED)("both files carry %s", async (cls) => {
+    expect(await code(BAR)).toContain(cls);
+    expect(await code(NAV)).toContain(cls);
+  });
+
+  it("names the unpaid state identically in both", async () => {
+    // Both docblocks promise this string is "verbatim" the other's; a screen
+    // reader hearing two different sentences for one fact is the bug.
+    const label = '"Account — buy-in unpaid"';
+    expect(await code(BAR)).toContain(label);
+    expect(await code(NAV)).toContain(label);
+  });
+});
+
+describe("fill-deep's one remaining consumer", () => {
+  it("is Button's soft variant, and the token still exists at its hex", async () => {
+    // The mobile bar's selected tab was this token until it took the header's
+    // `fill-soft`. `Button` had been retyping the hex as an arbitrary value, so
+    // pointing it at the token kept `fill.deep` live — but that leaves ONE
+    // consumer and no other guard: rename the token and Button's hover compiles
+    // to nothing, silently, on a component used across the app.
+    expect(await read(CONFIG)).toContain('deep: "#EAEAEA"');
+    expect(await code(new URL("../ui/Button.tsx", import.meta.url))).toContain(
+      "hover:bg-fill-deep",
+    );
   });
 });

@@ -568,7 +568,8 @@ reading, but only the first kind is the lesson.
     gutters and vanishes behind the pill. Same floating-pill reading
     `BottomTabBar` takes at the other edge. The whole `bg-bg/[0.12]`-not-`bg-bg/12`
     paragraph went with the fill it described.
-  - **The pill is OPAQUE where the two mobile surfaces are frosted.** Figma puts
+  - **The pill is OPAQUE, and `BottomTabBar` is the same card at the other edge
+    — `PickStickyBar` is the one frosted surface left.** Figma puts
     `backdrop-blur-[4px]` on a `bg-white` fill, where it cannot show through;
     the blur is dropped rather than shipped as dead CSS, and the border plus the
     shadow are what make it a card rather than glass. Deliberate, and confirmed
@@ -597,7 +598,12 @@ reading, but only the first kind is the lesson.
     pill reads as live content; `pointer-events-none` on the header with `auto`
     on the pill lets clicks through. That is `Toast`'s argument (a full-width
     positioner around a small card), not `PickStickyBar`'s (which swallows taps
-    *because* it is the full-width opaque surface). Putting it on the row inside
+    *because* it is the full-width opaque surface). That is not a rule about
+    shape: `BottomTabBar` is also a positioner around a small pill and it
+    swallows anyway, because its undrawn band is ~28px at the bottom edge and a
+    fall-through there spends a team. Pass through when the dead band is large
+    and what is behind it is plainly live; swallow when it is small and costly to
+    hit. Putting it on the row inside
     the header does NOT work — `elementFromPoint` in the gutter still returned
     the `<header>`, because a parent receives what its `none` child declines.
     Measured, after the first attempt got it wrong.
@@ -801,9 +807,10 @@ reading, but only the first kind is the lesson.
     an `overflow`, is an in-flow spacer wrapping a `fixed` child — which keeps
     the same property; going straight to `fixed` does not.
   - **The bar reserves space, but content still passes BEHIND it mid-scroll.**
-    That is the design (a 4px backdrop blur behind a `bg-bg/80` track), not a
+    That is the design (a white pill with a hairline border and a 6px shadow,
+    the desktop header's card), not a
     defect. What cannot happen is content stranded underneath at the page foot.
-  - **`--tab-bar-h: 64px` in `globals.css` is the one place that number lives.**
+  - **`--tab-bar-h: 70px` in `globals.css` is the one place that number lives.**
     The bar sizes its row from it and `Toast` lifts itself clear with
     `bottom-[calc(1.5rem_+_var(--tab-bar-h))] lg:bottom-6`. On `:root` rather
     than the shell because `Toast` portals to `document.body` and inherits
@@ -814,9 +821,10 @@ reading, but only the first kind is the lesson.
     variable — the bar and the toast each add it themselves, and folding it in
     would count it twice.
   - **`pb-[env(safe-area-inset-bottom)]` goes on the bar's outer element**, so
-    the 64px row sits entirely above the home indicator (the design height is
-    preserved rather than eaten), the blur runs through the inset to the screen
-    edge, and the flow space it reserves grows by the inset for free.
+    the 70px row sits entirely above the home indicator (the design height is
+    preserved rather than eaten) and the flow space it reserves grows by the
+    inset for free. The inset strip is bare rather than chrome — the pill does
+    not reach it — which is the one thing the 393×70 frame cannot show.
   - **The shell wrapper took `pt-[env(safe-area-inset-top)] lg:pt-0`, and that
     is a consequence of deleting the mobile header rather than decoration.** The
     root layout is `viewportFit: "cover"` + `black-translucent` and the manifest
@@ -830,7 +838,7 @@ reading, but only the first kind is the lesson.
     hover, which had been retyping that hex as an arbitrary value all along.
     Unlike the `shell` greys, those three DO run light to dark: `raised` →
     `soft` → `deep`.
-  - **Figma's `overflow-clip` on the track is deliberately not transcribed.**
+  - **Figma's `overflow-clip` on the pill is deliberately not transcribed.**
     There is nothing to clip — the active tab carries the track's own 16px
     radius — and an overflow there WOULD clip the global focus ring's
     `ring-offset-2` on the end tabs. Same family as the standing rule that
@@ -842,7 +850,8 @@ reading, but only the first kind is the lesson.
     once. Relatedly, the Account tab's unpaid state is an `aria-label` carrying
     the header's exact string — legal only because the visible "Account" is a
     substring of it, which is the WCAG 2.5.3 test `MoreSection` still fails. The
-    labels are stored sentence-case and uppercased in CSS to keep that true, and
+    labels are stored sentence-case and both navs now render them as-is, so the
+    substring match is exact rather than case-folded, and
     there is a test pinning it.
 
 - **A member can pick for any week that has not kicked off, and the week strip

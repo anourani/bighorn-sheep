@@ -61,6 +61,15 @@ export async function AppHeader() {
        full-width positioner around a small card — rather than `PickStickyBar`'s,
        which swallows taps precisely because it IS the full-width opaque surface.
 
+       That is not a rule about shape, though, and `BottomTabBar` is the case
+       that proves it: it is also a positioner around a small pill and it
+       swallows anyway, because its undrawn band is ~28px at the bottom edge
+       where a thumb rests and a fall-through there spends a team for the
+       season. Passing through is right when the dead band is large and the
+       content behind it is plainly live; swallowing is right when the band is
+       small and the thing behind it is costly to hit by accident. Do not
+       "correct" the bar to match this file.
+
        It has to be on this element and not on the row inside it: `elementFromPoint`
        in the gutter returned this `<header>` when only the row opted out, because
        a parent still receives what its `none` child declines. Measured, after the
