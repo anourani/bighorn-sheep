@@ -687,7 +687,7 @@ reading, but only the first kind is the lesson.
     the point: at #858585 that line measured 3.5:1 on solid white and would have
     lost contrast the moment the fill let the page through. Note `80` IS on
     Tailwind's opacity scale where `12` is not — `bg-bg/12` compiles to nothing,
-    which is the trap `AppHeader` carries an arbitrary value for.
+    which is the trap the old header's own fill carried an arbitrary value for.
   - **The row's 51px is the matchup stack's own height (3 × 12px at 1.4), and it
     is still stated rather than derived.** So is the column's 89 — the frame
     declares it and centres a 67px container in it. Both were `py-*` with a

@@ -6,11 +6,18 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  * The landing page's chrome: the app's identity on the left, the two ways in on
  * the right.
  *
- * Mirrors `AppHeader`'s left block deliberately — same mark, same initials, same
- * 8 + 50 + 4 = 62px arithmetic — so arriving at /app after signing in doesn't
- * feel like a different product. Two differences, both because this is the
- * signed-out door: the mark isn't a link (there is nowhere to go from `/`), and
- * the header isn't sticky (the page is short).
+ * It used to mirror `AppHeader`'s left block deliberately — same mark, same
+ * initials, same 8 + 50 + 4 = 62px arithmetic — so arriving at /app after
+ * signing in didn't feel like a different product. **That mirror is broken now,
+ * on purpose**: the signed-in header was redesigned into a 70px centred pill
+ * holding a 40px circular mark and three buttons, with no wordmark at all. This
+ * one is unchanged and still transcribes the design's signed-out variants
+ * exactly, which is why it was left alone rather than dragged along. Do not
+ * "restore" the symmetry without a signed-out frame asking for it.
+ *
+ * Two differences were always deliberate, both because this is the signed-out
+ * door: the mark isn't a link (there is nowhere to go from `/`), and the header
+ * isn't sticky (the page is short).
  *
  * It had drifted: 40px mark, the full name, 40px buttons, 16 + 40 + 12. That
  * was the header when it was written, and it is what overflowed a phone —
@@ -37,8 +44,9 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  * plus `items-center`.) So the *signed-out* header intentionally has no diff.
  *
  * One thing is deliberately not transcribed: the design puts a 4px backdrop blur
- * on this header too. `AppHeader` takes it because it is sticky and page content
- * genuinely passes behind it. Nothing passes behind this one — it does not move —
+ * on this header too. `AppHeader` used to take it, being sticky with page content
+ * genuinely passing behind it; it has no fill or blur at all now — its pill
+ * carries them. Nothing passes behind this one either — it does not move —
  * so the only thing it could blur is `AmbientBackground`'s grid, which sits at
  * full opacity exactly here, at the top of the viewport, before its mask fades
  * downward. The result would be a 62px band of soft grid inside a page of sharp

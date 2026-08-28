@@ -16,7 +16,8 @@ import { NAV_TABS, type TabKey, isActive } from "./nav";
  * `lg` (1024px) rather than `md` because that is the app's single turn-over
  * width: `WeekStrip`, `StandingsGrid`, `PickHero`, `TeamGrid` and the account
  * grid all change shape there and nothing changes at `md`. From `lg` up this is
- * `display: none` and the header's pill is back, unchanged.
+ * `display: none` and `AppHeader`'s pill takes over — which draws the same three
+ * destinations off the same `NAV_TABS`, as text buttons rather than icons.
  *
  * `sticky bottom-0`, NOT `fixed`, and that is the load-bearing choice. As the
  * last child of the layout's `min-h-dvh flex-col` wrapper, this element's flow
@@ -113,8 +114,9 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
           rounded track frosts what is behind it — `bg-bg/80` is the page colour
           at 80%, the same pair the sticky pick module takes at the other edge of
           the screen, so the two pieces of mobile chrome read as one material.
-          (`80` is on Tailwind's opacity scale; `12` famously is not, which is
-          why `AppHeader` spells its own fill as an arbitrary value.)
+          (`80` is on Tailwind's opacity scale, where `12` is not — the trap
+          that made the old header spell its fill as an arbitrary value, back
+          when it had one. It is transparent now and the pill carries its own.)
 
           Figma gives the track `overflow-clip`; it is deliberately not
           transcribed, and moving the blur here does not change that. A
@@ -160,8 +162,9 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
                   //
                   // No `hover:` state: the design draws none, and this is
                   // `lg:hidden`. 123×56 clears the repo's 44px tap floor
-                  // outright, so no `.tap-target` and none of the header
-                  // account button's `after:`-pseudo arithmetic.
+                  // outright, so no `.tap-target` and no pseudo-element to reach
+                  // it with — the trick the old round account button needed and
+                  // the desktop pill's text buttons no longer do.
                   active ? "bg-fill-deep text-shell-ink" : "text-shell-mute",
                 )}
               >
@@ -169,18 +172,23 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
                   Sized to the icon box on purpose: with no border and no
                   padding its padding box IS 20×20, so `-top-1 -right-1` (4px)
                   centres the 8px dot on the icon's top-right corner, which is
-                  what the Figma measurement describes. This is NOT the header's
-                  `-0.5` case — that element is a `border-box` 40px circle with a
-                  1px border, so its padding box is 38px and the naive
-                  arithmetic is off by one there. `block` is load-bearing:
+                  what the Figma measurement describes — no border on this
+                  wrapper, so the naive arithmetic is the right one. (The old
+                  round account button needed a different number for the same
+                  2px, because an absolutely positioned child resolves against a
+                  border-box circle's padding box; that button is gone.) `block`
+                  is load-bearing:
                   preflight sets `svg { display: block }`, and a block child in
                   an inline box makes anonymous block boxes and breaks the 56px
                   stack.
 
-                  No `border-2 border-bg` ring around the dot, unlike the
-                  header's. That ring exists because the header bar is 12%
-                  opaque and a standings row could pass behind the dot; this one
-                  sits on an 85%-white track.
+                  No ring around this dot. The desktop header's used to carry a
+                  page-coloured one, because that bar was 12% opaque and a
+                  standings row could pass behind it; this dot sits on a track
+                  that is 80% of the page colour, and the desktop dot now sits on
+                  a solid white pill, so neither needs it. (Described rather than
+                  spelled: Tailwind scans comments, so naming the two classes
+                  would ship their rules for nothing.)
                 */}
                 <span className="relative block h-5 w-5">
                   <Icon className="h-5 w-5" />

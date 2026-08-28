@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
@@ -50,6 +51,54 @@ describe("the header pill's surface", () => {
   });
 });
 
+describe("the header pill's tokens and geometry", () => {
+  it("takes the selected fill from a token that exists at the expected hex", async () => {
+    // The frame says #F5F5F5 — Figma's Simple Design System hover token, which
+    // has no home in this palette. `fill-soft` is 2/255 away. A renamed token
+    // compiles to nothing and the selected state silently disappears, which
+    // reads as a design opinion rather than a bug.
+    const config = await readFile(new URL("../../../tailwind.config.ts", import.meta.url), "utf8");
+    expect(config).toContain('soft: "#F3F3F3"');
+    expect(await code(NAV)).toContain("bg-fill-soft");
+  });
+
+  it("keeps the buttons on a minimum width rather than their text width", async () => {
+    // Another arbitrary value whose failure looks deliberate: without it the
+    // buttons collapse to their labels and the pill measures ~360 against 397.
+    expect(await code(NAV)).toContain("min-w-[100px]");
+  });
+
+  it("lets clicks through the transparent band beside the pill", async () => {
+    // Beyond the design and easy to tidy away by mistake. The header spans the
+    // full 1000px shell while only its middle ~400px is drawn, so without the
+    // pair it swallows clicks across ~600px of what looks like ordinary page
+    // content. The opt-out must be on the <header> itself — a parent still
+    // receives what its `none` child declines, which a browser measurement
+    // caught after the first attempt put it one level too deep.
+    expect(await code(HEADER)).toContain("pointer-events-none");
+    expect(await code(NAV)).toContain("pointer-events-auto");
+  });
+});
+
+describe("the header's app mark", () => {
+  const SRC = "/icons/app-mark.jpg";
+
+  it("is served from /icons/, the only path the service worker caches", () => {
+    expect(SRC.startsWith("/icons/")).toBe(true);
+  });
+
+  it("points at a file that actually exists in public/", () => {
+    // A 404 degrades to the `bg-shell-line` grey circle and nothing in the
+    // browser says a word — and this mark is now the ONLY place the app
+    // identifies itself in the signed-in desktop chrome.
+    expect(existsSync(new URL(`../../../public${SRC}`, import.meta.url))).toBe(true);
+  });
+
+  it("is referenced by HeaderNav at exactly this path", async () => {
+    expect(await code(NAV)).toContain(SRC);
+  });
+});
+
 describe("the header pill's accessibility", () => {
   it("names the unpaid state in the link rather than the badge", async () => {
     const src = await code(NAV);
@@ -65,6 +114,15 @@ describe("the header pill's accessibility", () => {
     // `BottomTabBar`'s are hidden from each other by `display: none`.
     const matches = (await code(NAV)).match(/aria-label="Primary"/g) ?? [];
     expect(matches).toHaveLength(1);
+  });
+
+  it("keeps the mark's link out of the navigation landmark", async () => {
+    // The mark points at /app and so does the Picks button. Two links to one
+    // destination inside a single landmark — one `aria-current="page"`, one not
+    // — reads worse than the visual duplication, and the old header did not have
+    // it. The <nav> must open AFTER the mark's link closes.
+    const src = await code(NAV);
+    expect(src.indexOf("</Link>")).toBeLessThan(src.indexOf('<nav aria-label="Primary"'));
   });
 });
 
