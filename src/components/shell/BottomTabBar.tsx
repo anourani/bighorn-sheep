@@ -66,13 +66,20 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
       aria-label="Primary"
       /*
         `pb-[env(safe-area-inset-bottom)]` on the OUTER element, not on the row
-        and not folded into `--tab-bar-h`. Three consequences, all wanted: the
+        and not folded into `--tab-bar-h`. Two consequences, both wanted: the
         64px row sits entirely above the home indicator so the design height is
-        preserved rather than eaten; the blur runs through the inset to the
-        screen edge, so that strip reads as chrome rather than a bare band; and
-        the flow space the bar reserves grows by the inset too, so clearance
-        stays right in standalone mode for free. `src/app/layout.tsx` sets
-        `viewportFit: "cover"`, so the inset is a real value there.
+        preserved rather than eaten, and the flow space the bar reserves grows by
+        the inset too, so clearance stays right in standalone mode for free.
+        `src/app/layout.tsx` sets `viewportFit: "cover"`, so the inset is a real
+        value there.
+
+        This element carries NO fill and NO blur — both moved onto the track
+        below. So the 12px gutters, the 4px above and below it, and the
+        home-indicator strip are all fully transparent, and page content scrolls
+        behind them unobscured. That is the floating-pill reading the design
+        asks for; it also means the inset strip is a bare band on a notched
+        phone rather than chrome, which is the one thing here the 393×64 frame
+        cannot show.
 
         `AppHeader` carries the same `aria-label="Primary"`. Two identically
         named landmarks in one document would be a real problem — but both hides
@@ -81,7 +88,7 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
         exposed. Swapping either for `sr-only`, `visibility` or an opacity trick
         would break that.
       */
-      className="sticky bottom-0 z-30 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm lg:hidden"
+      className="sticky bottom-0 z-30 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {/*
         Geometry, so nobody re-derives it at 393px: the row is `--tab-bar-h`
@@ -102,14 +109,28 @@ export function BottomTabBar({ buyInUnpaid = false }: { buyInUnpaid?: boolean })
       */}
       <div className="flex h-[var(--tab-bar-h)] px-3 py-1">
         {/*
+          The fill and the blur both live HERE, not on the bar, so only the
+          rounded track frosts what is behind it — `bg-bg/80` is the page colour
+          at 80%, the same pair the sticky pick module takes at the other edge of
+          the screen, so the two pieces of mobile chrome read as one material.
+          (`80` is on Tailwind's opacity scale; `12` famously is not, which is
+          why `AppHeader` spells its own fill as an arbitrary value.)
+
           Figma gives the track `overflow-clip`; it is deliberately not
-          transcribed. There is nothing to clip — the active tab carries the
-          track's own 16px radius, so an end tab's outer corners coincide with
-          it exactly — and an overflow here WOULD clip the global
+          transcribed, and moving the blur here does not change that. A
+          `backdrop-filter` is clipped to its own element's border box —
+          `rounded-card` and all — so the frosting rounds without any help.
+          There is otherwise nothing to clip, since the active tab carries the
+          track's own 16px radius and an end tab's outer corners coincide with
+          it exactly; and an overflow here WOULD clip the global
           `:focus-visible` ring's `ring-offset-2` on the first and last tab. It
           is the `overflow-hidden`-near-a-notification-dot rule, one level out.
+
+          `backdrop-filter` also makes this a stacking context and a containing
+          block for fixed/absolute descendants. Neither bites: the unpaid dot is
+          positioned against its own `relative` icon wrapper, not against this.
         */}
-        <div className="flex flex-1 rounded-card bg-white/85">
+        <div className="flex flex-1 rounded-card bg-bg/80 backdrop-blur-sm">
           {BOTTOM_TABS.map(({ key, href, label }) => {
             const active = isActive(href, pathname);
             const Icon = ICON[key];

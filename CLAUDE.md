@@ -625,7 +625,13 @@ reading, but only the first kind is the lesson.
     swallows taps. Off screen it is unhittable regardless.
   - **The fill is `bg-bg/80` behind a 4px blur, and it is the PAGE colour, not
     white.** #FDFDFD at 80%, so the grid reads faintly through it — the same
-    family as `AppHeader`'s `bg-bg/[0.12]`. It arrived together with the matchup
+    family as `AppHeader`'s `bg-bg/[0.12]`, and now the exact pair
+    `BottomTabBar`'s track takes at the other edge of the same screen, so the two
+    pieces of mobile chrome read as one material. **The tab bar's blur sits on
+    its rounded TRACK, not on the full-width bar**, so its gutters and its
+    home-indicator strip are transparent; a `backdrop-filter` clips to its own
+    element's border box, radius included, so that frosting rounds with no
+    `overflow` involved. It arrived together with the matchup
     block going from #858585 at 14px to **`shell-ink` at 12px**, and the pair is
     the point: at #858585 that line measured 3.5:1 on solid white and would have
     lost contrast the moment the fill let the page through. Note `80` IS on
@@ -693,7 +699,7 @@ reading, but only the first kind is the lesson.
     an `overflow`, is an in-flow spacer wrapping a `fixed` child — which keeps
     the same property; going straight to `fixed` does not.
   - **The bar reserves space, but content still passes BEHIND it mid-scroll.**
-    That is the design (4px backdrop blur under an 85% white track), not a
+    That is the design (a 4px backdrop blur behind a `bg-bg/80` track), not a
     defect. What cannot happen is content stranded underneath at the page foot.
   - **`--tab-bar-h: 64px` in `globals.css` is the one place that number lives.**
     The bar sizes its row from it and `Toast` lifts itself clear with
