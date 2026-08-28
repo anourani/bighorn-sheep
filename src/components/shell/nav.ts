@@ -4,8 +4,7 @@
  * Split out of `HeaderNav` because it is the only branching logic in the header
  * and this repo has no component tests — a plain module is testable the way the
  * other seventeen suites are. The components keep the markup; this keeps the
- * decisions. It stays JSX-free for that reason: `NAV_TABS` carries a `key` its
- * consumers map to an icon rather than the icon itself.
+ * decisions, and stays JSX-free so it can be tested at all.
  */
 
 export const ACCOUNT_HREF = "/app/account";
@@ -20,17 +19,17 @@ export const ACCOUNT_HREF = "/app/account";
  * buttons, matching the bar at the foot of a phone. One list now, and the old
  * split is not worth preserving for its own sake.
  *
- * `key` is the discriminant a consumer maps to an icon (`BottomTabBar`) or to
- * the unpaid dot (both), so neither has to compare hrefs to decide what a row
- * is.
+ * `key` is the discriminant both navs use to find the account tab for the
+ * unpaid dot, so neither has to compare hrefs to decide what a row is. It was
+ * also `BottomTabBar`'s icon lookup until that bar became text-only; the
+ * exported `TabKey` that typed the lookup went with it, and `as const` gives
+ * the comparison its literal type without one.
  */
 export const NAV_TABS = [
   { key: "picks", href: "/app", label: "Picks" },
   { key: "standings", href: "/app/standings", label: "Standings" },
   { key: "account", href: ACCOUNT_HREF, label: "Account" },
 ] as const;
-
-export type TabKey = (typeof NAV_TABS)[number]["key"];
 
 /**
  * `/app` is the index of its own subtree, so a prefix match would light it up on

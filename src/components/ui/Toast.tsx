@@ -101,7 +101,7 @@ export function Toast({
 
       Below `lg` there IS bottom chrome now — `BottomTabBar` — so the 24px is
       measured from the top of that bar instead of from the screen edge.
-      `var(--tab-bar-h)` rather than a retyped 64: `globals.css` owns that number
+      `var(--tab-bar-h)` rather than the number retyped: `globals.css` owns it
       and the bar sizes its own row from the same variable, so the two cannot
       drift. The inset is not double-counted, because the variable is the bar's
       DESIGN height and the bar adds the inset below itself exactly as this

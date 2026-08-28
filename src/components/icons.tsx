@@ -45,10 +45,15 @@ export const CheckIcon = (p: IconProps) => (
 );
 
 /**
- * A tick inside a circle — the mobile tab bar's Picks glyph. Distinct from
- * `CheckIcon` above, which is the bare tick and has its own call sites; this is
- * a separate export rather than a prop on that one because the two are used to
- * mean different things (a tick confirms an action, this labels a destination).
+ * A tick inside a circle. Distinct from `CheckIcon` above, which is the bare
+ * tick and has its own call sites; this is a separate export rather than a prop
+ * on that one because the two mean different things — a tick confirms an
+ * action, this labels a destination.
+ *
+ * Added for the mobile tab bar's Picks tab and unused since that bar became
+ * text-only, along with `GridIcon` and `UserIcon`. Kept: this module is a set
+ * rather than a demand-driven registry, and nine other glyphs in it are in the
+ * same position.
  *
  * `r=8.5` is the radius `ClockIcon`, `InfoIcon` and `BanIcon` all share, so the
  * glyph carries the same optical weight as the rest of the set at `h-5 w-5`.

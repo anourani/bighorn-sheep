@@ -11,9 +11,11 @@ import { NAV_TABS, isActive } from "./nav";
  * app's mark and its three destinations as equal buttons.
  *
  * Only ever drawn from `lg` up — `AppHeader` hides itself below that and
- * `BottomTabBar` carries the same three destinations at the foot of a phone. The
- * two are the same model now (`NAV_TABS`) and differ only in how they draw it:
- * text buttons in a row here, icons over uppercase labels there.
+ * `BottomTabBar` carries the same three destinations at the foot of a phone.
+ * The two are the same model (`NAV_TABS`) and now the same pill: same fill,
+ * border, shadow, button box, type and inks. The bar differs in four things
+ * only, all from its own frame — no app mark, a tighter pill padding, no gap
+ * between buttons, and the row's vertical padding inverted.
  *
  * **What this replaces, and why the old shape is gone.** This component used to
  * return a *fragment of two elements* — a centred tab pill and a separate round
@@ -51,11 +53,13 @@ export function HeaderNav({ buyInUnpaid = false }: { buyInUnpaid?: boolean }) {
           transcribed: a blur cannot show through an opaque fill, so shipping the
           class would be dead CSS. (Described rather than spelled — Tailwind
           scans comments, so naming a class this file does not use ships its rule
-          anyway.) This is a card floating over the page rather
-          than frosted glass, which is what the hairline border and the drop
-          shadow are for — a different treatment from `BottomTabBar` and
-          `PickStickyBar`, both of which ARE frosted (`bg-bg/80` + blur). If that
-          ever wants unifying it is a two-class change, not a structural one.
+          anyway.) This is a card floating over the page rather than frosted
+          glass, which is what the hairline border and the drop shadow are for.
+
+          `BottomTabBar` is this same card now, at the other edge. The one
+          surface still frosted is `PickStickyBar`, which is page content rather
+          than navigation — so the picks screen carries a translucent bar at the
+          top and this treatment at the foot, on purpose.
 
           `shadow-*`, not Figma's `drop-shadow` filter. For an opaque rounded
           rectangle the two are indistinguishable, and a `filter` would make this
@@ -162,7 +166,8 @@ export function HeaderNav({ buyInUnpaid = false }: { buyInUnpaid?: boolean }) {
                   // which is the behaviour `Label.tsx` has already been bitten by.
                   //
                   // Note the hover is an INK shift with no fill, where the chips
-                  // this replaces washed their background instead.
+                  // this replaces washed their background instead. The bar
+                  // takes the same three inks.
                   //
                   // `hover:` belongs INSIDE the unselected branch, not in the
                   // shared string above, and that is a correctness point rather
@@ -173,11 +178,10 @@ export function HeaderNav({ buyInUnpaid = false }: { buyInUnpaid?: boolean }) {
                   // #F5F5F5 — that hex is Figma's Simple Design System hover token
                   // and has no home in this palette, `fill-soft` is 2/255 away and
                   // this family is the one neutral ramp that genuinely runs light
-                  // to dark. The mobile bar's selected tab is a different grey
-                  // (`fill-deep`) on purpose: it sits on a translucent blurred
-                  // track over live content and needs more separation than a
-                  // button on a solid white pill. The two can never appear
-                  // together.
+                  // to dark. The mobile bar takes the same token — it used to
+                  // take a darker one, which was right while it sat on a
+                  // translucent blurred track and stopped being right when it
+                  // became this same white pill.
                   active
                     ? "bg-fill-soft text-black"
                     : "text-shell-mute hover:text-shell-ink",

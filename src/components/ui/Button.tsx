@@ -12,7 +12,7 @@ const variants: Record<Variant, string> = {
   secondary: "bg-surface text-onsurface border border-surface-line hover:bg-surface-muted",
   // Neutral filled — a tile rather than a call to action. Sits beside `outline`
   // where two adjacent controls need to read as equal weight.
-  soft: "bg-fill-soft text-ink border border-line hover:bg-[#EAEAEA]",
+  soft: "bg-fill-soft text-ink border border-line hover:bg-fill-deep",
   outline: "bg-white text-ink border border-line hover:bg-[#F6F7F9]",
   ghost: "bg-transparent text-ink hover:bg-[#F1F2F5]",
   // The design's filled black control. A real variant rather than a className

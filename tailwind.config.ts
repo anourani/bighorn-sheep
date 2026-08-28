@@ -167,7 +167,12 @@ const config: Config = {
         fill: {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
-          // The mobile tab bar's SELECTED tab, and the darkest of the three.
+          // The hover step for a soft-filled control (`ui/Button`'s `soft`
+          // variant). It was the mobile tab bar's selected tab until that bar
+          // became the desktop header's pill and took `soft` with it — Button
+          // had been retyping this hex as an arbitrary value all along, so the
+          // token kept a consumer rather than going dead.
+          //
           // Unlike the `shell` greys below — whose names deliberately do not
           // order them — these three do run light to dark: `raised` #FAFAFA,
           // `soft` #F3F3F3, `deep` #EAEAEA. Named after `surface.deep`, the

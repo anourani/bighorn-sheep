@@ -66,16 +66,20 @@ describe("NAV_TABS", () => {
   });
 
   it("has a distinct key per tab", () => {
-    // `BottomTabBar` keys its icon map on these, and both navs key the unpaid
-    // dot on them. A duplicate typechecks fine and silently draws twice.
+    // Both navs key the unpaid dot on these. A duplicate typechecks fine and
+    // silently draws it twice.
     const keys = NAV_TABS.map((t) => t.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("stores labels in sentence case, leaving the uppercasing to CSS", () => {
+  it("stores labels in sentence case", () => {
     // Load-bearing for accessibility, not style: the Account tab's `aria-label`
     // is "Account — buy-in unpaid" when the buy-in is due, and WCAG 2.5.3 Label
     // in Name holds only because the visible label is a substring of it.
+    //
+    // Both navs now render these as-is; the mobile bar used to uppercase them in
+    // CSS, which was the arrangement that made this test's wording about
+    // "leaving the uppercasing to CSS" worth stating. The rule outlived it.
     for (const { label } of NAV_TABS) {
       expect(label).not.toBe(label.toUpperCase());
     }
