@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { hexToRgb, stripGradient } from "./pick-hero";
+import {
+  eyebrowFor,
+  heroScrolledPast,
+  hexToRgb,
+  matchupLine,
+  resolvePick,
+  stripGradient,
+} from "./pick-hero";
+import type { Game, TeamId } from "../../lib/nfl/types";
+
+/** CIN hosting LAC — the matchup the sticky bar's Figma frame draws. */
+const GAME: Game = {
+  id: "401547001",
+  season: 2026,
+  seasonType: "regular",
+  week: 6,
+  kickoff: "2026-09-13T20:00:00Z",
+  status: "scheduled",
+  home: "cin",
+  away: "lac",
+  homeScore: null,
+  awayScore: null,
+};
+
 
 describe("stripGradient", () => {
   // The value in the design, spelled out: Bengals #FB4F14 is rgb(251,79,20).
@@ -43,5 +66,70 @@ describe("hexToRgb", () => {
 
   it("does not require the leading hash", () => {
     expect(hexToRgb("FB4F14")).toEqual([251, 79, 20]);
+  });
+});
+
+describe("eyebrowFor", () => {
+  // One sentence, two surfaces: the hero spells the week out and the sticky bar
+  // abbreviates it, but neither invents its own wrapper.
+  it("wraps whatever week label it is handed", () => {
+    expect(eyebrowFor("Week 6")).toBe("Your Week 6 Pick");
+    expect(eyebrowFor("WK6")).toBe("Your WK6 Pick");
+    expect(eyebrowFor("Hall of Fame")).toBe("Your Hall of Fame Pick");
+  });
+});
+
+describe("matchupLine", () => {
+  it("says vs. at home and @ away", () => {
+    expect(matchupLine(GAME, "cin", "short")).toBe("vs. Chargers");
+    expect(matchupLine(GAME, "lac", "short")).toBe("@ Bengals");
+  });
+
+  // The long form is the sticky bar's, and it is `abbr + name` — the same
+  // abbreviation the team cards on this page already use ("CIN Bengals").
+  it("prefixes the abbreviation in the long form", () => {
+    expect(matchupLine(GAME, "cin", "long")).toBe("vs. LAC Chargers");
+    expect(matchupLine(GAME, "lac", "long")).toBe("@ CIN Bengals");
+  });
+
+  // games.home/away are bare text with no foreign key, so a bad row can carry a
+  // code that is not one of the 32. Print the side rather than "vs. undefined".
+  it("falls back to TBD in both forms when the opponent is unknown", () => {
+    const bad: Game = { ...GAME, away: "zzz" as TeamId };
+    expect(matchupLine(bad, "cin", "short")).toBe("vs. TBD");
+    expect(matchupLine(bad, "cin", "long")).toBe("vs. TBD");
+  });
+});
+
+describe("resolvePick", () => {
+  // The one definition of "there is a pick to draw". PickHero falls through to
+  // NoPickHero on null and PickStickyBar renders nothing, so a disagreement here
+  // would put a sticky bar over a hero reading "No Pick Made".
+  it("needs a team, a game, and a team the table knows", () => {
+    expect(resolvePick(null, GAME)).toBeNull();
+    expect(resolvePick("cin", undefined)).toBeNull();
+    expect(resolvePick("zzz" as TeamId, GAME)).toBeNull();
+  });
+
+  it("returns the team and the game together", () => {
+    const view = resolvePick("cin", GAME);
+    expect(view?.team.name).toBe("Bengals");
+    // The game comes back so callers get it narrowed for `kickoff` and `id`
+    // without a second guard that could drift from this one.
+    expect(view?.game).toBe(GAME);
+  });
+});
+
+describe("heroScrolledPast", () => {
+  // The trigger, spelled literally: the pick module's bottom edge has reached
+  // the top of the viewport.
+  it("is false while any of the module is still on screen", () => {
+    expect(heroScrolledPast({ bottom: 400 })).toBe(false);
+    expect(heroScrolledPast({ bottom: 1 })).toBe(false);
+  });
+
+  it("turns true exactly at the edge, and stays true above it", () => {
+    expect(heroScrolledPast({ bottom: 0 })).toBe(true);
+    expect(heroScrolledPast({ bottom: -50 })).toBe(true);
   });
 });

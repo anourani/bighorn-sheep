@@ -8,6 +8,7 @@ import {
   weekKey,
   weekLabel,
   weekShortLabel,
+  weekShortName,
   weekStripOptions,
 } from "./calendar";
 
@@ -179,5 +180,41 @@ describe("weekStripOptions", () => {
       practice: { weeks: [1, 2, 3], currentWeek: 1 },
     });
     expect(new Set(options.map((o) => o.key)).size).toBe(options.length);
+  });
+});
+
+describe("weekShortName", () => {
+  // The sticky pick bar's eyebrow — "YOUR WK6 PICK". Only the regular season
+  // takes the prefix.
+  it("prefixes a regular-season week", () => {
+    expect(weekShortName(REGULAR_WEEK(1))).toBe("WK1");
+    expect(weekShortName(REGULAR_WEEK(18))).toBe("WK18");
+  });
+
+  // Reuses weekShortLabel outright, so the eyebrow says what the week strip's
+  // chip already says rather than inventing a second abbreviation.
+  it("takes the strip's own preseason abbreviations", () => {
+    expect(weekShortName(PRE_WEEK(1), { maxPreWeek: 4 })).toBe("HOF");
+    expect(weekShortName(PRE_WEEK(3), { maxPreWeek: 4 })).toBe("P2");
+    expect(weekShortName(PRE_WEEK(1), { maxPreWeek: 3 })).toBe("P1");
+  });
+
+  // "Wild Card" has no shorter form anyone would recognise, and the bare "1"
+  // weekShortLabel returns for it would read as "YOUR 1 PICK".
+  it("keeps the postseason's full name", () => {
+    expect(weekShortName({ seasonType: "post", week: 1 })).toBe("Wild Card");
+  });
+
+  // The property that matters for the eyebrow: never a bare number, for any
+  // week this app can reach.
+  it("never returns a bare number", () => {
+    const refs = [
+      ...[1, 6, 18].map(REGULAR_WEEK),
+      ...[1, 2, 4].map(PRE_WEEK),
+      { seasonType: "post" as const, week: 5 },
+    ];
+    for (const ref of refs) {
+      expect(weekShortName(ref, { maxPreWeek: 4 })).not.toMatch(/^\d+$/);
+    }
   });
 });

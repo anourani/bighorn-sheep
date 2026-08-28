@@ -127,6 +127,25 @@ export function weekShortLabel(ref: WeekRef, opts: WeekLabelOptions = {}): strin
   return `P${ref.week}`;
 }
 
+/**
+ * The eyebrow form — "WK6", "P2", "HOF", "Wild Card".
+ *
+ * Built on `weekShortLabel` rather than beside it, so the abbreviations a player
+ * already reads on the week strip's chips are the ones the sticky pick bar
+ * repeats. Only the regular season gains a prefix: "6" alone would read as
+ * "YOUR 6 PICK", and the postseason keeps its full name because "Wild Card" has
+ * no shorter form anyone would recognise.
+ *
+ * Distinct from `weekLabel` because the sticky bar is a 361px row where the
+ * design abbreviates and the hero above it is not. Both spellings are wanted;
+ * this is the short one.
+ */
+export function weekShortName(ref: WeekRef, opts: WeekLabelOptions = {}): string {
+  if (ref.seasonType === "regular") return `WK${ref.week}`;
+  if (ref.seasonType === "post") return weekLabel(ref, opts);
+  return weekShortLabel(ref, opts);
+}
+
 export interface WeekOption {
   ref: WeekRef;
   /** `weekKey(ref)` — the selected value, and a stable React key. */

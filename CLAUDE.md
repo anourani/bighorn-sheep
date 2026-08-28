@@ -555,6 +555,103 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The My Picks page has a second, condensed pick module that pins to the top
+  of a phone once the real one scrolls away.** `PickStickyBar` — 89px, the
+  eyebrow over a 57px row of [three team-colour strips with the logo centred on
+  them] [city / team name] [rule] [matchup / date / kickoff]. It slides in the
+  moment `PickHero`'s bottom edge passes the top of the viewport, slides out on
+  the way back, is `lg:hidden`, and **renders nothing at all when the week has no
+  pick**. Not tappable. Figma `4042:123420`. Nine things:
+  - **It MUST portal, and the usual reason is the weaker of two.** The familiar
+    one is that `.stagger > *` hands every direct child `reveal-up` at an
+    `:nth-child` delay, so a fixed root would sit invisible through its own
+    slide. The harder one: that animation's fill-mode is `both`, so a transform
+    is applied to every direct child for the life of the page — and **any
+    non-`none` transform is a containing block for `position: fixed`
+    descendants**. So a fixed element anywhere in the `.stagger` SUBTREE, not
+    merely a direct child, is pinned to a page block instead of the viewport.
+    Measured in Chromium at 393×852: a `fixed inset-x-0 top-0` element rendered
+    inside `.stagger` reports `top: 12`, where the portalled one reports `top:
+    -90` (correctly off screen). That disposes of "render it inside the grid's
+    `mt-4` wrapper to avoid renumbering the delays", which otherwise looks
+    clever.
+  - **An `IntersectionObserver`, the app's first, chosen over the ScrollTrigger
+    already in this route's bundle.** The reason is that **ScrollTrigger caches
+    start positions and IO caches nothing**. `use-card-reveal.ts` measures what
+    that costs inside `.stagger` — starts 12px low, cards masked indefinitely
+    without a manual `refresh()` wired to an `animationend`. The same 12px settle
+    is visible in this bar's own trace and IO simply re-evaluated through it. The
+    hero also genuinely moves after first paint here, because the preseason
+    banner mounts and unmounts above it. **Not** an argument for it: reduced
+    motion, which is a property of how you animate rather than how you detect
+    scroll.
+  - **The predicate is one clause — `rect.bottom <= 0` — and it is pure and
+    tested.** `!isIntersecting && top < 0` says the same thing only while the
+    module is shorter than the viewport (242 against ~852). `heroScrolledPast`
+    in `pick-hero.ts` is the literal transcription instead.
+  - **A CSS transition, not a keyframe pair, and the reason is INTERRUPTION.**
+    The trigger is a position the thumb oscillates around: a class-swapped
+    animation restarts from its first keyframe on every class change, so
+    re-crossing mid-slide snaps the bar off screen and replays. A transition
+    reverses from wherever it is. `Drawer` and `Toast` need keyframe pairs
+    because they mount and unmount and the element has to survive its own exit;
+    this one is mounted continuously. Their 320/280 asymmetry is still honoured,
+    stated per branch rather than as a reversed direction — which would reverse
+    the easing with it.
+  - **`ref` is a plain prop on `PickHero` (React 19, no `forwardRef`), and the
+    caller holds it in STATE via a callback ref.** That is correctness, not
+    style: stepping between a picked and an unpicked week swaps `Shell` for
+    `NoPickHero` at the same position, so React replaces the `<section>` DOM
+    node, and a `useRef` plus a mount-once effect would leave the observer
+    watching a detached element forever. Rejected alternative: wrapping
+    `<PickHero>` in a ref'd div. It does not renumber anything (it replaces
+    PickHero in the slot rather than adding one) — but it would move `reveal-up`
+    onto the wrapper and quietly falsify the "its root `<section>` is a direct
+    `.stagger` child, so remounting replays `reveal-up`" comment that the no-`key`
+    rule rests on.
+  - **`aria-hidden`, permanently, and legal only because nothing inside is
+    focusable.** Every string is a verbatim restatement of `PickHero`, which is
+    not removed when this appears — only scrolled above the fold — so it is still
+    in the tree with the same six strings. Portalled to the end of `body` while
+    painting at the top of the screen, it would also read detached from what it
+    describes. **If it ever becomes tappable the `aria-hidden` must come off**;
+    there is a test pinning the pair, and another stopping the team name becoming
+    a heading element (a duplicate of the hero's `<h1>` would corrupt
+    heading-jump navigation the moment it were exposed).
+  - **No `pointer-events-none`, and that INVERTS `Toast`.** Toast disables them
+    because it is a full-width positioner around a small card. This *is* the
+    full-width surface, and a tap falling through it lands on a team card the
+    reader cannot see — which on this page spends a team for the season. It
+    swallows taps. Off screen it is unhittable regardless.
+  - **The bar measures 90px, not the frame's 89.** `border-b` sits outside an
+    auto height even under `border-box`; the content column is exactly 89. A
+    known, accepted 1px — spell the hairline as an inset shadow if it ever has to
+    be exactly 89.
+  - **`w-max` on the logo wrapper is PROPHYLAXIS here, not load-bearing**, and
+    that is measured rather than assumed. It and `TeamLogo`'s baked-in
+    `max-w-none` are redundant: all four combinations at this geometry
+    (36-in-44) and at `PickHero`'s (80-in-68) give 36/36/36/22 and 80/80/80/68 —
+    **only removing BOTH** reproduces the squash-and-offset. Kept because it
+    costs nothing and a future call site could drop `TeamLogo` for a bare
+    `<img>`. Do not describe it as load-bearing; `PickHero`'s case is the one
+    where the trap actually fired.
+
+  Two things moved into `pick-hero.ts` to get there, and both are tested for the
+  first time: `matchupLine` (the "vs."/"@" convention and the `TBD` fallback —
+  **not** `team-grid.ts`'s `matchupLabel`, which prints "Home vs. Ravens";
+  named apart deliberately) and `resolvePick` (the one definition of "there is a
+  pick to draw", so the bar cannot claim a pick the hero is drawing as "No Pick
+  Made"). The bar takes `matchupLine`'s `long` form — `abbr + name`, "vs. LAC
+  Chargers" — because that is already how the team cards on this same page read,
+  and `location + name` overflows the matchup column below 360px.
+
+- **`pick-hero.ts` has value imports now, and they are RELATIVE on purpose.**
+  There is no `vitest.config.ts` in this repo, so vitest never reads tsconfig's
+  `paths`. `@/` survives in tested modules today only where it is an `import
+  type`, which esbuild erases — a `@/` VALUE import resolves under Next and fails
+  under vitest. `team-grid.ts` and `week-strip.ts` already spell theirs
+  `../../lib/...`; anything imported by a test must.
+
 - **The app has navigation in two places again, deliberately, and they are
   mutually exclusive by width.** Below `lg` there is NO header at all —
   `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
