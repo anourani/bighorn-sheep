@@ -22,7 +22,24 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   const idx = useMemo(() => buildGameIndex(data.games), [data.games]);
   const [rulesOpen, setRulesOpen] = useState(false);
 
-  const ranked = useMemo(() => rankMembers(data.members), [data.members]);
+  /*
+   * The live week decides the order now, so ranking needs the same game index,
+   * rules and clock the grid reads — see `rankMembers`. `hiddenPickUserIds` is
+   * not optional in spirit: without it a rival whose pick is locked but not yet
+   * revealed reaches the client as nothing at all, and would sort as though
+   * they had not picked.
+   */
+  const ranked = useMemo(
+    () =>
+      rankMembers(data.members, {
+        currentWeek,
+        gameForTeam: idx.gameForTeam,
+        rules: group.rules,
+        now,
+        hiddenPickUserIds,
+      }),
+    [data.members, currentWeek, idx, group.rules, now, hiddenPickUserIds],
+  );
   /*
    * Empty string, not "https://bighorn.example" — a domain that does not exist,
    * so the old fallback handed out invite links nobody could open.
@@ -75,7 +92,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
    * ranking this board wants.
    */
   const practiceRanked = useMemo<RankedMember[] | null>(() => {
-    if (!practice) return null;
+    if (!practice || !practiceIdx) return null;
     const merged: Member[] = data.members.map((m) => {
       const p = practice.members[m.id];
       return {
@@ -87,8 +104,18 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         currentPick: p?.currentPick ?? null,
       };
     });
-    return rankMembers(merged);
-  }, [data.members, practice]);
+    // The practice week and the practice game index, never the regular ones.
+    // Everyone here is forced alive, so the eliminated tier is inert and the
+    // whole table orders on how the current PRACTICE week is going, then on
+    // uncapped practice losses.
+    return rankMembers(merged, {
+      currentWeek: practice.currentWeek,
+      gameForTeam: practiceIdx.gameForTeam,
+      rules: group.rules,
+      now,
+      hiddenPickUserIds: practice.hiddenPickUserIds,
+    });
+  }, [data.members, practice, practiceIdx, group.rules, now]);
 
   /**
    * The practice weeks, then the regular season previewed behind them, so the

@@ -10,8 +10,9 @@ import { animalAvatarSrc } from "@/lib/profile/animals";
  * initials mark ("AN") in the brand circle.
  *
  * The animal is the *only* source of an avatar: there is no photo upload, so a
- * player changes how they appear here, in Who's In, and in the standings grid by
- * changing one <select>. Animals still waiting on artwork resolve to null and
+ * player changes how they appear by changing one <select>. Not in the standings
+ * grid, which this used to claim and never did — that table has only ever drawn
+ * a rank and a name, and the redesign's 146px name column has no room for one. Animals still waiting on artwork resolve to null and
  * render the initials mark, which is also what happens if the PNG fails to load —
  * a player is never rendered as a blank circle.
  *

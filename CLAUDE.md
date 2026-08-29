@@ -555,6 +555,86 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The standings table is one component drawing three surfaces, and both its
+  order and its cells were rebuilt.** `StandingsGrid` is still the only `<table>`
+  in the repo: the signed-in regular table, the preseason practice table
+  (`StandingsClient`) and the anonymous landing board (`PublicStandings`) all
+  render it, so anything changed there lands on all three at once. Figma: sample
+  `3971:95276`, row `3956:89448`, header `3986:112647`, live-week header
+  `3971:90737`, tile atoms `3956:88721`. Eleven things:
+  - **`rankMembers` takes a `RankContext` now, and rank is a fact about the
+    LEAGUE rather than about the viewer.** The living are bucketed by how their
+    current week is going — won, live, picked, no pick, lost — then by strikes,
+    name, id. `pickBucket` derives that through `viewCurrentPick` with an
+    **empty viewer id**, so nobody's own pick counts as revealed early. Pass a
+    real one and your row would sort on information no other row was sorted on,
+    and two players looking at the same table would see different orders. It is
+    the one place in the app that deliberately declines the viewer's own
+    privilege.
+  - **A hidden pick sorts as `picked`, and that needs `hiddenPickUserIds`.**
+    Under RLS a rival's un-kicked pick reaches the client as nothing but the
+    team-less flag, so without reading it someone who HAS picked buckets as
+    someone who has not. Nothing leaks which team — "has selected a team" is
+    exactly what the bucket means.
+  - **The eliminated block is frozen, and that is the feature.** Dead members
+    stay below every living one, ordered by `eliminatedWeek` descending. The
+    living block only shrinks, each new casualty stacks onto the TOP of the dead
+    block, and nobody already out ever moves again — so scrolling down in week 15
+    reads the league's history backwards, ending on whoever went out first. This
+    branch is unchanged from the old sort; what changed is that it is now
+    load-bearing rather than incidental. It also makes "losers last" and the
+    freeze agree rather than compete: a member eliminated THIS week carries the
+    highest possible elimination week, so they land directly under the living.
+  - **`PICK_BUCKET` and `pickBucket` live in `lib/league/view.ts`, not beside the
+    grid's other pure helpers.** They read the same week through the same
+    `viewCurrentPick` and look like they belong in `standings-grid.ts` — but that
+    module imports `view.ts`, so the reverse import is a real cycle. `lib/` never
+    depends on `components/`; `RankedMemberView` exists for the same reason.
+  - **Buckets are derived once per member into a Map, not inside the
+    comparator.** A comparator body runs O(n log n) times and `viewCurrentPick`
+    walks the game index on every call.
+  - **A LOSS stays tinted for the rest of the season; a WIN is tinted only in the
+    week being played.** That asymmetry is `cellFor`'s and it is what makes the
+    frozen table readable: a red tile is the week somebody took a strike, while
+    green on every survived week would be a wall of colour saying nothing. A
+    settled push reads untinted like a win — it survived — and a tie in a league
+    that counts ties as losses arrives in `history` as a loss already.
+  - **A win has a fill at all for the first time.** The old grid painted `""` for
+    a win and washed only loss/push/live, so the legend had no swatch to explain.
+  - **`gameForTeam` is still consulted ONLY for `week === currentWeek`**, in
+    `cellFor` and now in `rankMembers` too. The landing page narrows its `games`
+    payload to that single week on the strength of it, so a lookup for any other
+    week returns undefined THERE while the signed-in app — which holds the whole
+    season — carries on looking correct. Both modules have a test asserting which
+    weeks the index is asked for.
+  - **Rows are zebra-striped off the RENDERED index, and the viewer's row takes
+    `ink-wash` INSTEAD of its stripe.** One class from one ternary: every fill
+    lands in tailwind-merge's single background-colour group, so emitting two
+    silently drops one by argument order. All three are opaque because the row's
+    first cell is sticky. `ink.wash` is `#6B7280` at 12% resolved at build time
+    (`#EDEEF0`), `fill.stripe` is `#F8F8F8` — its own token rather than
+    `fill.raised` `#FAFAFA`, because two units is legible in a table of
+    alternating rows.
+  - **An eliminated row is NOT faded, and the "Out" chip is gone.** The
+    component set has 20%-opacity and red-tinted variants; the user's call was
+    that position carries it — the frozen block plus the red tile on the week
+    they went out. Position is unavailable to a screen reader, so the row carries
+    an `sr-only` "Eliminated" instead. The 146px name column has no room for a
+    chip at 48px rows anyway.
+  - **The table opens on the live week.** `scrollLeftForWeek` parks the scroller
+    so the accent-chipped column clears the 146px sticky edge — by week 10 it is
+    otherwise off the right edge on a phone. Assigned directly, never smooth:
+    this is where the table STARTS, not a movement, so there is no motion for
+    `prefers-reduced-motion` to reduce. It is a plain effect rather than a layout
+    one, because the auto table layout has to settle before the offsets are real.
+    It takes a column INDEX, not a week number — the practice table's columns are
+    P1..P3 followed by previewed regular weeks, where week numbers are neither
+    unique nor ordered.
+  - **`NAME_COL_W` / `WEEK_COL_W` are constants because the scroll arithmetic
+    reads them.** Header and body cells share the table's columns, so alignment
+    is structural — but the scroll lands a column-width off if either drifts from
+    the class, and nothing would throw.
+
 - **The desktop header is a centred floating pill, and it renders the same three
   destinations as the phone's bottom bar.** Figma `4048:60997`, button
   `4048:61019`. `AppHeader` is now a positioning wrapper and nothing else —
@@ -968,9 +1048,13 @@ reading, but only the first kind is the lesson.
     renamed: they already resolve to accent-derived values, and Tailwind's JIT
     compiles a class it cannot find to *nothing*, so a bulk rename is a
     silent-blank-page risk with no payoff.
-  - **Those tints are opaque mixes, never `accent/NN`.** `StandingsGrid` paints
-    its STICKY name column with `bg-brand-wash`; a translucent value there lets
-    the scrolling rows show through it.
+  - **Those tints are opaque mixes, never `accent/NN`.** A wash can land behind
+    a sticky cell — every standings row starts with one — and a translucent
+    fill there lets the cells scrolling under it show through. `ink.wash`
+    (`#EDEEF0`, the standings viewer row) is in the palette under the same rule,
+    which is the ramp's rather than any one surface's. `brand.wash` no longer
+    paints that column but keeps three call sites (`Badge`'s brand pill, the
+    preseason banner, `LoginFlow`'s mark).
   - **The mixing happens in the config at build time, not in CSS.** Every token
     stays a plain hex, which is what keeps Tailwind's `/opacity` modifier
     working on them (27 call sites rely on it) and costs no `color-mix` support
@@ -1148,12 +1232,15 @@ reading, but only the first kind is the lesson.
     to regular-season elimination — the exact leak the comment above it promises
     cannot happen. Same shape as the `entryOpen: true` beside it: a guard input
     answered by the round's rules rather than by this member's record.
-  - **`StandingsGrid` is UNTOUCHED, and the practice table now orders on a number
-    that has no label of its own.** `rankMembers` still ranks practice by losses, but
-    nothing eliminates, so no practice row wears an "Out" chip any more — and
-    `strikes` is rendered nowhere in the app at all (`StrikePips` in `Badge.tsx` has
-    no call site). The washed loss cells running across each row are what the order
-    reads off. That is deliberate rather than an oversight: a loss tally beside the
+  - **The practice table orders on a number that has no label of its own.**
+    `rankMembers` still ranks practice by losses once its buckets tie, but
+    nothing eliminates, so no practice row wears an "Out" chip — and `strikes`
+    is rendered nowhere in the app at all (`StrikePips` in `Badge.tsx` has no
+    call site). The washed loss cells running across each row are what the order
+    reads off. (This bullet used to open "`StandingsGrid` is UNTOUCHED"; the
+    table redesign has since touched it thoroughly — see its own entry below.
+    What survives is the practice table's ranking, which still falls through to
+    losses.) That is deliberate rather than an oversight: a loss tally beside the
     name was built and then removed, because it is in no mock-up and duplicates what
     the cells already say. The one case the cells genuinely miss is a missed pick in
     the LAST preseason week — `countStrikes` counts it, but `history` only covers

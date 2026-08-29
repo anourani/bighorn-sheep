@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
-import type { Member, TeamRecord } from "./types";
+import type { GroupRules, Member, TeamRecord } from "./types";
 import {
   countNoun,
   orderPickerTeams,
@@ -151,6 +151,12 @@ describe("survivorCounts", () => {
 });
 
 describe("rankMembers", () => {
+  const WEEK = 6;
+  const KICKED = "2025-10-12T17:00:00.000Z";
+  const NOW = new Date("2025-10-12T18:00:00.000Z");
+  const LATER = "2025-10-12T20:00:00.000Z";
+  const RULES: GroupRules = { eliminationType: "single", tieRule: "push" };
+
   function member(id: string, over: Partial<Member> = {}): Member {
     return {
       id,
@@ -172,29 +178,103 @@ describe("rankMembers", () => {
     };
   }
 
-  const ids = (ms: Member[]) => rankMembers(ms).map((r) => r.member.id);
+  /** A member who picked `teamId` in the ranked week. */
+  function picked(id: string, teamId: TeamId, over: Partial<Member> = {}): Member {
+    return member(id, { currentPick: { week: WEEK, teamId, gameId: `g_${teamId}` }, ...over });
+  }
 
-  it("puts the living above the dead, then orders each tier on its own key", () => {
-    const out = ids([
-      member("dead-early", { status: "eliminated", strikes: 1, eliminatedWeek: 2 }),
-      member("two-strikes", { strikes: 2 }),
-      member("clean"),
-      member("dead-late", { status: "eliminated", strikes: 1, eliminatedWeek: 9 }),
-    ]);
-    // Fewest strikes first among the living; among the dead, whoever survived
-    // longest leads.
-    expect(out).toEqual(["clean", "two-strikes", "dead-late", "dead-early"]);
+  /**
+   * The four game shapes the buckets read, one per matchup so `gameForTeam`
+   * can answer per team without two members sharing a fixture.
+   */
+  const GAMES: Game[] = [
+    // Final, home wins.
+    { ...game(KICKED, "kc", "buf"), status: "final", homeScore: 24, awayScore: 17 },
+    // In progress.
+    { ...game(KICKED, "sf", "sea"), status: "in_progress", homeScore: 7, awayScore: 3 },
+    // Not started.
+    { ...game(LATER, "dal", "phi"), status: "scheduled" },
+    // Final, tied.
+    { ...game(KICKED, "gb", "chi"), status: "final", homeScore: 20, awayScore: 20 },
+  ];
+
+  const gameForTeam = (week: number, teamId: TeamId): Game | undefined => {
+    if (week !== WEEK) return undefined;
+    return GAMES.find((g) => g.home === teamId || g.away === teamId);
+  };
+
+  function ranked(ms: Member[], hiddenPickUserIds: string[] = []) {
+    return rankMembers(ms, {
+      currentWeek: WEEK,
+      gameForTeam,
+      rules: RULES,
+      now: NOW,
+      hiddenPickUserIds,
+    });
+  }
+  const ids = (ms: Member[], hidden: string[] = []) =>
+    ranked(ms, hidden).map((r) => r.member.id);
+
+  it("orders the living by how their current week is going", () => {
+    // won → live → picked → none → lost. Deliberately fed in reverse.
+    expect(
+      ids([
+        picked("lost", "buf"),
+        member("none"),
+        picked("picked", "dal"),
+        picked("live", "sf"),
+        picked("won", "kc"),
+      ]),
+    ).toEqual(["won", "live", "picked", "none", "lost"]);
+  });
+
+  it("counts a locked-but-hidden pick as having picked, not as no pick", () => {
+    // Under RLS a rival's un-kicked pick reaches the client as nothing but the
+    // team-less flag. Without reading it, someone who HAS picked sorts below
+    // someone who hasn't.
+    expect(ids([member("no-pick"), member("hidden")], ["hidden"])).toEqual(["hidden", "no-pick"]);
+  });
+
+  it("ranks everyone off the same reveal, so two viewers see one order", () => {
+    // `pickBucket` passes an empty viewer id, so nobody's own pick counts as
+    // revealed early. A scheduled pick is `picked` whoever is looking.
+    const ms = [picked("a", "dal"), picked("b", "kc")];
+    expect(ids(ms)).toEqual(["b", "a"]);
+  });
+
+  it("puts a surviving tie with the winners and a fatal tie with the losers", () => {
+    const tie = [picked("tied", "gb"), picked("clean", "kc"), picked("beaten", "buf")];
+    // tieRule "push": the tie survived, so it ranks as a win does.
+    expect(ids(tie)).toEqual(["clean", "tied", "beaten"]);
+    // tieRule "loss": the same game now drops that member to the bottom.
+    const asLoss = rankMembers(tie, {
+      currentWeek: WEEK,
+      gameForTeam,
+      rules: { eliminationType: "single", tieRule: "loss" },
+      now: NOW,
+    }).map((r) => r.member.id);
+    expect(asLoss).toEqual(["clean", "beaten", "tied"]);
+  });
+
+  it("breaks a bucket tie on strikes, then name, then id", () => {
+    expect(
+      ids([
+        picked("z-three", "dal", { name: "Zoe Z.", strikes: 3 }),
+        picked("b-one", "dal", { name: "Bea B.", strikes: 1 }),
+        picked("a-one", "dal", { name: "Ada A.", strikes: 1 }),
+        picked("c-none", "dal", { name: "Cal C." }),
+      ]),
+    ).toEqual(["c-none", "a-one", "b-one", "z-three"]);
   });
 
   /*
    * The practice standings board. Nothing eliminates in preseason, so
-   * StandingsClient hands this an all-alive table and the ONLY thing separating
-   * two rows is the practice loss count — uncapped, so a three-loss member really
-   * does sit below a one-loss member. Under the old fold both were "eliminated"
-   * with a capped single strike, and the dead-tier branch ordered them by
-   * eliminatedWeek instead. This pins the ordering the practice grid now relies on.
+   * StandingsClient hands this an all-alive table — every row falls in the same
+   * bucket while the practice week is unplayed, and the ONLY thing separating
+   * two rows is the practice loss count, uncapped, so a three-loss member really
+   * does sit below a one-loss member.
    */
-  it("orders an all-alive table purely on losses, then name, then id", () => {
+  it("orders an all-alive table with no picks purely on losses, then name, then id", () => {
     expect(
       ids([
         member("z-three", { name: "Zoe Z.", strikes: 3 }),
@@ -205,6 +285,49 @@ describe("rankMembers", () => {
     ).toEqual(["c-none", "a-one", "b-one", "z-three"]);
   });
 
+  it("puts every eliminated member below every living one, whatever their week is doing", () => {
+    // The dead member picked a winner; it does not lift them above the living.
+    expect(
+      ids([
+        picked("dead", "kc", { status: "eliminated", eliminatedWeek: 3 }),
+        picked("alive-lost", "buf"),
+      ]),
+    ).toEqual(["alive-lost", "dead"]);
+  });
+
+  it("freezes the dead in elimination order, most recent first", () => {
+    expect(
+      ids([
+        member("out-w2", { status: "eliminated", eliminatedWeek: 2 }),
+        member("out-w5", { status: "eliminated", eliminatedWeek: 5 }),
+        member("out-w9", { status: "eliminated", eliminatedWeek: 9 }),
+      ]),
+    ).toEqual(["out-w9", "out-w5", "out-w2"]);
+  });
+
+  it("keeps an eliminated member's row number when someone else goes out later", () => {
+    // The freeze is the whole point: a player scrolling down in a late week
+    // reads the league's history backwards, and nobody already out ever moves.
+    const before = [
+      member("alive-a"),
+      member("alive-b"),
+      member("out-w2", { status: "eliminated", eliminatedWeek: 2 }),
+    ];
+    const rowOf = (rows: ReturnType<typeof ranked>, id: string) =>
+      rows.find((r) => r.member.id === id)!.rank;
+    expect(rowOf(ranked(before), "out-w2")).toBe(3);
+
+    // `alive-b` is now out, in a later week. They stack on TOP of the dead
+    // block, and the earlier casualty keeps the row it already had.
+    const after = [
+      member("alive-a"),
+      member("alive-b", { status: "eliminated", eliminatedWeek: 6 }),
+      member("out-w2", { status: "eliminated", eliminatedWeek: 2 }),
+    ];
+    expect(rowOf(ranked(after), "alive-b")).toBe(2);
+    expect(rowOf(ranked(after), "out-w2")).toBe(3);
+  });
+
   it("is total and stable — the input order never decides the output", () => {
     const tied = [member("b", { name: "Same Name" }), member("a", { name: "Same Name" })];
     expect(ids(tied)).toEqual(["a", "b"]);
@@ -212,9 +335,24 @@ describe("rankMembers", () => {
   });
 
   it("numbers the ranks from 1 in the sorted order", () => {
-    expect(rankMembers([member("b", { strikes: 1 }), member("a")]).map((r) => r.rank)).toEqual([
-      1, 2,
-    ]);
+    expect(ranked([member("b", { strikes: 1 }), member("a")]).map((r) => r.rank)).toEqual([1, 2]);
+  });
+
+  it("asks the game index for the ranked week only", () => {
+    // The landing page ships games for the current week ALONE. A lookup for any
+    // other week there returns undefined, so ranking that reached for one would
+    // bucket everybody as un-started while the signed-in table looked fine.
+    const asked: number[] = [];
+    rankMembers([picked("a", "kc"), picked("b", "dal")], {
+      currentWeek: WEEK,
+      gameForTeam: (week, teamId) => {
+        asked.push(week);
+        return gameForTeam(week, teamId);
+      },
+      rules: RULES,
+      now: NOW,
+    });
+    expect(new Set(asked)).toEqual(new Set([WEEK]));
   });
 });
 

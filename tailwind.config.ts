@@ -127,9 +127,11 @@ const config: Config = {
          * flat fill.
          *
          * These are opaque mixes, NOT `accent/NN` opacity modifiers, and that
-         * is load-bearing: `StandingsGrid` paints its STICKY name column with
-         * `bg-brand-wash`, and a translucent value there lets the scrolling
-         * rows show through it.
+         * is load-bearing wherever one lands behind a sticky cell: a
+         * translucent fill there lets the cells scrolling under it show
+         * through. `ink.wash` above exists under exactly that constraint —
+         * it is the standings table's viewer row, which starts with a sticky
+         * cell. The rule is the ramp's, not one surface's.
          */
         brand: {
           DEFAULT: tint(ACCENT, 0.18), // #FD7C5C — the sheen's light stop
@@ -138,10 +140,18 @@ const config: Config = {
           wash: tint(ACCENT, 0.87), // #FFEAE5
         },
         // Near-black / grey ink used on the light page.
+        //
+        // `wash` is the odd one out: a SURFACE, not ink. It is `mute` at 12%
+        // over white, resolved at build time — the standings table paints the
+        // signed-in viewer's row with it, and that row's first cell is sticky,
+        // so the value has to be opaque or the week cells scrolling underneath
+        // show through. Same constraint, and the same answer, as the brand ramp
+        // below.
         ink: {
           DEFAULT: "#111827",
           soft: "#4B5563",
           mute: "#6B7280",
+          wash: tint("#6B7280", 0.88), // #EDEEF0
         },
         // Slate surfaces (the operational panels) + text that rides on them.
         surface: {
@@ -167,6 +177,11 @@ const config: Config = {
         fill: {
           soft: "#F3F3F3",
           raised: "#FAFAFA",
+          // The standings table's zebra stripe. Deliberately its own token and
+          // not `raised` (#FAFAFA): the design draws #F8F8F8, two units darker,
+          // and a table of alternating rows is exactly where that difference is
+          // legible. Transcribed rather than approximated.
+          stripe: "#F8F8F8",
           // The hover step for a soft-filled control (`ui/Button`'s `soft`
           // variant). It was the mobile tab bar's selected tab until that bar
           // became the desktop header's pill and took `soft` with it — Button
