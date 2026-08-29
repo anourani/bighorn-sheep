@@ -555,6 +555,101 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The signed-out header is the same pill as the signed-in one, and the mirror
+  that was deliberately broken is deliberately restored.** `LandingHeader` was a
+  full-width bar with a `border-b`, a 50px rounded-square mark, an "SWG"
+  wordmark and two identical outline buttons pushed right by
+  `justify-between`. It is now a centred floating card — `rounded-card`,
+  `border-shell-line/50`, `bg-white`, `shadow-[0_6px_6px_rgba(0,0,0,0.08)]` —
+  holding a 40px circular mark, a black "Log In" and an outlined "Enter Invite
+  Code". Figma `4077:129623` (desktop) and `4077:136249` (mobile). Its docblock
+  used to argue at length that the mirror with `AppHeader` was broken on
+  purpose and not to restore it "without a signed-out frame asking for it" —
+  the frames asked. Ten things:
+  - **`Modal` does NOT portal, and three separate rules follow from that.**
+    `LogInButton` / `InviteCodeButton` each return a fragment of a `<button>`
+    and a `Modal`, and `Modal` renders a bare full-viewport fixed div inline —
+    unlike `Drawer` and `Toast`, which both portal to `document.body`. So the
+    dialog is a DOM descendant of the pill:
+    - **The shadow must stay `box-shadow`.** Figma draws `drop-shadow`, and a
+      `filter` makes its element a containing block for `fixed` descendants —
+      which would pin the login dialog inside the 58px pill. `HeaderNav` refuses
+      the same filter for the *weaker* reason (it has no fixed descendant); here
+      it is a real bug, and `landing-header.test.ts` pins it.
+    - **`pointer-events` reaches the dialog by INHERITANCE.** The header takes
+      `none`, the pill `auto`, and the dialog inherits `auto` *from the pill*.
+      Hoisting the modals up to the header to tidy the tree would leave them
+      inheriting `none` — a full-screen dialog nobody can click, with nothing in
+      the console. Measured: `getComputedStyle(dialog).pointerEvents === "auto"`.
+    - Sticky plus `z-30` makes the header a stacking context, so the dialog's
+      `z-50` now resolves INSIDE it. Harmless today — nothing else on `/` goes
+      above `z-20` (`StandingsGrid`'s sticky first column) and the landing
+      wrapper is unpositioned — and a trap the day something there wants `z-40`.
+  - **It is sticky, where it sat in flow for its whole life.** The old argument
+    was "the page is short"; it isn't — it carries the status band and the whole
+    standings table — and a floating pill only reads as floating if something
+    passes behind it. That is what makes `pointer-events-none` load-bearing
+    here, exactly as on `AppHeader`: the band spans the full shell while the
+    pill draws 338 of it. Measured at 393x380 with the page actually scrolling:
+    `elementFromPoint` in the gutter returns the title `<section>`, not the
+    `<header>`, while the pill still catches its own clicks.
+  - **The safe-area inset rides on the `<header>`, and `/app`'s answer does not
+    transfer.** `/` is reachable inside the installed PWA — the manifest is
+    `start_url: "/app"`, `scope: "/"`, `display: standalone`, and middleware
+    bounces a signed-out visitor off `/app` to here — so it renders under the
+    status bar with the root layout on `viewportFit: "cover"`. `/app` puts
+    `pt-[env(safe-area-inset-top)]` on its page WRAPPER, which works there only
+    because its header is not the pinned thing; on a sticky element that clears
+    the bar at scroll 0 and rides up under it afterwards. `PickStickyBar` is the
+    precedent that transfers — the inset goes on the pinned element. It must NOT
+    also go on `page.tsx`'s wrapper: that counts it twice, the trap
+    `--tab-bar-h` already documents.
+  - **74px, not `HeaderNav`'s 70, and that is off a frame rather than a copy
+    error.** This design pads evenly (`py-2`); the signed-in row is `pb-1 pt-2`.
+    Nothing reads either number — no `--header-h`, no `scroll-mt`, nothing
+    anchored to a header foot in `src/`. The visible consequence is that the
+    title block sits 11px lower than before (the old header was 12 + 50 + a 1px
+    rule = 63). `bottom-tab-bar.test.ts` already has a test whose whole subject
+    is that a 4px difference between two otherwise-identical pills is the most
+    likely silent copy error, so this one is pinned too.
+  - **`gap-3` and `px-2` buttons, against the signed-in pill's `gap-1` and
+    `px-4`.** These are the design's `size=Small` control — 36px at 14px — not
+    its 40px/16px nav button. Three deliberate divergences on one card.
+  - **There is no `lg:` step anywhere in the file**, which is the one way this
+    surface is simpler than the signed-in pair: the mobile and desktop
+    signed-out frames are the same pill, and only the outer row padding differs
+    (12 vs 16), which is inert for a centred pill. The only width-keyed classes
+    are the narrow escapes below. There is a test asserting the absence.
+  - **The `min-[375px]` hatch is `BottomTabBar`'s, on the same pill for the same
+    reason.** The frame's `min-w-[100px]` only holds from 375 up. Measured in
+    Chromium with the real self-hosted Inter, at 320 / 360 / 375 / 393 / 768 /
+    1023 / 1024 / 1280: header 74 at every width, pill **338 x 58** from 375 up
+    and **297 x 58** below, children 40 / 100 / 140 and 40 / 59 / 140. Only
+    "Log In" moves — "Enter Invite Code" measures 140 and the floor never bound
+    on it. `document.scrollWidth <= innerWidth` at all eight. The header is a
+    SIBLING of `<main>`, so `main`'s `overflow-x-clip` does not cover it and an
+    overflowing pill would produce a document-level scrollbar — which is
+    precisely the 375px failure this file's docblock recounts.
+  - **The blur is still not transcribed, and there are now three reasons.** Only
+    the DESKTOP signed-out frame carries `backdrop-blur-[4px]`; the mobile
+    signed-out frame and both signed-in frames don't. On the pill it is dead CSS
+    (nothing shows through an opaque fill). On the band, where Figma actually
+    puts it, `backdrop-filter` captures `fixed` descendants by the same rule as
+    `filter` — so it would trap the dialog. And it would make this the app's only
+    frosted chrome, against the split recorded above. Measured `filter` and
+    `backdropFilter` both `none`.
+  - **`alt={APP_NAME}` on the mark, not a sibling `sr-only` span.** With no
+    wordmark and no link, the image is the only place this chrome names the app,
+    and `alt` is exactly that. It also retires a comment that was wrong: the old
+    file claimed an `sr-only` element "would still reserve 12px beside it" under
+    a gap, but `sr-only` is `position: absolute`, so it is not a flex item and
+    takes no gap at all.
+  - **36 drawn, 44 tapped, and that one IS beyond the frame.** `after:inset-x-0
+    after:-inset-y-1`, on `BottomTabBar`'s argument rather than `AppHeader`'s:
+    this surface draws on phones. The 4px each way lands inside the pill's own
+    `py-2` so it cannot overhang, and extending only on the y-axis keeps a
+    button off its neighbour's taps.
+
 - **The standings table is one component drawing three surfaces, and both its
   order and its cells were rebuilt.** `StandingsGrid` is still the only `<table>`
   in the repo: the signed-in regular table, the preseason practice table
@@ -673,8 +768,9 @@ reading, but only the first kind is the lesson.
     gutters and vanishes behind the pill. Same floating-pill reading
     `BottomTabBar` takes at the other edge. The whole `bg-bg/[0.12]`-not-`bg-bg/12`
     paragraph went with the fill it described.
-  - **The pill is OPAQUE, and `BottomTabBar` is the same card at the other edge
-    — `PickStickyBar` is the one frosted surface left.** Figma puts
+  - **The pill is OPAQUE, and `BottomTabBar` and `LandingHeader` are the same
+    card at the other edge and on the front door — `PickStickyBar` is the one
+    frosted surface left.** Figma puts
     `backdrop-blur-[4px]` on a `bg-white` fill, where it cannot show through;
     the blur is dropped rather than shipped as dead CSS, and the border plus the
     shadow are what make it a card rather than glass. Deliberate, and confirmed
@@ -694,9 +790,13 @@ reading, but only the first kind is the lesson.
     name that is not a lie about which surface uses it.
   - **The wordmark is gone from the signed-in app entirely** — the variant is
     "Logged in - Minimal" and mobile has no header — so `APP_NAME` survives in
-    the chrome only as the mark's `aria-label`. `APP_SHORT_NAME` is NOT dead:
-    `LandingHeader` still reads it, which its docstring in `lib/app.ts` denied
-    even before this.
+    the chrome only as the mark's `aria-label`. `APP_SHORT_NAME` outlived this
+    by one redesign — `LandingHeader` still read it — and is **gone now**: the
+    signed-out header dropped its wordmark too, taking the acronym's only reader
+    with it, so the export and its docblock were deleted rather than left
+    behind. Both marks name the app themselves now: this one through its link's
+    `aria-label`, the signed-out one through the image's `alt`, because that
+    mark is not a link.
   - **The transparent bar would have swallowed clicks, and the fix belongs one
     level up from where it looks like it does.** The `<header>` spans the whole
     1000px shell while only its middle ~400px is drawn, so the band beside the
@@ -892,7 +992,11 @@ reading, but only the first kind is the lesson.
     `as const`.
 
 - **The app has navigation in two places, deliberately, and they are mutually
-  exclusive by width.** Below `lg` there is NO header at all —
+  exclusive by width.** (There is a THIRD surface wearing the same pill —
+  `LandingHeader` on `/` — but it is not navigation: two buttons that open
+  dialogs, no `Primary` landmark, and it can never coexist with either of
+  these because middleware redirects a signed-in visitor off `/`. Its own
+  entry is below.) Below `lg` there is NO header at all —
   `AppHeader` is `hidden … lg:block` — and `BottomTabBar` carries all three
   destinations (Picks / Standings / Account) in a bar pinned to the foot of the
   screen. The design was Figma `4033:121667` and is now `4033:121668`; `lg` is the breakpoint because it is

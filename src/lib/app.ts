@@ -11,27 +11,16 @@
  * follow-up: several are prose, not labels ("Last Man Standing is invite-only.
  * Ask a league admin…"), so the rename is a copy edit rather than a
  * substitution. Import this constant there rather than typing the string.
+ *
+ * Neither header spells it any more. Both are pills holding a mark and some
+ * buttons, so the name survives in the chrome only as an accessible one — the
+ * signed-in mark's `aria-label` (it is a link) and the signed-out mark's `alt`
+ * (it isn't). `APP_SHORT_NAME` lived here alongside it: the initials, for the
+ * signed-out header's wordmark, which was that constant's only reader. The
+ * signed-out redesign dropped the wordmark, so it was deleted rather than left
+ * behind — see `git log` if the acronym is ever wanted again.
  */
 export const APP_NAME = "Sheep with Glasses";
-
-/**
- * The same name, initialised, for the one place that has no room for it: the
- * signed-out landing header's identity block, which shares its row with the two
- * ways in.
- *
- * Derived rather than typed out, so renaming {@link APP_NAME} can't leave a
- * stale acronym behind in the chrome.
- *
- * Its only reader is `LandingHeader`. This used to say "only ever read by
- * `AppHeader`", which was wrong even then — both headers read it — and is now
- * backwards: the signed-in header's redesign drops the wordmark entirely, so the
- * app's name survives there only as the mark's `aria-label`, which wants the
- * full {@link APP_NAME}. Every other site — metadata, the manifest, the landing
- * page, the login explainer — wants the full name too.
- */
-export const APP_SHORT_NAME = APP_NAME.split(" ")
-  .map((word) => word[0]?.toUpperCase() ?? "")
-  .join("");
 
 /**
  * Where "Please venmo …" on the account page's buy-in card points, and the
