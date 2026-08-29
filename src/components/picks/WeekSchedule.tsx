@@ -214,18 +214,23 @@ function GameCard({
           there. Lock state is stated exactly once on this card, in the header;
           the rows below stayed positional, Home and Away, in every state.
 
-          Selected paints the WHOLE card `accent-faded`, and the picked row takes
-          `accent-faded` again on top of it. That nesting is the design and it is
-          load-bearing: 8% accent over 8% accent over white composites to ~15%, so
-          the picked row reads a step deeper than its neighbour while both stay
-          unmistakably part of one tinted card. Do not "simplify" it to a single
-          darker token — there is no second token, and `accent-faded` is an
-          8-digit hex whose alpha an `/opacity` modifier cannot reach. */}
+          Selected is a WHITE card behind an accent edge, and the tint is stated
+          exactly once, on the picked row inside it. The card used to carry the
+          faded accent too and the row doubled it — 8% over 8% over white, ~15%
+          — which the design has since dropped in favour of the single layer:
+          the edge is what says "this matchup holds your pick" and the one tinted
+          row says which half of it. So the selected branch keeps its own
+          `bg-white` rather than folding into the unselected one: a selected card
+          stays white even after kickoff, which is the state the frame draws
+          (a locked game, with scores, on white). Half the old warning survives
+          and still matters — there is no second, darker accent token to reach
+          for, and the faded one is an 8-digit hex whose alpha an `/opacity`
+          modifier cannot touch. */}
       <div
         className={cn(
           "flex flex-col rounded-control border p-1 transition-[background-color,border-color]",
           selectedHere
-            ? "border-accent bg-accent-faded"
+            ? "border-accent bg-white"
             : cn("border-shell-line", kicked ? "bg-[#F6F6F6]" : "bg-white"),
         )}
       >
@@ -353,8 +358,9 @@ function TeamOption({
         // than twice the contrast it was drawn at. `fill-raised` is 5 units, the
         // nearest real token, and retires a hardcoded hex with it.
         selectable ? "cursor-pointer hover:bg-fill-raised" : "cursor-not-allowed",
-        // Deliberately the same token the card already carries when selected —
-        // see the card's comment. Stacked, the two make the ~15% the design draws.
+        // The only accent fill on the card now: 8% over the card's white, rather
+        // than the second of two stacked layers it used to be. See the card's
+        // comment above for why that changed and what it is still carrying.
         selected && "bg-accent-faded",
       )}
     >

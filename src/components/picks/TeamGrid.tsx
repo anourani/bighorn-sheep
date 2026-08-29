@@ -21,8 +21,8 @@ import { REVEAL_CLIP } from "@/components/picks/card-reveal";
 import type { UsedPick } from "@/components/picks/WeekSchedule";
 
 /**
- * All 32 teams as a grid of cards — the alternative to the matchup list, and
- * the default. One tap picks; the matchup layout is one tap away in the filters.
+ * All 32 teams as a grid of cards — the alternative to the matchup list, which
+ * is the default. One tap picks; this layout is one tap away in the filters.
  *
  * The geometry is exact rather than approximate, and both ends come straight off
  * the mockups: six 154px cards with 8px gutters inside the 968px column

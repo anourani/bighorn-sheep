@@ -1185,10 +1185,14 @@ reading, but only the first kind is the lesson.
   *between* the strip and the module and a top-only margin would collapse the second
   seam while fixing the first.
 
-- **There are two ways to make a pick, and the grid is the default.** `TeamGrid`
-  draws all 32 teams as square cards, one tap to pick; `WeekSchedule` is the old
-  radio-group over the week's matchups and is unchanged. `PickFilters` switches
-  between them. Six things are load-bearing:
+- **There are two ways to make a pick, and the matchup list is the default.**
+  `TeamGrid` draws all 32 teams as square cards, one tap to pick; `WeekSchedule`
+  is the radio-group over the week's matchups. `PickFilters` switches between
+  them. The default was the grid until the matchup list took it over; the literal
+  lives in exactly one place (`MyPicksClient`'s `useStoredChoice` fallback), and
+  because that hook seeds its state with the fallback and reads storage in an
+  effect, the fallback IS the server paint. Anyone who has already chosen keeps
+  their stored answer. Six things are load-bearing:
   - **Both surfaces are handed the same derived values.** `MyPicksClient` already
     computed the week's `games`, the `usedByTeam` map with its two week-scoped
     exclusions, `byes`, `pickTeam` and `interactive`, and both layouts take those
