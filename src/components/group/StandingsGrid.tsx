@@ -1,14 +1,14 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { Panel } from "@/components/ui/Panel";
-import { Label } from "@/components/ui/Label";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LockIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import type { Game } from "@/lib/nfl/types";
 import type { GroupRules, Member } from "@/lib/league/types";
-import { viewCurrentPick } from "@/lib/league/view";
+import { cellFor, scrollLeftForWeek, type WeekCell } from "@/components/group/standings-grid";
 
 export interface RankedMember {
   member: Member;
@@ -42,11 +42,26 @@ function colKey(col: WeekColumn): string {
 }
 
 /**
+ * The sticky name column's width, and the pitch of one week column, in px.
+ *
+ * Shared by the layout and by the auto-scroll arithmetic, which has to know
+ * both to park the live week clear of the sticky edge. Two constants rather
+ * than two magic numbers in three places: the scroll lands a column-width off
+ * if either drifts, and nothing would throw.
+ */
+const NAME_COL_W = 146;
+const WEEK_COL_W = 50;
+
+/**
  * The season at a glance: one row per player, one column per week, each cell the
  * team they picked. Past weeks always show; the current week honors the per-game
  * privacy lock (a rival's pick is a padlock until that team's game kicks off).
- * Losses/pushes are washed so strikes read straight down a row; future weeks are
- * hollow slots. Replaces the old expand-per-row accordion.
+ * Losses stay washed red for the rest of the season so strikes read straight
+ * down a column; future weeks are hollow slots.
+ *
+ * All three standings surfaces render this one component — the signed-in
+ * regular table, the preseason practice table and the anonymous landing board —
+ * so anything changed here lands on all of them at once.
  */
 export function StandingsGrid({
   ranked,
@@ -83,6 +98,31 @@ export function StandingsGrid({
   const weeks: WeekColumn[] =
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
   const hiddenSet = new Set(hiddenPickUserIds);
+  // Guarded on !preview for the same reason the header chip is: the practice
+  // table's currentWeek is a preseason week number, and a previewed
+  // regular-season column of the same number is a different week entirely.
+  const liveIndex = weeks.findIndex((c) => !c.preview && c.week === currentWeek);
+
+  const scroller = useRef<HTMLDivElement | null>(null);
+  /*
+   * Open on the live week rather than on week 1.
+   *
+   * By week 10 the column anybody came to read is off the right edge on a
+   * phone, and the table's first paint is a stretch of settled weeks. Assigned
+   * directly rather than through `scrollTo({ behavior: "smooth" })`: this is
+   * where the table STARTS, not a movement, and animating it would drag the
+   * reader's eye across ten weeks of history on every load. That also means
+   * `prefers-reduced-motion` needs no case here — there is no motion to reduce.
+   *
+   * A layout effect is not wanted either. This runs after paint, so the browser
+   * has settled the auto table layout and `scrollWidth` is real; scrolling one
+   * frame later is invisible, while measuring one frame early is wrong.
+   */
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || liveIndex < 0) return;
+    el.scrollLeft = scrollLeftForWeek(liveIndex, NAME_COL_W, WEEK_COL_W);
+  }, [liveIndex]);
 
   return (
     <div className="space-y-2">
@@ -100,9 +140,9 @@ export function StandingsGrid({
 
           The side borders go with the inset, for the same reason the radius
           does: a border separates the card from the page, and at the screen edge
-          there is no page left to separate it from. The horizontal rules stay
-          and run the full width. Both halves of that key off `lg` too, so there
-          is no width where the table is inset but missing its sides.
+          there is no page left to separate it from. Both halves key off `lg`
+          too, so there is no width where the table is inset but missing its
+          sides.
 
           Do not "simplify" `border-x-0 … lg:border-x` into one class. It works
           by CSS source order, not by merging: `tailwind-merge` keeps `border`
@@ -115,63 +155,80 @@ export function StandingsGrid({
         tone="light"
         className="-mx-4 overflow-hidden rounded-none border-x-0 p-0 lg:mx-0 lg:rounded-card lg:border-x"
       >
-        <div className="overflow-x-auto scroll-none">
+        <div ref={scroller} className="overflow-x-auto scroll-none">
           {/* min-w-full so the table is never narrower than the panel; w-max so
               it still grows past it and scrolls once the columns need the room. */}
           <table className="w-max min-w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-line">
+              <tr className="border-b border-shell-line bg-white">
                 {/* Rank and name share one cell — see the note on the body cell. */}
-                <HeadCell className="left-0 min-w-[11rem] border-r border-line text-left">
-                  <span className="flex items-center gap-2">
+                <th
+                  scope="col"
+                  className="sticky left-0 z-20 w-[146px] min-w-[146px] border-r border-shell-line bg-white px-2 py-3.5 text-left"
+                >
+                  <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase text-ink-mute">
                     <span className="w-5 text-center">#</span>
                     <span>Name</span>
                   </span>
-                </HeadCell>
-                {weeks.map((col) => (
+                </th>
+                {weeks.map((col, i) => (
                   <th
                     key={colKey(col)}
                     scope="col"
-                    className={cn(
-                      "px-1 py-2.5 text-center text-[11px] font-semibold tabular-nums",
-                      // Guarded on !preview: the practice grid's currentWeek is a
-                      // preseason week number, which a previewed regular-season
-                      // column of the same number would otherwise light up too.
-                      !col.preview && col.week === currentWeek
-                        ? "text-brand-strong"
-                        : "text-ink-mute",
-                    )}
+                    className="w-[50px] min-w-[50px] p-0 text-center align-middle"
                   >
-                    {col.label}
+                    {/* The live week is an accent chip, every other week is bare
+                        type. The chip is a child rather than a background on the
+                        `th` so it can be inset from the column edges — a fill
+                        that reached them would butt against its neighbours and
+                        read as a merged band rather than one marked column.
+
+                        Guarded on !preview: the practice grid's currentWeek is a
+                        preseason week number, which a previewed regular-season
+                        column of the same number would otherwise light up too. */}
+                    {i === liveIndex ? (
+                      <span className="mx-auto flex h-8 w-[46px] items-center justify-center rounded bg-accent text-[12px] font-semibold uppercase tabular-nums text-white">
+                        {col.label}
+                      </span>
+                    ) : (
+                      <span className="flex h-8 items-center justify-center px-0.5 text-[12px] font-semibold uppercase tabular-nums text-ink-mute">
+                        {col.label}
+                      </span>
+                    )}
                   </th>
                 ))}
                 <Spacer head />
               </tr>
             </thead>
             <tbody>
-              {ranked.map(({ member, rank }) => {
+              {ranked.map(({ member, rank }, i) => {
                 const isYou = member.id === viewerId;
                 const eliminated = member.status === "eliminated";
-                // Same token the row uses, so the sticky cell and the cells
-                // scrolling past it are one flat colour. It has to be opaque
-                // either way — a translucent sticky fill lets scrolled week
-                // cells show through.
-                const stickyBg = isYou ? "bg-brand-wash" : "bg-white";
+                /*
+                 * Zebra stripes replace the row rules the table used to draw.
+                 * Keyed off the RENDERED index rather than the rank so the
+                 * alternation never breaks — they are the same number today,
+                 * and would stop being if a row were ever filtered out.
+                 *
+                 * The signed-in viewer's row takes the highlight INSTEAD of its
+                 * stripe rather than on top of it: one class from one ternary,
+                 * because every fill here lands in tailwind-merge's single
+                 * background-colour group and emitting two would silently drop
+                 * one by argument order — the trap `WeekStrip` records.
+                 *
+                 * All three are opaque, and that is not a preference. The first
+                 * cell of the row is sticky, so a translucent fill lets the week
+                 * cells scrolling underneath show straight through it.
+                 *
+                 * An eliminated row is NOT faded or tinted. Where it sits is the
+                 * statement — the dead block is frozen in elimination order, so
+                 * scrolling down it reads the season backwards — and the red
+                 * tile on the week they went out is what marks the loss.
+                 */
+                const rowBg = isYou ? "bg-ink-wash" : i % 2 === 0 ? "bg-fill-stripe" : "bg-white";
                 return (
-                  <tr
-                    key={member.id}
-                    className={cn(
-                      // The 44px pick cells already make the row 56px; the floor
-                      // states the intent so a future cell change can't quietly
-                      // drop below it.
-                      "h-[54px] border-b border-line/70 last:border-b-0",
-                      // Opaque, not `/50`. At 50% this composited to #FDF6F1 over
-                      // the white panel while the sticky cell stayed #FCEDE3, and
-                      // the mismatch read as a seam at the sticky edge.
-                      isYou && "bg-brand-wash",
-                    )}
-                  >
-                    {/* Rank + name + status — one sticky cell, deliberately.
+                  <tr key={member.id} className={cn("h-12", rowBg)}>
+                    {/* Rank + name — one sticky cell, deliberately.
                         Two sticky cells means hardcoding the second one's `left`
                         to the first one's rendered width, and that width is not
                         under our control: the trailing `Spacer` is `width: 100%`,
@@ -186,51 +243,47 @@ export function StandingsGrid({
                         comments too and would emit it as dead CSS.) */}
                     <td
                       className={cn(
-                        "sticky left-0 z-10 min-w-[11rem] border-r border-line px-2.5 py-2 align-middle",
-                        stickyBg,
-                        isYou && "border-l-2 border-brand-strong",
+                        "sticky left-0 z-10 w-[146px] min-w-[146px] border-r border-shell-line px-2 align-middle",
+                        rowBg,
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "w-5 shrink-0 text-center text-xs font-semibold tabular-nums",
-                            eliminated ? "text-ink-mute" : "text-ink-soft",
-                          )}
-                        >
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 shrink-0 text-center text-[12px] font-medium tabular-nums text-ink-soft">
                           {rank}
                         </span>
-                        <span
-                          className={cn(
-                            "truncate text-sm font-semibold",
-                            eliminated ? "text-ink-mute" : "text-ink",
-                          )}
-                        >
+                        <span className="truncate text-sm font-semibold text-ink">
                           {member.name}
                         </span>
-                        {/* Beside the name rather than on its own line below, and
-                            without the week it happened, which the row's own
-                            washed cells already show. The ink is darkened from
-                            `text-out`, which only reaches 3.5:1 on this wash;
-                            #8A2C2C clears AA at 6.9 and is the same pair used for
-                            pick errors. No Admin chip here — Who's In carries the
-                            commissioner label. */}
-                        {eliminated ? (
-                          <Label className="shrink-0 rounded bg-out-wash px-1 text-[#8A2C2C]">
-                            Out
-                          </Label>
-                        ) : null}
+                        {/* The "Out" chip is gone with the redesign — the frame
+                            has no room for one at this row height and the frozen
+                            position below the living says it instead. Position
+                            is not available to a screen reader, though, so the
+                            fact is stated here rather than left to sighted
+                            readers alone. */}
+                        {eliminated ? <span className="sr-only">Eliminated</span> : null}
                       </div>
                     </td>
 
                     {/* Weekly picks */}
                     {weeks.map((col) => (
-                      <td key={colKey(col)} className="px-1 py-1.5 text-center align-middle">
-                        <WeekCell
+                      <td
+                        key={colKey(col)}
+                        className="w-[50px] min-w-[50px] p-0 text-center align-middle"
+                      >
+                        <WeekCellView
                           cell={
                             col.preview
                               ? { kind: "empty" }
-                              : cellFor(member, viewerId, col.week, currentWeek, gameForTeam, rules, now, hiddenSet)
+                              : cellFor(
+                                  member,
+                                  viewerId,
+                                  col.week,
+                                  currentWeek,
+                                  gameForTeam,
+                                  rules,
+                                  now,
+                                  hiddenSet,
+                                )
                           }
                         />
                       </td>
@@ -252,70 +305,49 @@ export function StandingsGrid({
 /**
  * A final, empty column that soaks up whatever width the real columns leave.
  *
- * Row rules are drawn on the `<tr>`, so they run exactly as far as the last cell
- * — which is why the header's underline used to stop mid-panel whenever the
+ * Row fills are painted on the `<tr>`, so they run exactly as far as the last
+ * cell — which is why a row's stripe would otherwise stop mid-panel whenever the
  * columns didn't fill it, reading as a half-drawn table. `width: 100%` on an
  * auto-layout column claims all the slack, leaving every other column at its
- * natural size, so the rules reach the edge at any column count.
+ * natural size, so the fills reach the edge at any column count.
  */
 function Spacer({ head = false }: { head?: boolean }) {
   return head ? <th aria-hidden className="w-full" /> : <td aria-hidden className="w-full" />;
 }
 
-function HeadCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th
-      scope="col"
-      className={cn(
-        "sticky z-20 bg-white px-2.5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-mute",
-        className,
-      )}
-    >
-      {children}
-    </th>
-  );
-}
+// ── Cells ────────────────────────────────────────────────────────────────────
 
-// ── Cell model ───────────────────────────────────────────────────────────────
+/**
+ * The tile the logo, lock or hollow slot sits in — 48px square, centred in its
+ * 50px column so neighbouring tiles clear each other by 2px.
+ */
+const TILE = "mx-auto grid h-12 w-12 place-items-center";
 
-type WeekCell =
-  | { kind: "empty" }
-  | { kind: "hidden" }
-  | { kind: "team"; teamId: TeamId; result?: "win" | "loss" | "push"; live?: boolean };
+/**
+ * The tinted box behind a logo on a settled week: 42px inside the 48px tile, so
+ * the tint reads as a marked square with the logo sitting in it rather than as a
+ * full-bleed cell fill.
+ *
+ * All three fills come from ONE lookup for the reason the row fill does — two
+ * background classes on one element resolve by tailwind-merge's argument order,
+ * silently. The two result tokens are 6-digit hexes precisely so these opacity
+ * modifiers work on them.
+ */
+const RESULT_BOX: Record<"win" | "loss" | "push", string> = {
+  win: "bg-result-win-fill/40",
+  loss: "bg-result-loss-fill-deep/[0.22]",
+  // The design covers win and loss only. A push survives, and this blue is the
+  // treatment the table has always given one — kept rather than folded into the
+  // win green, because a tie is a different fact and only some leagues let it
+  // save you.
+  push: "bg-[#E7EEF6]",
+};
 
-/** Derive one member's cell for one week, honoring the current-week privacy lock. */
-function cellFor(
-  member: Member,
-  viewerId: string,
-  week: number,
-  currentWeek: number,
-  gameForTeam: (week: number, teamId: TeamId) => Game | undefined,
-  rules: GroupRules,
-  now: Date,
-  hiddenSet: Set<string>,
-): WeekCell {
-  if (week < currentWeek) {
-    const h = member.history.find((x) => x.week === week);
-    return h ? { kind: "team", teamId: h.teamId, result: h.result } : { kind: "empty" };
-  }
-  if (week === currentWeek) {
-    const pv = viewCurrentPick(member, viewerId, week, gameForTeam, rules, now);
-    // RLS hides a rival's un-kicked pick entirely (no row → no currentPick), so
-    // fall back to the team-less flag to still show the padlock.
-    if (!pv.hasPick) return hiddenSet.has(member.id) ? { kind: "hidden" } : { kind: "empty" };
-    if (!pv.revealed) return { kind: "hidden" };
-    const result =
-      pv.result === "win" || pv.result === "loss" || pv.result === "push" ? pv.result : undefined;
-    return { kind: "team", teamId: pv.teamId!, result, live: pv.status === "live" };
-  }
-  return { kind: "empty" };
-}
-
-function WeekCell({ cell }: { cell: WeekCell }) {
+function WeekCellView({ cell }: { cell: WeekCell }) {
   if (cell.kind === "empty") {
     return (
-      <span className="mx-auto grid h-11 w-11 place-items-center" aria-hidden>
-        <span className="h-3 w-3 rounded-full border border-line/80" />
+      <span className={TILE}>
+        <span className="h-3 w-3 rounded-full border border-shell-dark" aria-hidden />
         <span className="sr-only">No pick</span>
       </span>
     );
@@ -323,43 +355,45 @@ function WeekCell({ cell }: { cell: WeekCell }) {
 
   if (cell.kind === "hidden") {
     return (
-      <span
-        className="mx-auto grid h-11 w-11 place-items-center rounded-lg bg-[#EEF1F6] text-ink-mute"
-        title="Hidden until kickoff"
-      >
-        <LockIcon className="h-4 w-4" />
+      <span className={TILE} title="Hidden until kickoff">
+        <span className="grid h-8 w-8 place-items-center rounded bg-[#EEF1F6] text-ink-mute">
+          <LockIcon className="h-4 w-4" />
+        </span>
         <span className="sr-only">Pick hidden until kickoff</span>
       </span>
     );
   }
 
   const team = getTeam(cell.teamId);
-  const wash =
-    cell.result === "loss"
-      ? "bg-out-wash ring-1 ring-out/25"
-      : cell.result === "push"
-        ? "bg-[#E7EEF6] ring-1 ring-[#4C7CB0]/25"
-        : cell.live
-          ? "bg-live-wash ring-1 ring-live/30"
-          : "";
+  const box = cell.result ? RESULT_BOX[cell.result] : "";
   const resultLabel = cell.result ?? (cell.live ? "live" : "");
 
   return (
     <span
-      className={cn("relative mx-auto grid h-11 w-11 place-items-center rounded-lg", wash)}
-      title={team ? `${team.location} ${team.name}${resultLabel ? ` · ${resultLabel}` : ""}` : cell.teamId}
+      className={cn("relative", TILE)}
+      title={
+        team ? `${team.location} ${team.name}${resultLabel ? ` · ${resultLabel}` : ""}` : cell.teamId
+      }
     >
       {/* Sized by prop, not class — TeamLogo writes an inline width/height that
-          a Tailwind sizing utility would lose to. 36 in a 44px tile keeps the
-          4px gutter the loss/push/live wash needs to read as a tile.
+          a Tailwind sizing utility would lose to. 34 inside a 42px box inside a
+          48px tile is the frame's own nesting, and the gutter is what makes the
+          tint read as a tile rather than as a block of colour.
 
-          The tile being WIDER than the logo is what keeps this safe: preflight's
+          The box being WIDER than the logo is what keeps this safe: preflight's
           `img { max-width: 100% }` outranks that inline width, so a container
           narrower than the logo silently shrinks it. TeamLogo carries
-          `max-w-none` for exactly that reason — see the trap in CLAUDE.md. */}
-      <TeamLogo teamId={cell.teamId} size={36} />
+          `max-w-none` for exactly that reason — see the trap in CLAUDE.md.
+
+          No blend mode over the tint. One was tried on the week strip's chips
+          and erased every light-marked team's artwork — Saints gold, the Colts'
+          white horseshoe — which is a far worse failure than a logo reading a
+          shade bright on a wash. */}
+      <span className={cn("grid h-[42px] w-[42px] place-items-center rounded", box)}>
+        <TeamLogo teamId={cell.teamId} size={34} />
+      </span>
       {cell.live ? (
-        <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+        <span className="absolute right-0.5 top-0.5 flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-pulse-live rounded-full bg-live" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-live" />
         </span>
@@ -376,10 +410,17 @@ function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px] text-ink-mute">
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded bg-out-wash ring-1 ring-out/25" /> Loss
+        <span className={cn("h-3 w-3 rounded", RESULT_BOX.loss)} /> Loss
+      </span>
+      {/* New with the redesign. A win used to be painted as nothing at all, so
+          there was no swatch to explain; it is now tinted for the week being
+          played and goes plain once the week settles, which is what keeps a
+          long season from turning into a wall of green. */}
+      <span className="inline-flex items-center gap-1.5">
+        <span className={cn("h-3 w-3 rounded", RESULT_BOX.win)} /> Win
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded bg-[#E7EEF6] ring-1 ring-[#4C7CB0]/25" /> Push
+        <span className={cn("h-3 w-3 rounded", RESULT_BOX.push)} /> Push
       </span>
       <span className="inline-flex items-center gap-1.5">
         <LockIcon className="h-3.5 w-3.5" /> Hidden until kickoff

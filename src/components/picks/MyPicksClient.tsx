@@ -151,7 +151,13 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // LeagueData: it says nothing about the league, and a profile column would
   // have meant a migration applied to production by hand. The first paint uses
   // the defaults and swaps after hydration — see useStoredChoice.
-  const [layout, setLayout] = useStoredChoice(PICKS_LAYOUT_KEY, GRID_LAYOUTS, "grid");
+  //
+  // The matchup list is what a new reader meets, and this literal is the only
+  // place that is decided: `useStoredChoice` seeds its state with the fallback
+  // and reads storage in an effect, so the fallback IS the server paint. Anyone
+  // who has already chosen keeps their stored answer — this moves the default
+  // and nothing else.
+  const [layout, setLayout] = useStoredChoice(PICKS_LAYOUT_KEY, GRID_LAYOUTS, "matchups");
 
   const labelOpts = { maxPreWeek: practice?.maxPreWeek ?? 0 };
   const viewName = weekLabel(viewRef, labelOpts);

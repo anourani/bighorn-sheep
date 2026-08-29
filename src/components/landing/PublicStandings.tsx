@@ -16,14 +16,30 @@ import type { PublicLeagueData } from "@/lib/league/public";
  * functions, no `Date`), and the index is rebuilt here. Exactly what
  * `StandingsClient` does for /app.
  *
- * `viewerId=""` never matches a membership uuid, so no row gets the "you"
- * highlight or the left brand border — right for a stranger, who is nobody in
- * this league.
+ * `viewerId=""` never matches a membership uuid, so no row takes the viewer
+ * highlight and every row falls back to the plain zebra stripe — right for a
+ * stranger, who is nobody in this league.
  */
 export function PublicStandings({ data }: { data: PublicLeagueData }) {
   const now = useMemo(() => new Date(data.nowIso), [data.nowIso]);
   const idx = useMemo(() => buildGameIndex(data.games), [data.games]);
-  const ranked = useMemo(() => rankMembers(data.members), [data.members]);
+  /*
+   * Ranked with the same inputs the signed-in table uses. The snapshot narrows
+   * `games` to the current week, which is all `rankMembers` reads — it only
+   * ever asks the index for `currentWeek`, the same invariant `cellFor`'s
+   * three-branch split rests on.
+   */
+  const ranked = useMemo(
+    () =>
+      rankMembers(data.members, {
+        currentWeek: data.currentWeek,
+        gameForTeam: idx.gameForTeam,
+        rules: data.rules,
+        now,
+        hiddenPickUserIds: data.hiddenPickUserIds,
+      }),
+    [data.members, data.currentWeek, idx, data.rules, now, data.hiddenPickUserIds],
+  );
 
   return (
     <div className="space-y-2">

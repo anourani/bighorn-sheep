@@ -61,9 +61,10 @@ describe("the accent is a single source of truth", () => {
   });
 
   it("mixes the light ramp toward white without going translucent", () => {
-    // `StandingsGrid` paints its STICKY name column with `bg-brand-wash`, and a
-    // translucent value there lets the scrolling rows show through it. So these
-    // are build-time mixes, not `accent/NN` opacity modifiers.
+    // A wash can land behind a sticky cell — the standings table's rows begin
+    // with one — and a translucent fill there lets the cells scrolling under it
+    // show through. So these are build-time mixes, not `accent/NN` opacity
+    // modifiers. `ink.wash` is in the palette on the same footing.
     const ramp = ["accent.ink", "brand.DEFAULT", "brand.soft", "brand.wash", "live.wash"];
     for (const path of ramp) {
       const [family, key] = path.split(".") as [string, string];
