@@ -216,7 +216,21 @@ export default async function LandingPage() {
             <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
             {/* The design drops the "League" eyebrow that used to sit here: the
                 table follows the status report directly in both mock-ups. */}
-            <section className="px-4 pb-10 sm:pt-5">
+            {/* 200px, and it is measured from the PADLOCK NOTE rather than from
+                the table — `PublicStandings` renders that note and
+                `StandingsGrid` renders its own result legend, both as
+                `space-y-2` siblings *below* the Panel. So the table's bottom
+                border actually sits 248.5px off the foot of the document
+                (8 + 16.5 legend, 8 + 16 note, then this), and anyone measuring
+                to the table will not find this number. An arbitrary value
+                because the scale has no 200px step — 48 is 192 and 52 is 208 —
+                and the eyebrow above already spells its 60px the same way.
+
+                It is a floor, not a guarantee: the wrapper is `min-h-dvh` with
+                `main` on `flex-1`, so on a viewport taller than the page main
+                absorbs the slack and the real gap is larger. With a populated
+                table the page outgrows the viewport and this is what shows. */}
+            <section className="px-4 pb-[200px] sm:pt-5">
               <PublicStandings data={board} />
             </section>
           </div>
