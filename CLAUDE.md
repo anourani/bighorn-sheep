@@ -561,21 +561,41 @@ reading, but only the first kind is the lesson.
   (`StandingsClient`) and the anonymous landing board (`PublicStandings`) all
   render it, so anything changed there lands on all three at once. Figma: sample
   `3971:95276`, row `3956:89448`, header `3986:112647`, live-week header
-  `3971:90737`, tile atoms `3956:88721`. Eleven things:
+  `3971:90737`, tile atoms `3956:88721`. Thirteen things:
   - **`rankMembers` takes a `RankContext` now, and rank is a fact about the
-    LEAGUE rather than about the viewer.** The living are bucketed by how their
-    current week is going — won, live, picked, no pick, lost — then by strikes,
-    name, id. `pickBucket` derives that through `viewCurrentPick` with an
-    **empty viewer id**, so nobody's own pick counts as revealed early. Pass a
-    real one and your row would sort on information no other row was sorted on,
-    and two players looking at the same table would see different orders. It is
-    the one place in the app that deliberately declines the viewer's own
-    privilege.
+    LEAGUE rather than about the viewer.** The living sort on four keys in this
+    order: bucket, then team bundle, then strikes, then name/id. The buckets are
+    how their current week is going — won, live, picked, no pick, lost.
+    `pickSignals` derives all of it through `viewCurrentPick` with an **empty
+    viewer id**, so nobody's own pick counts as revealed early. Pass a real one
+    and your row would sort on information no other row was sorted on, and two
+    players looking at the same table would see different orders. It is the one
+    place in the app that deliberately declines the viewer's own privilege.
+  - **Inside a bucket, everyone on the same REVEALED team is bundled, biggest
+    bundle first.** Five Raiders backers, then four Rams, then two Saints — so
+    the week reads as the league's consensus rather than as an alphabetical
+    list. Four things about it:
+    - **It outranks strikes.** A bundle broken up by strike count is not a
+      bundle. Strikes still order members *within* one.
+    - **It keys on `revealed`, never `hasPick`.** An un-kicked pick is real but
+      secret, and clustering on it would leak the team through the row order —
+      neighbours would be neighbours BECAUSE they share a pick, which is the
+      fact the padlock exists to hide. A hidden pick carries no bundle and sits
+      after every bundle in its bucket.
+    - **Equal-size bundles order by TEAM ID, not by their members.** A member
+      key would let one player joining or leaving reshuffle bundles that did not
+      change. This is why the tie-rule test expects `gb` before `kc`.
+    - **Counted over the living only, and never across buckets.** The dead are
+      not in a bundle, so their picks cannot inflate one; and a big bundle in a
+      later bucket never outranks a small one ahead of it, because bucket is
+      still the first key. (A team's game has one status, so everyone backing it
+      lands in one bucket anyway — a league-wide count and a per-bucket count
+      agree, and counting once is simpler.)
   - **A hidden pick sorts as `picked`, and that needs `hiddenPickUserIds`.**
     Under RLS a rival's un-kicked pick reaches the client as nothing but the
     team-less flag, so without reading it someone who HAS picked buckets as
     someone who has not. Nothing leaks which team — "has selected a team" is
-    exactly what the bucket means.
+    exactly what the bucket means, and the bundle key is null for them.
   - **The eliminated block is frozen, and that is the feature.** Dead members
     stay below every living one, ordered by `eliminatedWeek` descending. The
     living block only shrinks, each new casualty stacks onto the TOP of the dead
@@ -585,14 +605,19 @@ reading, but only the first kind is the lesson.
     load-bearing rather than incidental. It also makes "losers last" and the
     freeze agree rather than compete: a member eliminated THIS week carries the
     highest possible elimination week, so they land directly under the living.
-  - **`PICK_BUCKET` and `pickBucket` live in `lib/league/view.ts`, not beside the
-    grid's other pure helpers.** They read the same week through the same
+    **The dead take no bundle key**, deliberately — their order is a positional
+    guarantee, and any secondary key would break it the week a team's backers
+    shifted.
+  - **`PICK_BUCKET` and `pickSignals` live in `lib/league/view.ts`, not beside
+    the grid's other pure helpers.** They read the same week through the same
     `viewCurrentPick` and look like they belong in `standings-grid.ts` — but that
     module imports `view.ts`, so the reverse import is a real cycle. `lib/` never
     depends on `components/`; `RankedMemberView` exists for the same reason.
-  - **Buckets are derived once per member into a Map, not inside the
+  - **Signals are derived once per member into a Map, not inside the
     comparator.** A comparator body runs O(n log n) times and `viewCurrentPick`
-    walks the game index on every call.
+    walks the game index on every call. `pickSignals` returns the bucket and the
+    revealed team TOGETHER for the same reason — they come off one `PickView`,
+    and deriving them separately would walk that index twice per member.
   - **A LOSS stays tinted for the rest of the season; a WIN is tinted only in the
     week being played.** That asymmetry is `cellFor`'s and it is what makes the
     frozen table readable: a red tile is the week somebody took a strike, while

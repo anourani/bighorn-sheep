@@ -196,6 +196,10 @@ describe("rankMembers", () => {
     { ...game(LATER, "dal", "phi"), status: "scheduled" },
     // Final, tied.
     { ...game(KICKED, "gb", "chi"), status: "final", homeScore: 20, awayScore: 20 },
+    // Two more finals, so several distinct teams can share the `won` bucket and
+    // be clustered against each other.
+    { ...game(KICKED, "lv", "den"), status: "final", homeScore: 30, awayScore: 10 },
+    { ...game(KICKED, "lar", "ari"), status: "final", homeScore: 21, awayScore: 14 },
   ];
 
   const gameForTeam = (week: number, teamId: TeamId): Game | undefined => {
@@ -236,7 +240,7 @@ describe("rankMembers", () => {
   });
 
   it("ranks everyone off the same reveal, so two viewers see one order", () => {
-    // `pickBucket` passes an empty viewer id, so nobody's own pick counts as
+    // `pickSignals` passes an empty viewer id, so nobody's own pick counts as
     // revealed early. A scheduled pick is `picked` whoever is looking.
     const ms = [picked("a", "dal"), picked("b", "kc")];
     expect(ids(ms)).toEqual(["b", "a"]);
@@ -244,8 +248,11 @@ describe("rankMembers", () => {
 
   it("puts a surviving tie with the winners and a fatal tie with the losers", () => {
     const tie = [picked("tied", "gb"), picked("clean", "kc"), picked("beaten", "buf")];
-    // tieRule "push": the tie survived, so it ranks as a win does.
-    expect(ids(tie)).toEqual(["clean", "tied", "beaten"]);
+    // tieRule "push": the tie survived, so it ranks as a win does — both are in
+    // `won`, and as two one-member bundles they order on team id ("gb" before
+    // "kc") rather than on name. The claim here is which side of the table each
+    // lands on, and the loser is still last.
+    expect(ids(tie)).toEqual(["tied", "clean", "beaten"]);
     // tieRule "loss": the same game now drops that member to the bottom.
     const asLoss = rankMembers(tie, {
       currentWeek: WEEK,
@@ -254,6 +261,134 @@ describe("rankMembers", () => {
       now: NOW,
     }).map((r) => r.member.id);
     expect(asLoss).toEqual(["clean", "beaten", "tied"]);
+  });
+
+  it("bundles everyone on the same revealed team, biggest bundle first", () => {
+    // Five on the Raiders, four on the Rams, two on the Chiefs — all three
+    // games final wins, so all eleven sit in `won` and only the bundle sizes
+    // separate them. Fed interleaved.
+    const ms = [
+      ...["a", "b"].map((n) => picked(`kc-${n}`, "kc")),
+      ...["a", "b", "c", "d", "e"].map((n) => picked(`lv-${n}`, "lv")),
+      ...["a", "b", "c", "d"].map((n) => picked(`lar-${n}`, "lar")),
+    ];
+    const out = ids(ms).map((id) => id.split("-")[0]);
+    expect(out).toEqual([
+      ...Array(5).fill("lv"),
+      ...Array(4).fill("lar"),
+      ...Array(2).fill("kc"),
+    ]);
+  });
+
+  it("keeps a bundle together across strike counts", () => {
+    // The clustering outranks strikes on purpose: a bundle broken up by strike
+    // count is not a bundle. The lone Chiefs backer has no strikes and still
+    // sits below the two-strike Raiders pair.
+    expect(
+      ids([
+        picked("kc-clean", "kc"),
+        picked("lv-two", "lv", { strikes: 2 }),
+        picked("lv-one", "lv", { strikes: 1 }),
+      ]),
+      // Within the Raiders bundle, strikes order them as before.
+    ).toEqual(["lv-one", "lv-two", "kc-clean"]);
+  });
+
+  it("never clusters across buckets", () => {
+    // A big bundle in a later bucket does not outrank a small one ahead of it:
+    // the Rams (4, but their game is still in progress) stay under the lone
+    // Chiefs backer, whose game is won.
+    const out = ids([
+      ...["a", "b", "c", "d"].map((n) => picked(`sf-${n}`, "sf")),
+      picked("kc-solo", "kc"),
+    ]);
+    expect(out[0]).toBe("kc-solo");
+    expect(out.slice(1).every((id) => id.startsWith("sf-"))).toBe(true);
+  });
+
+  it("does not cluster on a team nobody may see yet", () => {
+    // An un-kicked pick is real but secret. Bundling on it would leak the team
+    // through the row order — neighbours would be neighbours BECAUSE they share
+    // a pick, which is the fact the padlock is hiding. So these three sort on
+    // name, not into a bundle ahead of the solo pick.
+    const out = ids([
+      picked("z-dal", "dal", { name: "Zoe Z." }),
+      picked("a-phi", "phi", { name: "Ada A." }),
+      picked("m-dal", "dal", { name: "Mia M." }),
+    ]);
+    expect(out).toEqual(["a-phi", "m-dal", "z-dal"]);
+  });
+
+  it("puts hidden picks after every bundle in their bucket", () => {
+    // Both are `picked` — one revealed (kicked off, still no result), one not.
+    // The revealed one has a bundle to join; the hidden one has nothing to be
+    // bundled by, so it sits after rather than scattered among them.
+    const revealedButUnresolved = picked("open", "phi", { name: "Zoe Z." });
+    const hidden = picked("hidden", "dal", { name: "Ada A." });
+    const withKickedPhi = (week: number, teamId: TeamId): Game | undefined => {
+      if (week !== WEEK) return undefined;
+      // The Eagles game has started but produced no result yet.
+      if (teamId === "phi" || teamId === "dal") {
+        return teamId === "phi"
+          ? { ...game(KICKED, "dal", "phi"), status: "in_progress" }
+          : { ...game(LATER, "dal", "phi"), status: "scheduled" };
+      }
+      return gameForTeam(week, teamId);
+    };
+    const out = rankMembers([hidden, revealedButUnresolved], {
+      currentWeek: WEEK,
+      gameForTeam: withKickedPhi,
+      rules: RULES,
+      now: NOW,
+    }).map((r) => r.member.id);
+    // "open" is live, "hidden" is picked — bucket decides first here, and the
+    // revealed one leads on its own merit.
+    expect(out).toEqual(["open", "hidden"]);
+  });
+
+  it("orders two equal bundles by team id, not by their members", () => {
+    // Deterministic and independent of who is in them, so one player joining or
+    // leaving cannot reshuffle bundles that did not change.
+    const ms = [
+      picked("lv-a", "lv", { name: "Zoe Z." }),
+      picked("kc-a", "kc", { name: "Ada A." }),
+      picked("lv-b", "lv", { name: "Bea B." }),
+      picked("kc-b", "kc", { name: "Cal C." }),
+    ];
+    expect(ids(ms).map((id) => id.split("-")[0])).toEqual(["kc", "kc", "lv", "lv"]);
+    // Swapping the names inside the bundles does not move the bundles.
+    const renamed = [
+      picked("lv-a", "lv", { name: "Ada A." }),
+      picked("kc-a", "kc", { name: "Zoe Z." }),
+      picked("lv-b", "lv", { name: "Bea B." }),
+      picked("kc-b", "kc", { name: "Cal C." }),
+    ];
+    expect(ids(renamed).map((id) => id.split("-")[0])).toEqual(["kc", "kc", "lv", "lv"]);
+  });
+
+  it("counts bundles over the living only", () => {
+    // Three eliminated Chiefs backers do not inflate that bundle past the two
+    // living Raiders backers — the dead are not in it.
+    const out = ids([
+      ...["a", "b"].map((n) => picked(`lv-${n}`, "lv")),
+      picked("kc-live", "kc"),
+      ...["x", "y", "z"].map((n) =>
+        picked(`kc-dead-${n}`, "kc", { status: "eliminated", eliminatedWeek: 4 }),
+      ),
+    ]);
+    expect(out.slice(0, 3)).toEqual(["lv-a", "lv-b", "kc-live"]);
+  });
+
+  it("leaves the frozen dead block unclustered", () => {
+    // Their order is a positional guarantee — a row that never moves again — so
+    // elimination week wins outright and a shared team changes nothing.
+    expect(
+      ids([
+        picked("out-w2", "lv", { status: "eliminated", eliminatedWeek: 2 }),
+        picked("out-w9", "kc", { status: "eliminated", eliminatedWeek: 9 }),
+        picked("out-w5", "lv", { status: "eliminated", eliminatedWeek: 5 }),
+      ]),
+    ).toEqual(["out-w9", "out-w5", "out-w2"]);
   });
 
   it("breaks a bucket tie on strikes, then name, then id", () => {
