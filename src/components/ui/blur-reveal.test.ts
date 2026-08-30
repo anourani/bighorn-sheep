@@ -124,7 +124,7 @@ describe("settleMs", () => {
 
 describe("blockStarts", () => {
   // The home page, exactly: a five-word title after a 1s hold, then the
-  // description, then the status report and standings table as ONE block.
+  // description, then the headcount and standings table as ONE block.
   it("sequences the home page's three blocks", () => {
     expect(blockStarts([5, 1, 1], 1000)).toEqual([1000, 2280, 3480]);
   });

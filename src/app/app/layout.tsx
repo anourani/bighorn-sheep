@@ -55,7 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           64 and then pads the page wrapper by another 64, so the foot of the
           page is deliberately twice its head.
 
-          `px-4` is a separate contract and must not move with these: StatusReport,
+          `px-4` is a separate contract and must not move with these: Headcount,
           StandingsGrid, WeekStrip and TeamGrid all full-bleed by cancelling it
           with `-mx-4`. Nothing cancels the vertical padding — there is no `-mt-*`
           anywhere in src/ — so the two can be reasoned about apart.

@@ -6,7 +6,7 @@ import {
   orderPickerTeams,
   rankMembers,
   statusLabel,
-  statusLine,
+  headcountLine,
   survivorCounts,
   teamScoreline,
   type TeamAvailability,
@@ -491,40 +491,77 @@ describe("rankMembers", () => {
   });
 });
 
-describe("statusLine", () => {
-  it("reads the week and the tally in season", () => {
-    expect(statusLine({ kind: "season", week: 6, alive: 29, eliminated: 15 })).toEqual({
+describe("headcountLine", () => {
+  it("reads the week, the tally and the share out in season", () => {
+    expect(headcountLine({ kind: "season", week: 6, alive: 29, eliminated: 15 })).toEqual({
       lead: "Week 6",
       leadShort: "W6",
-      primary: "29 survivors.",
-      secondary: "15 deaths.",
+      primary: "29 still standing",
+      percent: "34%",
+      percentLabel: "34% eliminated",
     });
   });
 
-  it("counts down to kickoff in pre-season", () => {
-    expect(statusLine({ kind: "preseason", joined: 12, startsIn: "3d 4h" })).toEqual({
+  it("counts the joiners and prints no percentage in pre-season", () => {
+    expect(headcountLine({ kind: "preseason", joined: 12, startsIn: "3d 4h" })).toEqual({
       lead: "Pre-season",
       // No shorter form to give: "Pre-season" already names the whole stretch,
       // so the phone renders the same string the desktop does.
       leadShort: "Pre-season",
-      primary: "Starts in 3d 4h.",
-      secondary: "12 joined.",
+      primary: "12 joined",
+      // Nobody can be out yet, so the only number this could carry is 0%.
+      percent: null,
+      percentLabel: null,
     });
   });
 
-  it("abbreviates the week for the phone label", () => {
+  // The abbreviation is no longer a phone-only form — the desktop frame draws it
+  // too — so `lead` is now only ever spoken.
+  it("abbreviates the week", () => {
     for (const week of [1, 6, 18]) {
-      expect(statusLine({ kind: "season", week, alive: 1, eliminated: 0 })).toMatchObject({
+      expect(headcountLine({ kind: "season", week, alive: 1, eliminated: 0 })).toMatchObject({
         lead: `Week ${week}`,
         leadShort: `W${week}`,
       });
     }
   });
 
-  it("singularises both nouns at one", () => {
-    expect(statusLine({ kind: "season", week: 1, alive: 1, eliminated: 1 })).toMatchObject({
-      primary: "1 survivor.",
-      secondary: "1 death.",
+  it("rounds the eliminated share to a whole percent", () => {
+    const share = (alive: number, eliminated: number) =>
+      headcountLine({ kind: "season", week: 6, alive, eliminated }).percent;
+    // The design's own figures: 29 of 63 still standing is 34 out, i.e. 53.97%.
+    expect(share(29, 34)).toBe("54%");
+    expect(share(2, 1)).toBe("33%");
+    expect(share(1, 2)).toBe("67%");
+  });
+
+  // The drawn number is hidden from the accessibility tree and this is spoken
+  // instead, so the two must not be able to drift apart.
+  it("gives the percentage the noun a bare number lacks", () => {
+    const line = headcountLine({ kind: "season", week: 6, alive: 29, eliminated: 34 });
+    expect(line.percentLabel).toBe(`${line.percent} eliminated`);
+  });
+
+  it("drops the trailing periods the old copy carried", () => {
+    const season = headcountLine({ kind: "season", week: 6, alive: 29, eliminated: 15 });
+    const pre = headcountLine({ kind: "preseason", joined: 12, startsIn: "3d 4h" });
+    for (const line of [season, pre]) {
+      for (const value of Object.values(line)) {
+        if (typeof value === "string") expect(value.endsWith(".")).toBe(false);
+      }
+    }
+  });
+
+  it("neither inflects nor divides by zero", () => {
+    // "still standing" has no plural, so nothing counts nouns here any more —
+    // and an empty league is 0/0, which would otherwise print as "NaN%".
+    expect(headcountLine({ kind: "season", week: 1, alive: 1, eliminated: 1 })).toMatchObject({
+      primary: "1 still standing",
+      percent: "50%",
+    });
+    expect(headcountLine({ kind: "season", week: 1, alive: 0, eliminated: 0 })).toMatchObject({
+      primary: "0 still standing",
+      percent: "0%",
     });
   });
 
@@ -532,20 +569,20 @@ describe("statusLine", () => {
   // what the old header's `{joined === 1 ? "joined" : "joined"}` was groping at.
   it("never inflects 'joined'", () => {
     for (const joined of [0, 1, 2, 40]) {
-      expect(statusLine({ kind: "preseason", joined, startsIn: "1h 0m" }).secondary).toBe(
-        `${joined} joined.`,
+      expect(headcountLine({ kind: "preseason", joined, startsIn: "1h 0m" }).primary).toBe(
+        `${joined} joined`,
       );
     }
   });
 
   it("handles a wiped-out league and an untouched one", () => {
-    expect(statusLine({ kind: "season", week: 18, alive: 0, eliminated: 44 })).toMatchObject({
-      primary: "0 survivors.",
-      secondary: "44 deaths.",
+    expect(headcountLine({ kind: "season", week: 18, alive: 0, eliminated: 44 })).toMatchObject({
+      primary: "0 still standing",
+      percent: "100%",
     });
-    expect(statusLine({ kind: "season", week: 1, alive: 44, eliminated: 0 })).toMatchObject({
-      primary: "44 survivors.",
-      secondary: "0 deaths.",
+    expect(headcountLine({ kind: "season", week: 1, alive: 44, eliminated: 0 })).toMatchObject({
+      primary: "44 still standing",
+      percent: "0%",
     });
   });
 });

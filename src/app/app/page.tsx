@@ -9,7 +9,7 @@ import { normalizeInviteCode } from "@/lib/league/join";
  * them) and hands the serialized data to the client screen. A player in no
  * league yet gets the join-by-code prompt — there is no create-a-league path.
  *
- * No `StatusReport` here, unlike Standings. This screen opens on the week
+ * No `Headcount` here, unlike Standings. This screen opens on the week
  * strip: the week you are picking for is the one fact the page is about, and a
  * band restating it above the fold only pushed the pick itself down. The
  * countdown and the joined/survivor tally still live one tab away.

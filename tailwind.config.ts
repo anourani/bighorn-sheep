@@ -3,7 +3,7 @@ import type { Config } from "tailwindcss";
 /**
  * THE BRAND ACCENT, and the whole ramp below is derived from it.
  *
- * Change `ACCENT` and the status report's survivor bars, the week strip's
+ * Change `ACCENT` and the headcount grid's living cubes, the week strip's
  * selected chip, the picked team card, every focus ring, the primary button's
  * sheen, the `live` status hue, the text selection colour and the PWA theme
  * colour all move together. That is the entire point of it: "the accent" used
@@ -215,14 +215,14 @@ const config: Config = {
         shell: {
           ink: "#1E1E1E", // app name, league name, "Week 6", chevron
           mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
-          soft: "#6A6A6A", // unused since "15 deaths." moved to `mute` in the mock-up
+          soft: "#6A6A6A", // unused since the headcount tally lost its muted half
           faint: "#858585", // the spec's tertiary text — an unselected filter option
           // unused since the Sort filter was removed — it was the only inert
           // control in the app, greyed on the matchup layout. Kept, like `soft`.
           disabled: "#BABABA",
-          line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
+          line: "#D9D9D9", // hairlines, eliminated cubes, the app-mark placeholder
           dark: "#A5ACAF", // the spec's "border-dark" — the picks hero's inert strips
-          // `alive` (#FC855C) lived here — the survivor strip's living cells,
+          // `alive` (#FC855C) lived here — the headcount grid's living cubes,
           // a fourth orange that was neither `brand` nor the green `alive`
           // hue. It is `accent` now, which is what it always meant.
         },

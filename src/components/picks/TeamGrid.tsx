@@ -28,7 +28,7 @@ import type { UsedPick } from "@/components/picks/WeekSchedule";
  * the mockups: six 154px cards with 8px gutters inside the 968px column
  * (`max-w-shell` minus the shell's `px-4`), and three cards edge-to-edge on a
  * 393px phone with 4px of everything. `-mx-4` cancelling the host's inset is the
- * same full-bleed idiom `StandingsGrid` and `StatusReport` use, and it assumes,
+ * same full-bleed idiom `StandingsGrid` and `Headcount` use, and it assumes,
  * as they do, that the host supplies exactly 16px.
  *
  * Column count steps more than once on the way between them: three across is a

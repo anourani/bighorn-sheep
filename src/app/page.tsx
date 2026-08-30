@@ -2,7 +2,7 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
 import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
-import { StatusReport } from "@/components/app/StatusReport";
+import { Headcount } from "@/components/app/Headcount";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
 import { cn } from "@/lib/cn";
@@ -66,7 +66,7 @@ export default async function LandingPage() {
 
      The title is the only block that cascades internally; the other two are
      one piece each, so each resolves as a whole. Three blocks, not four: the
-     status report and the standings table animate together. When no league is
+     headcount and the standings table animate together. When no league is
      published `board` is null and the third never renders — its start is
      computed anyway, and costs nothing.
 
@@ -87,7 +87,7 @@ export default async function LandingPage() {
       <LandingHeader />
 
       {/* `overflow-x: clip` guards the reveal, not the layout. `blur-in` starts
-          on `transform: scale(1.04)`, and below `lg` both the status strip and
+          on `transform: scale(1.04)`, and below `lg` both the headcount grid and
           the standings Panel already reach the viewport edges by cancelling
           their host's `px-4` with `-mx-4` — so their block scales past the
           viewport and the page grows a horizontal scrollbar for the length of
@@ -180,7 +180,7 @@ export default async function LandingPage() {
               section is `flex justify-end`, i.e. full width, and `scale(1.04)`
               about a full-width box's centre would swing right-aligned copy
               sideways as it settles; about a 339px box it barely moves. Same
-              reason the status report and the standings below carry it on the
+              reason the headcount and the standings below carry it on the
               element that holds their content rather than on a wrapper. */}
           <div
             className={cn(
@@ -194,28 +194,28 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          /* The status report and the table are ONE block of the sequence, not
+          /* The headcount and the table are ONE block of the sequence, not
              two. They are one thought — the week's tally and the board that
-             tally is read off — and revealing them apart made the strip look
+             tally is read off — and revealing them apart made the grid look
              like it belonged to the description above it. It also cost 1.2s: as
              separate blocks the page did not finish until 5.93s.
 
              Hence a wrapper rather than the fragment that was here. It also
-             does the job the status report cannot do for itself: `StatusReport`
-             is shared with the signed-in standings page and takes only `status`
-             and `className`, and widening a shared component's props for one
+             does the job the headcount section cannot do for itself: `Headcount`
+             is shared with the signed-in standings page and takes only
+             `headcount` and `className`, and widening a shared component's props for one
              host's animation is the wrong trade when a block box does the same
              job. The wrapper must stay full-width and padding-free — both
              children bleed with `-mx-4` against the `px-4` on their own
              sections, and a wrapper that inset or shrank either one would
              break that. */
           <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
-            {/* Still `px-4` at every width. The strip inside goes edge to edge
+            {/* Still `px-4` at every width. The grid inside goes edge to edge
                 below `lg` on its own, by cancelling this inset — the label above
                 it stays put, which is the whole point of the mobile variant. */}
-            <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
+            <Headcount headcount={board.headcount} className="px-4 pb-2 sm:py-3" />
             {/* The design drops the "League" eyebrow that used to sit here: the
-                table follows the status report directly in both mock-ups. */}
+                table follows the headcount directly in both mock-ups. */}
             {/* 200px, and it is measured from the PADLOCK NOTE rather than from
                 the table — `PublicStandings` renders that note and
                 `StandingsGrid` renders its own result legend, both as

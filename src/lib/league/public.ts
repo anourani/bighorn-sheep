@@ -4,7 +4,7 @@ import { evaluateTeamPick } from "../game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "../game/season";
 import { countdown } from "../time";
 import { buildGameIndex } from "./games";
-import { survivorCounts, type StatusLineInput } from "./view";
+import { survivorCounts, type HeadcountInput } from "./view";
 import type { GroupRules, HistoryPick, Member } from "./types";
 
 /**
@@ -33,8 +33,8 @@ export interface PublicLeagueData {
   finalWeek: number;
   phase: SeasonPhase;
   hiddenPickUserIds: string[];
-  /** Precomputed so the label row and the strip read one object. */
-  status: StatusLineInput;
+  /** Precomputed so the label row and the cube grid read one object. */
+  headcount: HeadcountInput;
 }
 
 interface RawPick {
@@ -169,8 +169,8 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
     .filter((h) => h.week === currentWeek)
     .map((h) => String(h.member_id));
 
-  // 7. The status line. Preseason is the state this ships in.
-  const status: StatusLineInput =
+  // 7. The headcount line. Preseason is the state this ships in.
+  const headcount: HeadcountInput =
     phase === "preseason"
       ? {
           kind: "preseason",
@@ -191,6 +191,6 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
     finalWeek: FINAL_WEEK,
     phase,
     hiddenPickUserIds,
-    status,
+    headcount,
   };
 }

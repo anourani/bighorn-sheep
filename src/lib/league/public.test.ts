@@ -160,11 +160,11 @@ describe("mapPublicSnapshot", () => {
       new Date(NOW),
     );
     expect(out?.phase).toBe("preseason");
-    expect(out?.status.kind).toBe("preseason");
-    if (out?.status.kind === "preseason") expect(out.status.joined).toBe(2);
+    expect(out?.headcount.kind).toBe("preseason");
+    if (out?.headcount.kind === "preseason") expect(out.headcount.joined).toBe(2);
   });
 
-  it("counts survivors and deaths in season status", () => {
+  it("counts the living and the dead in the season headcount", () => {
     const out = mapPublicSnapshot(
       snapshot({
         members: [
@@ -174,7 +174,7 @@ describe("mapPublicSnapshot", () => {
       }),
       new Date(NOW),
     );
-    expect(out?.status).toEqual({ kind: "season", week: 6, alive: 1, eliminated: 1, total: 2 });
+    expect(out?.headcount).toEqual({ kind: "season", week: 6, alive: 1, eliminated: 1, total: 2 });
   });
 
   it("never carries name parts, avatar, phone or buy-in through", () => {

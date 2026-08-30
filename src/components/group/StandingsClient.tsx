@@ -7,9 +7,9 @@ import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/
 import { LeagueDetails } from "@/components/group/LeagueDetails";
 import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta } from "@/components/group/InviteCta";
-import { StatusReport } from "@/components/app/StatusReport";
+import { Headcount } from "@/components/app/Headcount";
 import { buildGameIndex } from "@/lib/league/games";
-import { rankMembers, survivorCounts, type StatusLineInput } from "@/lib/league/view";
+import { rankMembers, survivorCounts, type HeadcountInput } from "@/lib/league/view";
 import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
 import { countdown } from "@/lib/time";
 import type { LeagueData } from "@/lib/league/load";
@@ -60,14 +60,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   );
 
   /**
-   * What the status report reads, in the one shape `statusLine()` takes. The
+   * What the headcount reads, in the one shape `headcountLine()` takes. The
    * week is `currentWeek`, so the "Week 6" in that heading follows the season
    * without anyone editing it.
    *
    * `now` is the server's `nowIso`, so the pre-season countdown is stamped at
    * render and deliberately does not tick — see the note at load.ts:335-337.
    */
-  const status = useMemo<StatusLineInput>(() => {
+  const headcount = useMemo<HeadcountInput>(() => {
     if (isPreseason) {
       return {
         kind: "preseason",
@@ -158,14 +158,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
        null when closed, so neither ever occupied an :nth-child slot on load. */
     <>
       {/* No `space-y-*` here any more. The blocks below carry a rhythm a single
-          uniform gap can't express — tiles → 64px → status report, then
+          uniform gap can't express — tiles → 64px → headcount, then
           16/48px to the table and 56/48 to the invite module under it — and
           `space-y-6`'s `> * + *` selector outranks a child's own `mt-*` on
           specificity, so it can't be overridden per child either. `stagger`
           stays: it keys the entrance animation off direct children, and the
           count below is unchanged.
 
-          The desktop 48 reads as 60 on screen because StatusReport carries its
+          The desktop 48 reads as 60 on screen because Headcount carries its
           own `lg:py-3`; the mockup measures the box, so the margin is 48. Note
           the seam below the table measures a true 48 — nothing pads it — so the
           two are equal as authored rather than as rendered. */}
@@ -186,8 +186,8 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             heading went sr-only; the number is unchanged.)
 
             Only the vertical is ours. The shell's `main` supplies the horizontal
-            inset that the survivor strip inside cancels with `-mx-4`. */}
-        <StatusReport status={status} className="mt-16 lg:mt-2 lg:py-3" />
+            inset that the cube grid inside cancels with `-mx-4`. */}
+        <Headcount headcount={headcount} className="mt-16 lg:mt-2 lg:py-3" />
 
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
@@ -215,7 +215,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              * Without this the page has a hole in it. The branch renders the
              * practice table during preseason and the real standings after it, so
              * a null `practice` mid-preseason used to emit NOTHING between the
-             * status report and the foot of the page — no heading, no explanation.
+             * headcount and the foot of the page — no heading, no explanation.
              *
              * Two quite different causes land here, which is why `practiceEnabled`
              * exists as its own flag rather than being inferred from the null.
@@ -258,7 +258,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             and the seam belongs to the page rather than to the block.
 
             56px on a phone, 48 from `lg`. Desktop is unchanged, and it still
-            matches the status report's own step down to the table above — both
+            matches the headcount's own step down to the table above — both
             are 48 at that width, so the seam below the table is not the only
             wide one there. Below `lg` the two diverge instead: the status
             report's own step down to the table dropped to 16 in this same pass,
@@ -273,7 +273,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             seam belongs to the page, not to `InviteCta`, so the 56 lives on
             this `mt-*` rather than moving onto the component's own root. It is
             now the second-widest gap on the page below `lg`, behind only the
-            status report's own 64px lead-in, and reads less like the page
+            headcount's own 64px lead-in, and reads less like the page
             tapering off and more like the invite module being marked out as
             its own distinct final block.
 
@@ -282,7 +282,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             who is in the league, who is alive, who the commissioner is — is
             already on the standings grid above or in the admin drawer. The
             headcount beside the invite heading is not a partial restoration of
-            it: `LeagueDetails` prints "N in" and the status report "N joined."
+            it: `LeagueDetails` prints "N in" and the headcount "N joined"
             on this same screen, both from this same `members.length`, so during
             preseason the number is on the page three times. That is the
             design's call, not an oversight to tidy up.

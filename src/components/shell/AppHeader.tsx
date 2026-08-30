@@ -33,7 +33,7 @@ import { viewerBuyInUnpaid } from "@/lib/league/load";
  * `selectLeague` today; `resolveActiveGroupId` falls back to the earliest-joined
  * membership, which with one league is the same answer.
  *
- * The survivor tally that once stacked underneath is `StatusReport`, rendered by
+ * The league tally that once stacked underneath is `Headcount`, rendered by
  * Standings; it is a *reading* of the league, which is page content.
  *
  * The header reads **one** thing about the league, and is `async` for it: whether

@@ -72,7 +72,7 @@ export function LeagueDetails({
         </Field>
 
         {/* Derived from `currentWeek`, never a literal — the number advances on
-            its own as the season does, here and in the status report below. */}
+            its own as the season does, here and in the headcount below. */}
         <Field label="Current week">
           <Value>{isPreseason ? "Pre-season" : `Week ${currentWeek}`}</Value>
         </Field>

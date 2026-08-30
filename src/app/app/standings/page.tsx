@@ -7,8 +7,8 @@ import { NoLeagueState } from "@/components/app/NoLeagueState";
  * season, the team-less hidden-pick flags that keep the padlock working. A
  * player in no league yet gets the create/join onboarding.
  *
- * The week and survivor tally that once sat above the client root, in a
- * full-bleed `LeagueStatusBar`, are now a `StatusReport` section inside it —
+ * The week and the headcount that once sat above the client root, in a
+ * full-bleed `LeagueStatusBar`, are now a `Headcount` section inside it —
  * below the league summary, per the mockup.
  */
 export default async function StandingsPage() {

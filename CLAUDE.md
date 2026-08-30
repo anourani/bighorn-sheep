@@ -370,7 +370,7 @@ than every other screen for as long as it existed.
 
 Five more rules, roughly in the order they come up:
 
-- **`px-4` on that same element is a separate contract.** `StatusReport`,
+- **`px-4` on that same element is a separate contract.** `Headcount`,
   `StandingsGrid`, `WeekStrip` and `TeamGrid` full-bleed by cancelling it with `-mx-4`
   (plus `lg:mx-0` where the bleed stops at desktop). Nothing cancels the *vertical*
   padding — there is no `-mt-*` anywhere in `src/` — so the two halves of that class
@@ -554,6 +554,110 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The status report is the HEADCOUNT now, and its one row of proportional bars
+  is a wrapped grid of equal squares.** `StatusReport` → `Headcount`,
+  `SurvivorStrip` → `HeadcountGrid`, `statusLine` → `headcountLine`,
+  `StatusLineInput` → `HeadcountInput`, and `PublicLeagueData.status` →
+  `.headcount` (that file already used `status` for a game's and a member's).
+  Figma `3720:40767` (desktop), `4118:147326` (mobile), cube atom `3746:39826`.
+  Thirteen things:
+  - **No cube may sit alone on the last row, and that rule is why there is JS
+    here at all.** CSS can *compute* a column count — `round()`, `mod()`, `cqw`
+    — but it cannot branch on one, so the size is solved against the measured
+    width in `headcount-grid.ts` (pure, tested) and applied by `HeadcountGrid`.
+    The solver walks the integer sizes in range nearest the design's base first
+    and takes the first whose column count clears `count % columns === 1`.
+  - **The two size ranges encode the direction of travel, so the solver needs no
+    grow-or-shrink rule.** The phone's base IS its max (16, floor 12) so a phone
+    cube can only shrink; the desktop's base IS its min (24, ceiling 30) so a
+    desktop cube can only grow. There is a test asserting exactly that, because
+    a future range straddling its base would make the tie-break load-bearing
+    overnight.
+  - **`count > columns` in the orphan test is not a micro-optimisation.** Without
+    it a one-member league — one cube, alone by necessity — reports an orphan at
+    every size, exhausts the range and lands on the fallback for a row it was
+    never going to share.
+  - **The width comes off the ResizeObserver entry, and BOTH halves of that
+    matter.** It is a layout box, where `getBoundingClientRect()` is the
+    transformed one — the landing page wraps this section in `blur-in`, which
+    starts at `scale(1.04)`, so a rect read mid-animation is 4% wide and buys an
+    extra column. That is `readColumns`/`offsetTop`'s lesson in a second place.
+    And it is FRACTIONAL, where `clientWidth` is rounded: `columnsFor` restates
+    CSS Grid's own `auto-fill` formula, so on the real number our count and the
+    browser's cannot disagree, and on a rounded one they can. `clientWidth`
+    survives only as a last-resort fallback.
+  - **The measured template is explicit — `repeat(N, …)`, never `auto-fill`.** A
+    browser allowed to reach its own count could reach one more than the solver
+    did and put the lone cube straight back. Its `minmax(0, …)` is belt and
+    braces on the same edge: given a width the tracks cannot quite fit they
+    shrink together instead of overflowing, and below `lg` this grid is
+    full-bleed, where an overflow is a document-level horizontal scrollbar. The
+    landing page's `<main>` has `overflow-x-clip` and would swallow one;
+    `/app/standings`'s does not, so that is where it would show.
+  - **`auto-fill` IS the other template, and it is not a placeholder.** The
+    class-based `repeat(auto-fill, var(--cube))` is what the server renders, what
+    paints before hydration, and what a browser whose JS never arrives keeps —
+    and because `auto-fill` reaches the browser's own count from the true width,
+    it is already the design's size at both widths. Only a genuine orphan ever
+    moves off it. Measured with JS disabled: 20 columns of 16px at 393 and 37 of
+    24px at 1280, identical to the solved pass. A much softer failure than
+    `TeamGrid`'s blank-if-JS-fails trade.
+  - **The cube takes its width from the track and its height from
+    `aspect-square`**, so the two cannot be handed different numbers — including
+    on a track `minmax` has shrunk. Do not add a fixed row height; it would
+    un-square exactly that case.
+  - **`HeadcountGrid` is the only file that takes `"use client"`.** The label row
+    stays a Server Component, which is what keeps `lib/league/view.ts` — and the
+    whole ranking apparatus it imports — out of the landing page's client bundle.
+    `/` still builds as `○` with `Revalidate 1m`; the boundary cost it nothing.
+  - **Which range applies is `matchMedia("(min-width: 1024px)")`, not a width
+    test.** Below `lg` the grid is full-bleed, so its own box IS roughly the
+    viewport, and a width threshold would read a 990px browser window as a
+    desktop. It is a listener, not a one-time read: measured live, 1023 → 1025
+    with no reload steps the cube 16 → 24.
+  - **The percentage is the share ELIMINATED, and it is drawn in accent where the
+    muted half used to be.** `percent` is `round(eliminated / total)`, guarded so
+    an empty league reads "0%" rather than "NaN%". The pre-season has no Type 2
+    frame; it prints "N joined" and no percentage at all, because the only number
+    that branch could carry is zero. Every trailing period in the old copy is
+    gone, and there is a test that walks the returned strings asserting so.
+  - **"W6" is drawn at BOTH widths now, so the old `sm` text swap is gone — but
+    the pair isn't.** The desktop frame carries "W6 Headcount" too. The
+    abbreviation names nothing out loud, so the drawn form is `aria-hidden` and
+    the long one is `sr-only` at every width: the page shows "W6 Headcount", a
+    screen reader hears "Week 6 Headcount". `percentLabel` does the same job one
+    line down — a bare "54%" beside "29 still standing" names neither of them, so
+    "34% eliminated" is what gets spoken. This component now has exactly one
+    breakpoint, `lg`, where it used to have two.
+  - **Still-standing cubes come FIRST, and the two frames disagree about that.**
+    The desktop frame draws eliminated-first (which is what the bars did); the
+    mobile frame draws alive-first. One grid cannot do both. The user's call was
+    alive-first, so the orange block leads and the grey trails — which also puts
+    the block "29 still standing" names at the start of the reading order.
+  - **The ~59-member 1px limit is retired, and so is its recorded fix.** Those
+    bars fell below one CSS pixel at roughly 59 members at 390px and their gaps
+    ate the whole track past ~87; the note proposing a two-segment proportional
+    bar above a ~48 threshold went with them, because a cube is 12-30px whatever
+    the count and the ratio is no longer approximated. The new limit is height:
+    rows are `ceil(count / columns)` at `size + gap` each, so ~21 members per
+    phone row and ~37 per desktop row, and a 500-member league is ~25 rows.
+    Linear and visible, rather than silent.
+
+  Measured in Chromium: at 1280, 37 columns of 24px, gap 2, section padding
+  12/12, heading 600/14px/16.8px/-0.28px `#1E1E1E`, details 500/14px/18.9px/
+  -0.14px, percent `#FC5F38`. At 393, 20 columns of 16px, label row
+  `space-between`, padding 0/0 (the host owns it), grid right edge 391 of 393 —
+  the mobile frame's 2px inset, carried by the wrapper as `-mx-4 px-0.5` so the
+  grid's measured box is the one the solver lays out into. 38 cubes at 1280 step
+  to 25px in 35 columns, last row of 3. Under mobile emulation at 320 / 360 /
+  375 / 393 / 430, `document.scrollWidth === window.innerWidth` at all five.
+
+  Neither host's spacing moved: the desktop frame's `py-12` is already
+  `StandingsClient`'s `lg:py-3` and the landing page's `sm:py-3`, and the mobile
+  frame's `pb-8` is the landing page's `pb-2`. `StandingsClient` still supplies
+  no phone bottom padding — its own mockup puts that seam in the next block's
+  `mt-4` — and that is as authored, not an oversight.
 
 - **The signed-out header is the same pill as the signed-in one, and the mirror
   that was deliberately broken is deliberately restored.** `LandingHeader` was a
@@ -1161,7 +1265,7 @@ reading, but only the first kind is the lesson.
   orange in the app is derived from it.** `ACCENT` is `#FC5F38` (the design
   library's `Text Color/Accent`); `tailwind.config.ts` imports it and mixes the
   rest. Before this there were four unrelated oranges and a green all meaning
-  "this is lit / this is yours" — `shell.alive` #FC855C (survivor bars),
+  "this is lit / this is yours" — `shell.alive` #FC855C (the headcount cubes),
   `selected` #0C6F28 (week chip + picked card), `brand.strong` #ED7B46 (focus
   rings, sheen, `live`), plus #B85C2B / #C2551F / #8A4A24 hand-typed in four
   component files — so there was no single place to retune the accent and no way
@@ -1170,7 +1274,7 @@ reading, but only the first kind is the lesson.
     accent with an alpha byte on it (`#FC5F3814`, 0x14 = 20/255 ≈ 8%), written
     as an 8-digit hex rather than as `accent/8` so it is a NAME that tracks the
     accent for free. It is the picked team card's fill; `accent` is its ring,
-    the week strip's selected chip and the survivor bars.
+    the week strip's selected chip and the headcount grid's living cubes.
   - **`brand.*` survived as the accent's light ramp, and is not a second
     palette.** `brand.strong` IS `accent`; `DEFAULT`/`soft`/`wash` are build-time
     mixes toward white. The 39 `brand-*` call sites were deliberately NOT
@@ -1329,7 +1433,7 @@ reading, but only the first kind is the lesson.
     as a substring, which fails WCAG 2.5.3 Label in Name for voice control.
     `MoreSection.tsx` still has both bugs on the same label.
   - **The headcount beside the heading is the THIRD copy of that number on the
-    page.** `LeagueDetails` prints "N in" and the status report "N joined.", both
+    page.** `LeagueDetails` prints "N in" and the headcount "N joined", both
     off the same `members.length`. That is the design's call. It is also why
     deleting the roster lost nothing: the count was never unique to it.
 
@@ -1914,7 +2018,7 @@ reading, but only the first kind is the lesson.
     the round, not your existence in it.
   - **`LeagueData.practiceEnabled` exists because a null `practice` has two
     causes.** Before it, a null mid-preseason rendered *nothing* between the
-    status report and the foot of Standings — no heading, no explanation. The two
+    headcount and the foot of Standings — no heading, no explanation. The two
     empty states are "your admin hasn't turned this on" and "no preseason
     schedule is loaded", and they can't be told apart from the null alone.
 
