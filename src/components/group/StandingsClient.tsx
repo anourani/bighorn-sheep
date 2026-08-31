@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LockIcon } from "@/components/icons";
 import { StandingsGrid, type RankedMember, type WeekColumn } from "@/components/group/StandingsGrid";
 import { LeagueDetails } from "@/components/group/LeagueDetails";
@@ -141,6 +140,41 @@ export function StandingsClient({ data }: { data: LeagueData }) {
     ];
   }, [finalWeek, practice]);
 
+  /**
+   * The regular-season board: the 18-week grid plus the note explaining the
+   * padlock. Lifted into one element because TWO branches below render it now —
+   * the season proper, and preseason with no practice table to show.
+   *
+   * These are the same props `PublicStandings` hands the grid on the landing
+   * page, which is the point: a member and a stranger looking at the same league
+   * in the same week should be reading the same table. Only `viewerId` differs,
+   * and it has to — the landing page passes "" because a stranger is nobody in
+   * this league, while here it earns the viewer their own highlighted row.
+   *
+   * Built unconditionally rather than inside the branch. `ranked` is already
+   * computed on every render regardless of phase, so this costs one element
+   * object in the branches that drop it, and nothing renders until it is placed.
+   */
+  const regularBoard = (
+    <>
+      <StandingsGrid
+        ranked={ranked}
+        viewerId={data.viewer.id}
+        currentWeek={currentWeek}
+        finalWeek={finalWeek}
+        rules={group.rules}
+        now={now}
+        gameForTeam={idx.gameForTeam}
+        hiddenPickUserIds={hiddenPickUserIds}
+      />
+
+      <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
+        <LockIcon className="h-3.5 w-3.5" />
+        Current-week picks stay hidden until each team&apos;s game kicks off.
+      </p>
+    </>
+  );
+
   return (
     /* A fragment, so the two dialogs below can sit OUTSIDE `.stagger`.
 
@@ -207,21 +241,34 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             </section>
           ) : (
             /*
-             * Without this the page has a hole in it. The branch renders the
-             * practice table during preseason and the real standings after it, so
-             * a null `practice` mid-preseason used to emit NOTHING between the
-             * headcount and the foot of the page — no heading, no explanation.
+             * No practice table to draw — so draw the real one, blank.
              *
-             * Two quite different causes land here, which is why `practiceEnabled`
-             * exists as its own flag rather than being inferred from the null.
+             * This branch used to be the note and nothing else, and the page had
+             * a hole in it: the roster was on screen for a signed-out stranger on
+             * `/` and not for the members in it. A blank board is not filler.
+             * Every row is somebody who has joined and paid in, the Week 1 column
+             * shows who has already picked, and that is the whole question during
+             * preseason. Same grid, same props, same 18 columns as the landing
+             * page — see `regularBoard` above.
+             *
+             * The note stays, and it stays ABOVE the table: two quite different
+             * causes land here, which is why `practiceEnabled` exists as its own
+             * flag rather than being inferred from the null, and the reader needs
+             * to know why there is no practice round before they wonder where it
+             * went. There is no visible `SectionHeader` any more — it said
+             * "Practice Standings", which is now a lie about the table directly
+             * underneath it. The `sr-only` heading the other two grid branches
+             * carry replaces it and keeps the page in the heading outline; the
+             * paragraph's `mt-2` went with the header it was spacing away from.
              */
             <section className="mt-16 lg:mt-14">
-              <SectionHeader title="Practice Standings" />
-              <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
+              <h2 className="sr-only">Standings</h2>
+              <p className="mb-4 text-xs leading-relaxed text-ink-mute">
                 {practiceEnabled
                   ? "No preseason schedule has been loaded yet, so there's nothing to practise against."
                   : "Preseason practice isn't switched on for you. Your league admin can turn it on from Settings."}
               </p>
+              {regularBoard}
             </section>
           )
         ) : (
@@ -231,21 +278,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
                 heading — it was the gap underneath it and had nothing left to
                 space away from. */}
             <h2 className="sr-only">Standings</h2>
-            <StandingsGrid
-              ranked={ranked}
-              viewerId={data.viewer.id}
-              currentWeek={currentWeek}
-              finalWeek={finalWeek}
-              rules={group.rules}
-              now={now}
-              gameForTeam={idx.gameForTeam}
-              hiddenPickUserIds={hiddenPickUserIds}
-            />
-
-            <p className="mt-2 flex items-center justify-center gap-1.5 px-2 text-center text-xs text-ink-mute">
-              <LockIcon className="h-3.5 w-3.5" />
-              Current-week picks stay hidden until each team&apos;s game kicks off.
-            </p>
+            {regularBoard}
           </section>
         )}
 
