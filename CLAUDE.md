@@ -38,7 +38,8 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0007_profile_extras_and_buy_in` → `0008_private_profile_fields` →
 `0009_public_standings` → `0010_account_closure_and_league_buy_in` →
 `0011_admin_settings` → `0012_create_group_entry_deadline` →
-`0013_lock_membership_writes` → `0014_pick_consistency`.
+`0013_lock_membership_writes` → `0014_pick_consistency` →
+`0015_pick_and_buy_in_reminders`.
 
 **0013 and 0014 close two direct-write holes reachable with the anon key**, and
 both are pure RLS changes — idempotent, no backfill, hand-applied. 0013 drops
@@ -581,6 +582,85 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The admin drawer can email the league, and its tabs are Members / League
+  Settings / Data Feed / Emails.** Rules and Name merged — Name only ever existed
+  because the league's name and invite link had been evicted from a rail that was
+  costing the roster a third of 1000px, and both are details about the league
+  rather than about its members. `0015_pick_and_buy_in_reminders` is the
+  migration, and **it must be applied to production by hand.** Twelve things:
+  - **`reminderWeek` is not `resolveCurrentWeek`, and conflating them is the bug
+    this feature was one line away from shipping.** `resolveWeekFromKickoffs`
+    returns the greatest week whose EARLIEST kickoff has passed — the week being
+    *scored*. On a Wednesday in October that is week 4, which finished on Monday
+    night. A reminder keyed on it would tell the league to pick for a week they
+    cannot pick AND consume week 4's row in the send log's unique index, so the
+    genuine week-4 reminder could never be sent. Both halves silent.
+    `src/lib/league/reminders.ts` derives its own week and there is a test
+    asserting the two numbers side by side.
+  - **The window gate is 0014's own `with check`** — `status = 'scheduled' and
+    kickoff > now()` for at least one game in the week — transcribed rather than
+    invented. `weekFinalKickoff` is the right thing to PRINT and the wrong thing
+    to test: a postponed game keeps its week and gains a future kickoff, so "the
+    final kickoff hasn't passed" reports a finished week as open.
+  - **No email address ever reaches the browser.** `reminder_due` defines who is
+    due once and returns the address, granted to `service_role` alone;
+    `reminder_status_for_admin` is also definer, so it may call that function
+    despite the grant, and selects every column except the email. One definition,
+    two projections, and the browser-facing one structurally cannot leak because
+    it never names the column. Do not merge them.
+  - **The limit on that claim is `first_name`.** 0004's `handle_new_user` can seed
+    it with a whole address for a user created outside the app — its
+    `split_part(…, ' ', 1)` splits on a space, which an email has none of, so the
+    `'@'` branch below it is unreachable. The app's own signup always sends
+    metadata, so it does not fire for anyone who joined normally. 0004's bug, not
+    this one's, and such a name is already on the standings board anyway.
+  - **Idempotence is a database property, because email is not idempotent the way
+    `poll-scores` is.** A partial unique index on (group, user, season,
+    season_type, week) `where kind = 'pick' and status = 'sent'`. Two asymmetries
+    in it look like oversights: the `status` predicate is what lets a failed
+    attempt retry, and **there is deliberately no equivalent index for
+    `buy_in`** — its week is null, nulls are distinct, so the same index would
+    dedupe nothing, and a debt has no natural period. Picks are keyed; buy-ins
+    are throttled by an interval.
+  - **The tickboxes NARROW and can never widen.** `runReminderSend` intersects
+    the admin's selection with what `reminder_due` returns, so a hand-rolled POST
+    naming arbitrary ids still reaches nobody who was not due — and it names
+    member ids, never addresses, because addresses do not leave the server.
+  - **A dry run writes NOTHING to the send log.** Writing it would burn the
+    idempotence keys and silently suppress the real send afterwards, which is the
+    opposite of what `load-schedule --dry` promises. Same for a refused batch:
+    nothing was sent, so a row would suppress the retry for people who never got
+    an email. Both have tests.
+  - **The outbox pattern was considered and rejected.** Insert `pending` before
+    sending and update after, and a crash leaves rows that block the retry
+    forever — a member silently never reminded, which is worse and invisible than
+    the duplicate the current design risks in a one-round-trip window.
+  - **Reminders can only be sent from production**, and that is a feature.
+    `NEXT_PUBLIC_APP_URL` is deliberately blank outside production, and rather
+    than guess an origin `sendReminders` refuses. A wrong URL in a redirect is
+    recoverable; the same URL in twelve inboxes is not. It is resolved from the
+    server's env, never from the drawer's `appUrl` prop, which is
+    `appUrl || window.location.origin`.
+  - **`src/lib/mail/` is the vendor seam, and it is a raw `fetch`.** Mirrors
+    `src/lib/providers/` — an interface, an injectable `fetchImpl`, a `LogMailer`
+    standing in for `MockProvider`, and a `getMailer()` that returns null rather
+    than throwing. Batch rather than per-recipient because of the rate limit, not
+    elegance: thirty sequential sends paced to a couple of requests a second is
+    ~15s, past Netlify's synchronous ceiling, so the action would report failure
+    *after* the mail had gone. **Resend's batch cap and whether it supports a
+    per-message `reply_to` were never verified** — resend.com is blocked by the
+    agent sandbox's egress proxy. There is a note on the constant.
+  - **Two long tab labels fall back below `lg`, and both controls failed when
+    measured.** "League Settings" unconditionally overflows at 320 (bar 288,
+    scroll 301); keeping "Data Feed" at full width overflows at 320 too and
+    scrolls the *document*, because the bar is not inside `main`'s clip. Four
+    tabs at 320 leave 72px each and "Members" alone wants 82.4. The cap is 620,
+    not 560: at 540 the margin over "League Settings" is eight pixels.
+  - **The `<fieldset disabled>` is the merge's one real hazard.** Four sections
+    on League Settings, three lock behaviours: `set_group_rules` freezes once the
+    season starts, while `set_group_buy_in` and `set_group_name` deliberately
+    have no lock check at all. It must keep wrapping ONLY the rules radio groups.
 
 - **Standings draws the real board during preseason now, blank, instead of a
   sentence.** `StandingsClient`'s preseason branch used to render the practice

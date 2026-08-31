@@ -124,6 +124,7 @@ Then **Create variable**, and repeat for the second.
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | the `service_role` key from 2a |
 | `CRON_SECRET` | the random string from 2b |
+| `RESEND_API_KEY` | a Resend API key, only if you want the admin drawer's **Emails** tab to send reminders. Leave it out and everything else works — the tab just says email isn't set up. See 2c-ter below before you make one. |
 
 There's a third one worth adding while you're on this screen, and it takes the
 settings above **differently**:
@@ -193,6 +194,47 @@ These are Supabase settings, so they apply immediately — no redeploy needed.
 > If the deploy in 2d fails with a **secrets scanning** error, tell me. Netlify checks
 > whether a secret value leaked into the published output. Neither of these is ever
 > sent to the browser, so it shouldn't trigger — but the check exists.
+
+### 2c-ter · Reminder emails (optional)
+
+Skip this entirely if you don't want the league emailed. Everything else works
+without it; the admin drawer's **Emails** tab simply says email isn't set up.
+
+The Emails tab lets you nudge two groups of people: whoever hasn't made a pick
+for the week that's coming, and whoever hasn't paid their buy-in. You see the
+list, untick anyone you've already chased, and press send.
+
+**This needs its own Resend key — not the one that already sends your sign-in
+links.** That one lives inside Supabase (Auth → Emails → SMTP Settings) and
+nothing in the site can read it. Two separate keys also means rotating one can
+never break the other, and Resend → Logs tells them apart: sign-in shows up as
+`SMTP v1.0.0` requests, reminders as API requests.
+
+1. In **Resend → API Keys**, create a key with **sending access for
+   `sheepwithglasses.com`**. A key issued for a different domain answers
+   `API key not authorized for this domain` — the exact failure the sign-in
+   cutover hit once already.
+2. Paste it into Netlify as `RESEND_API_KEY`, with the same settings as the two
+   in 2c (**Contains secret values** ticked, **Same value for all deploy
+   contexts**).
+3. Redeploy (2d).
+
+Two things that are working as intended and look like faults:
+
+- **Reminders only send from the live site.** `NEXT_PUBLIC_APP_URL` is blank
+  outside production on purpose (2c), and rather than guess an address for the
+  links, the site refuses to send. So you cannot accidentally mail the league
+  from a preview build.
+- **Nobody can be emailed the same thing twice.** Every send is recorded, and a
+  second press for the same week reaches only people who were missed the first
+  time. Buy-in reminders are limited to one per player every three days.
+
+Also worth knowing: picks lock **game by game**, at each game's own kickoff —
+not at one deadline for the week. So a reminder sent on a Sunday is already too
+late for anyone who wanted the Thursday night game. Earlier in the week is
+better, and the tab tells you which games are still open. Once the week's last
+game has kicked off the pick reminder switches itself off, because it can no
+longer help. Buy-in reminders stay available all season.
 
 ### 2d · Redeploy — easy to forget
 
@@ -326,6 +368,12 @@ status, picks up NFL schedule changes, and updates strikes and eliminations.
 | Sign-in link lands on a long hex-prefixed address (`6a7f…--bighorn-sheep.netlify.app`) | Someone opened `/login` on a deploy permalink, so the link was addressed back there. Check the `redirect_to` in the emailed link: if it still ends in `/auth/callback`, Supabase honoured what was asked and the host came from the browser — share the site's own address. If `redirect_to` is a bare origin with the path stripped, **Site URL** is wrong instead; see 2c-bis. |
 | "Our sign-in service is having trouble. Try again in a minute." when requesting a link | An HTTP 500 on `/auth/v1/otp` — the email could not be sent. The app cannot say more than this: `errorMessage()` maps every `status >= 500` to that one string. **Go to Resend → Logs**, which is the only place the real reason shows. Two causes look identical from the app: the sender's domain is not verified with Resend, or the API key is scoped to a *different* domain (`API key not authorized for this domain`). For the second, issue a key with sending access for this domain and paste it into Supabase's SMTP **Password** field — nothing else needs changing. |
 | "Expired or already used" on a link that is genuinely fresh | Read Netlify → Logs → **Functions** for the `[auth/callback]` line — it now carries GoTrue's own `error_code`. `otp_expired` means the token really is spent or timed out (a mail scanner following the link in transit will do this); `verifier_missing` means it was opened in a different browser or device from the one that requested it. |
+| Emails tab: "Email isn't set up yet…" | `RESEND_API_KEY` is missing from Netlify, or was added without redeploying (2d). See 2c-ter. |
+| Emails tab: "This deployment can't build links back to the app…" | You're on a preview or branch deploy, where `NEXT_PUBLIC_APP_URL` is deliberately blank. Working as intended — send from the live site. |
+| Emails tab: "This needs a database update…" | Migration 0015 hasn't been applied to Supabase. Re-run Step 1. |
+| Emails tab: "That week's last game has kicked off…" | The pick reminder has switched itself off because nobody can still pick. Buy-in reminders are unaffected. |
+| Reminders report as sent but nothing arrives | **Go to Resend → Logs first** — it is the only place the real reason appears, and it distinguishes these from sign-in mail (API requests, not `SMTP v1.0.0`). Usual causes: the key is scoped to a different domain, or the sending domain isn't verified. |
+| A player says they were reminded twice | Should be impossible for picks within one week — check whether the two were for different weeks, or one was a buy-in reminder and one a pick reminder. |
 | Sign-in says the link only works in the browser that asked for it | Exactly what it says: the link was requested on one device and opened on another (a common one — requesting on a phone and tapping through on a laptop). Request a fresh link on the device you'll open it on. |
 
 When reporting a problem, include the exact text you're seeing (copy-paste beats a

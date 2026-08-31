@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
@@ -12,7 +12,9 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
 import {
   getFeedStatus,
+  getReminderStatus,
   runFeedCheck,
+  sendReminders,
   setGroupBuyIn,
   setGroupName,
   setGroupRules,
@@ -31,6 +33,14 @@ import {
   providerLabel,
   type FeedSnapshot,
 } from "@/lib/league/feed";
+import {
+  describeReminders,
+  mapReminderStatus,
+  type PickWindow,
+  type ReminderKind,
+  type ReminderSnapshot,
+} from "@/lib/league/reminders";
+import { formatDisplayName } from "@/lib/league/name";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { SeasonPhase } from "@/lib/game/season";
 import type { EliminationType, Group, Member, TieRule } from "@/lib/league/types";
@@ -73,6 +83,16 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   preseason_update_failed: "Couldn't save that. Try again.",
   buy_in_update_failed: "Couldn't save that. Try again.",
   feed_status_unavailable: "Couldn't read the feed status.",
+  reminder_status_unavailable: "Couldn't read who needs a reminder.",
+  reminder_too_soon: "Just sent those — give it a minute.",
+  reminder_week_closed: "That week's last game has kicked off — a reminder can't help now.",
+  reminder_send_unavailable: "Sending isn't configured on this deployment.",
+  reminder_mail_unconfigured:
+    "Email isn't set up yet — add the Resend key in Netlify and redeploy.",
+  reminder_url_unconfigured:
+    "This deployment can't build links back to the app, so nothing was sent.",
+  reminder_send_failed: "The email provider refused. Nothing was sent — try again.",
+  bad_reminder_kind: "That isn't a kind of reminder.",
   poll_too_soon: "Just checked — give it a minute.",
   feed_poll_unavailable: "Manual checks aren't configured on this deployment.",
   poll_failed: "The check ran, but reading the result back failed.",
@@ -89,7 +109,7 @@ const INPUT_CLASS =
 /**
  * One bordered card with a heading and a status pill on the right.
  *
- * Introduced for the Rules tab, where the two cards it holds lock on DIFFERENT
+ * Introduced for the rules pair on the League Settings tab, which lock on DIFFERENT
  * conditions — the game rules freeze at the first Week 1 kickoff, the entry fee
  * never freezes at all. Stating that per card is the entire reason this tab is
  * two cards instead of one column: a single lock affordance covering both would
@@ -167,7 +187,7 @@ async function runAction(
 /**
  * The league's name — always editable, which is the whole point.
  *
- * Lives on the Name tab beside the invite. It used to sit ABOVE the tab bar, in
+ * Lives on the League Settings tab beside the invite. It used to sit ABOVE the tab bar, in
  * `Drawer`'s `aside` slot, on the argument that it names the thing all the tabs
  * are about and burying it would make "rename any time" mean "rename any time
  * you're on the right tab". What changed is that it now shares a tab with the
@@ -418,13 +438,13 @@ function RadioGroup({
  * What the pot costs — a rule, and the one rule that is mandatory: paying it is
  * what it takes to be in the league.
  *
- * It lives on the RULES tab, beside elimination and ties, rather than beside the
- * per-member paid switches in {@link MembersSection}. The two are related but
- * they are not the same kind of thing: the amount is a condition of entry that
- * applies to everyone, and who has handed it over is bookkeeping about people.
- * Splitting them costs one cross-reference in each direction — the hint below,
- * and one in the Members rail — and buys a Rules tab that holds every term of
- * the deal.
+ * It lives on the LEAGUE SETTINGS tab, beside elimination and ties, rather than
+ * beside the per-member paid switches in {@link MembersSection}. The two are
+ * related but they are not the same kind of thing: the amount is a condition of
+ * entry that applies to everyone, and who has handed it over is bookkeeping
+ * about people. Splitting them costs one cross-reference in each direction — the
+ * hint below, and one in the Members rail — and buys a tab that holds every term
+ * of the deal.
  *
  * Dollars in the inputs, cents in the database (`groups.buy_in_cents`,
  * `groups.site_fee_cents` — migration 0010). The conversion happens here, at the
@@ -643,7 +663,7 @@ function MembersSection({
   // `entry_closes_at` is in the past — "the first Week 1 kickoff" is an
   // inference from it, and a deadline left on create_group's `now() + 7 days`
   // default makes that inference a false claim no one can check from here.
-  // Printing the moment is the same trade the Rules tab already makes beside
+  // Printing the moment is the same trade League Settings already makes beside
   // "Entry closes", in the same format as the paid stamp one column over.
   const preseasonClosedStamp = formatMonthDayClock(entryClosesAt);
   // remove_member (0013) refuses after entry_closes_at, for the same reason
@@ -933,7 +953,7 @@ function RemoveControl({
  * because the roster wanted the width back, so the measure has to be bought
  * here instead.
  *
- * The removal paragraph is NOT here any more. It moved to the Name tab, beside
+ * The removal paragraph is NOT here any more. It moved to League Settings, beside
  * the invite: `remove_member` closes at `entry_closes_at`, exactly as
  * `join_by_invite` does, so removal is the undo for a join and belongs with the
  * link that caused it. What is left is the two switches directly above these
@@ -967,9 +987,9 @@ function MembersHints({
         )}
       </HintLine>
       {/* The other half of the split. Someone marking people paid is one thought
-          away from wanting to change what they owe, and the Rules tab is not
-          where they would look for it unaided. */}
-      <HintLine>Set what the buy-in costs on the Rules tab.</HintLine>
+          away from wanting to change what they owe, and the next tab along is
+          not where they would look for it unaided. */}
+      <HintLine>Set what the buy-in costs on the League Settings tab.</HintLine>
     </div>
   );
 }
@@ -1024,7 +1044,7 @@ function MemberToggle({
  * The invite link, the code, and what the window they open and close on means.
  *
  * It used to sit in the Members rail, on the argument that sharing an invite is
- * membership admin. It is on the Name tab now with the league's name, because
+ * membership admin. It is on the League Settings tab now with the league's name, because
  * the roster wanted the rail's width back and these two are the pair a member
  * actually sees: the league is called X and here is how you get into it.
  *
@@ -1297,22 +1317,353 @@ function FeedFact({ term, children }: { term: string; children: React.ReactNode 
   );
 }
 
-type TabValue = "members" | "rules" | "name" | "feed";
+/**
+ * One reminder kind: who is outstanding, and a two-step button to email them.
+ *
+ * `RemindersSection` fetches on MOUNT, which falls out of only the active tab
+ * being rendered — the `DataFeedSection` precedent, and the reason neither one
+ * is threaded through `loadLeague`. An admin who never opens this tab pays for
+ * none of it.
+ *
+ * There are no email addresses anywhere in this component, and that is
+ * structural rather than an oversight: `reminder_status_for_admin` (0015)
+ * returns names and reasons with the address column dropped, so the browser
+ * never holds the league's address book. The send is by member id, which the
+ * job intersects with what the database says is due — it can narrow the set and
+ * never widen it.
+ */
+function ReminderCard({
+  title,
+  kind,
+  snapshot,
+  window: pickWindow,
+  busy,
+  disabled,
+  disabledNote,
+  onSend,
+}: {
+  title: string;
+  kind: ReminderKind;
+  snapshot: ReminderSnapshot | null;
+  window: PickWindow | null;
+  busy: boolean;
+  disabled: boolean;
+  disabledNote: string | null;
+  onSend: (userIds: string[]) => void;
+}) {
+  const bucket = kind === "pick" ? snapshot?.pick : snapshot?.buyIn;
+  const due = useMemo(() => bucket?.due ?? [], [bucket]);
+  const description = describeReminders(snapshot, kind, pickWindow);
 
-const TABS: { value: TabValue; label: string }[] = [
+  // Everyone ticked by default: the common case is "remind them all", and the
+  // boxes exist so an admin can drop the one person they already spoke to.
+  // Re-seeded whenever the due list changes identity, so somebody who picks
+  // between two reads does not leave a stale id ticked.
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    setExcluded(new Set());
+  }, [due]);
+  const [confirming, setConfirming] = useState(false);
+
+  const selected = due.filter((t) => !excluded.has(t.userId));
+  const now = snapshot?.now ?? "";
+
+  function toggle(userId: string) {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  return (
+    <SettingsCard
+      heading={title}
+      pill={
+        due.length === 0 ? (
+          <Pill variant="alive">All clear</Pill>
+        ) : (
+          <Pill variant="pending">{due.length} to go</Pill>
+        )
+      }
+    >
+      <p className="text-sm font-medium text-ink">{description.headline}</p>
+      {description.detail ? (
+        <p className="text-xs leading-relaxed text-ink-mute">{description.detail}</p>
+      ) : null}
+
+      {/* No `max-h` and no `overflow`, however long this gets: the Drawer body
+          is the one scroller in the tree. A thirty-row league is exactly what
+          tempts a `max-h-64` in here. */}
+      {due.length > 0 ? (
+        <ul className="divide-y divide-line border-y border-line">
+          {due.map((t) => {
+            const id = `remind-${kind}-${t.userId}`;
+            return (
+              <li key={t.userId}>
+                <label
+                  htmlFor={id}
+                  className="flex min-h-[44px] cursor-pointer items-center gap-3 py-2"
+                >
+                  <input
+                    id={id}
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-brand-strong"
+                    checked={!excluded.has(t.userId)}
+                    disabled={disabled || busy}
+                    onChange={() => toggle(t.userId)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">
+                      {formatDisplayName(t.firstName, t.lastName)}
+                    </span>
+                    <span className="block text-xs text-ink-mute">
+                      {t.lastSentAt ? `Reminded ${agoLabel(t.lastSentAt, now)}` : "Not reminded yet"}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      {disabled && disabledNote ? <HintLine>{disabledNote}</HintLine> : null}
+
+      {due.length > 0 && !disabled ? (
+        confirming ? (
+          /* Two steps, using the roster's one-at-a-time confirm rather than a
+             `Modal` — a dialog inside a dialog races two focus traps. An armed
+             single button is how the wrong one gets pressed, and here the wrong
+             press cannot be recalled. */
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-ink">
+              Email {selected.length} {selected.length === 1 ? "player" : "players"}?
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy || selected.length === 0}
+              onClick={() => {
+                setConfirming(false);
+                onSend(selected.map((t) => t.userId));
+              }}
+            >
+              {busy ? "Sending…" : "Send"}
+            </Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="primary"
+            size="md"
+            disabled={busy || selected.length === 0}
+            onClick={() => setConfirming(true)}
+          >
+            {selected.length === due.length
+              ? `Send ${due.length} ${due.length === 1 ? "reminder" : "reminders"}`
+              : `Send ${selected.length} of ${due.length}`}
+          </Button>
+        )
+      ) : null}
+    </SettingsCard>
+  );
+}
+
+/**
+ * The Emails tab.
+ *
+ * Two cards side by side, the League Settings shape and for its reason: the two
+ * kinds genuinely differ. Picks have a deadline and close at the week's last
+ * kickoff, because that is the instant a missing pick becomes a loss. The
+ * buy-in never closes, matching `set_group_buy_in`, which has no lock check at
+ * all — money admin stays open all season.
+ */
+function RemindersSection({ groupId }: { groupId: string }) {
+  const [snapshot, setSnapshot] = useState<ReminderSnapshot | null>(null);
+  const [pickWindow, setPickWindow] = useState<PickWindow | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  const apply = useCallback((data: unknown) => {
+    const payload = data as { status?: unknown; window?: PickWindow | null } | null;
+    setSnapshot(mapReminderStatus(payload?.status));
+    setPickWindow(payload?.window ?? null);
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const res = await getReminderStatus({ groupId }).catch((err) => {
+      if (isStaleDeploymentError(err) && reloadOnce()) return null;
+      return { ok: false as const, error: "unexpected_error" };
+    });
+    if (!res) return;
+    if (!res.ok) {
+      setError(copyFor(res.error));
+      setLoading(false);
+      return;
+    }
+    apply(res.data);
+    setLoading(false);
+  }, [groupId, apply]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const send = useCallback(
+    async (kind: ReminderKind, userIds: string[]) => {
+      setSending(true);
+      setError(null);
+      setNote(null);
+      const res = await sendReminders({ groupId, kind, userIds }).catch((err) => {
+        if (isStaleDeploymentError(err) && reloadOnce()) return null;
+        return { ok: false as const, error: "unexpected_error" };
+      });
+      if (!res) return;
+      if (!res.ok) {
+        setError(copyFor(res.error));
+        setSending(false);
+        return;
+      }
+      const sent = (res.data as { sent?: number } | null)?.sent ?? 0;
+      setNote(sent === 1 ? "Sent 1 email." : `Sent ${sent} emails.`);
+      apply(res.data);
+      setSending(false);
+    },
+    [groupId, apply],
+  );
+
+  const busy = loading || sending;
+  // Picks close at the last kickoff; the buy-in never does.
+  const pickClosed = !loading && (snapshot?.week === null || (pickWindow !== null && !pickWindow.open));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6">
+        <ReminderCard
+          title="Missing picks"
+          kind="pick"
+          snapshot={snapshot}
+          window={pickWindow}
+          busy={busy}
+          disabled={pickClosed}
+          disabledNote={pickWindowNote(pickWindow, snapshot)}
+          onSend={(ids) => void send("pick", ids)}
+        />
+        <ReminderCard
+          title="Unpaid buy-ins"
+          kind="buy_in"
+          snapshot={snapshot}
+          window={null}
+          busy={busy}
+          disabled={false}
+          disabledNote={null}
+          onSend={(ids) => void send("buy_in", ids)}
+        />
+      </div>
+
+      {/* Said once, under both cards: picks lock game by game at each game's own
+          kickoff rather than at one weekly deadline, so a reminder sent on a
+          Sunday is already too late for anyone who wanted Thursday night. */}
+      <HintLine>
+        Players are emailed at the address they sign in with. Picks lock game by game, so the
+        earlier in the week you send, the more of the slate is still open.
+      </HintLine>
+
+      {note ? <p className="text-xs text-ink-mute">{note}</p> : null}
+      {error ? <ErrorLine>{error}</ErrorLine> : null}
+    </div>
+  );
+}
+
+/** Why the pick card is disabled, in a sentence. */
+function pickWindowNote(w: PickWindow | null, snapshot: ReminderSnapshot | null): string | null {
+  if (snapshot?.week === null) return "No week is open for picks right now.";
+  if (!w || w.open) return null;
+  if (w.reason === "too_early") return "This week's games are still more than a week away.";
+  if (w.reason === "no_games") return "No games are scheduled for that week yet.";
+  return "Every game this week has kicked off, so a reminder can't help now.";
+}
+
+type TabValue = "members" | "league" | "feed" | "emails";
+
+/**
+ * TWO labels are nodes rather than strings, because four tabs do not fit on a
+ * phone at their full spelling.
+ *
+ * `Tabs` draws each option `flex-1 whitespace-nowrap px-3`, and a flex item's
+ * default `min-width: auto` refuses to shrink below its content — so an
+ * over-long label pushes the bar past the drawer's rail rather than truncating,
+ * and NOTHING in this dialog may scroll to absorb it. The bar is also a sibling
+ * of the page rather than inside `main`'s clip, so the overflow reaches the
+ * document and the whole page scrolls sideways.
+ *
+ * Measured in Chromium with the real Inter at 320 / 360 / 375 / 393 / 430 / 768
+ * / 1023 / 1024 / 1280 / 1440. As shipped, `scrollWidth === clientWidth` at
+ * every one; at 320 the four take 82.4 / 70.7 / 60.9 / 66 of the 288 available,
+ * and from `lg` they are 153 each inside the 620 cap.
+ *
+ * The two controls are what make that number meaningful, and both failed:
+ *   * "League Settings" unconditionally measures 125.2 intrinsic and overflows
+ *     at 320 (bar 288, scroll 301) while looking fine from 360 up, where it
+ *     instead squeezes its neighbours to ~97.
+ *   * Even with "League" short, keeping "Data Feed" at 89.4 still overflows at
+ *     320 (scroll 312) AND scrolls the document. Four tabs at 320 leave 72px
+ *     each, and "Members" alone wants 82.4.
+ *
+ * So both fall back below `lg`, and the cap is 620 rather than the old 560: at
+ * 540 each tab is 133 against "League Settings"'s 125.2 intrinsic, which is
+ * eight pixels of margin against a font that renders differently in Figma. 620
+ * gives 153 and the label still does not reach the rail.
+ *
+ * Each pair is `display: none` at its off width, which removes it from the
+ * accessibility tree — an `sr-only` sibling would be read out ALONGSIDE the
+ * visible one rather than replacing it.
+ */
+const TABS: { value: TabValue; label: React.ReactNode }[] = [
   { value: "members", label: "Members" },
-  { value: "rules", label: "Rules" },
-  { value: "name", label: "Name" },
-  { value: "feed", label: "Data Feed" },
+  {
+    value: "league",
+    label: (
+      <>
+        <span className="lg:hidden">League</span>
+        <span className="hidden lg:inline">League Settings</span>
+      </>
+    ),
+  },
+  {
+    value: "feed",
+    label: (
+      <>
+        <span className="lg:hidden">Feed</span>
+        <span className="hidden lg:inline">Data Feed</span>
+      </>
+    ),
+  },
+  { value: "emails", label: "Emails" },
 ];
 
 /**
  * The league admin's one surface: four tabs in a full-width bottom drawer.
  *
  * Why tabs: five stacked sections made the panel taller than a phone, so it had
- * to be scrolled one-handed mid-week. Splitting membership, rules, identity and
- * feed health — four genuinely unrelated concerns — is both the organising fix
- * and the scroll fix.
+ * to be scrolled one-handed mid-week. Splitting the roster from the league's own
+ * settings from feed health — genuinely unrelated concerns — is both the
+ * organising fix and the scroll fix. Emails joined them when reminders shipped.
+ *
+ * Rules and Name were separate tabs for one revision and are one now. Name only
+ * ever existed because the league's name and its invite link had been evicted
+ * from a rail that was costing the roster a third of 1000px; nothing about them
+ * wanted its own tab, and both are details about the league rather than about
+ * its members. Merging also keeps the bar short enough to survive a phone, which
+ * is a live constraint here rather than a hypothetical one — see `TABS`.
  *
  * Why a drawer and not `Modal`: at 480px every one of these tabs was a single
  * narrow column, and the roster in particular stacked two full-width switch rows
@@ -1356,10 +1707,11 @@ const TABS: { value: TabValue; label: string }[] = [
  * cost a paint flash to render a default first.
  *
  * NO LOCK GLYPH ON THE TAB BAR, deliberately. It used to sit beside "Rules" once
- * the season started. That was honest when the whole tab froze together; now
- * that the always-editable buy-in shares the tab it would be a claim about the
- * tab that is false for half of it. Each card on the Rules tab states its own
- * lock instead, which is the only place the distinction can be made accurately.
+ * the season started. That was honest when the whole tab froze together; it grew
+ * false when the always-editable buy-in joined it, and merging Name in has made
+ * it falser still — of the four sections on League Settings, only the rules ever
+ * freeze. Each card states its own lock instead, which is the only place the
+ * distinction can be made accurately.
  */
 export function AdminSettingsDrawer({
   open,
@@ -1393,10 +1745,11 @@ export function AdminSettingsDrawer({
           label="Group settings sections"
           // Left-aligned and capped rather than stretched: tabs spread across
           // 1000px read as a navigation bar for the page rather than a control
-          // for the panel under them. 440 was the cap for three; a fourth at the
-          // same per-tab width wants ~587, and 560 keeps "Data Feed" on one line
-          // without reaching for the whole rail.
-          className="lg:max-w-[560px]"
+          // for the panel under them. 440 was the cap for three tabs, 560 for
+          // four of the old labels; "League Settings" is wider than anything the
+          // bar has carried, so 620. Measure rather than derive this — the cap
+          // has to clear the widest LABEL, not a per-tab average. See TABS.
+          className="lg:max-w-[620px]"
         />
       }
     >
@@ -1418,40 +1771,51 @@ export function AdminSettingsDrawer({
         </TabPanel>
       ) : null}
 
-      {tab === "rules" ? (
+      {tab === "league" ? (
         <TabPanel
           idBase="admin-settings"
-          value="rules"
+          value="league"
           className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
         >
-          {/* Two cards, side by side, because they lock on different conditions
-              and the point is that you can see both states at once. */}
-          <RulesSection group={group} />
-          <BuyInAmountSection group={group} />
-        </TabPanel>
-      ) : null}
+          {/* Four sections in two visual registers, and the split is the point.
+              `SettingsCard` carries a `pill` stating a per-card lock; the two
+              plain sections never lock at all, so a card there would be an
+              affordance with nothing to say — and it would break the real
+              `<label htmlFor="group-name">` wrapper below, since `SettingsCard`
+              puts its heading inside a `<Label>` span. Card = "this can freeze,
+              here is its state"; bare section = "this never freezes". The
+              roster's `<ul>` and the feed's sections are bare for the same
+              reason.
 
-      {tab === "name" ? (
-        <TabPanel
-          idBase="admin-settings"
-          value="name"
-          className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
-        >
-          {/* Two plain sections, not `SettingsCard`s. That card exists for the
-              Rules tab, where its `pill` states a per-card lock and the two
-              cards lock on DIFFERENT conditions; neither of these locks at all,
-              so a card here would carry an affordance with nothing to say. It
-              would also break the real `<label htmlFor="group-name">` wrapper
-              below, since `SettingsCard` puts its heading inside a `<Label>`
-              span. The roster's `<ul>` and the feed's sections are bare too. */}
+              DOM order is also the phone's stacking order: identity first, then
+              the two things that cost money or decide the game.
+
+              THE TRAP HERE is `RulesSection`'s `<fieldset disabled>`. Three lock
+              behaviours now sit on one tab — `set_group_rules` (0011) refuses
+              once the season starts, while `set_group_buy_in` (0010) and
+              `set_group_name` (0011) deliberately have no lock check at all —
+              so that fieldset must keep wrapping ONLY the rules radio groups.
+              Widening it to the buy-in or the name would grey out controls the
+              database would have accepted. For the same reason the tab label
+              carries no lock glyph: one came off "Rules" for being a false
+              claim about half a tab, and here it would be false about three
+              quarters of one. */}
           <GroupNameSection group={group} />
           <InviteSection group={group} appUrl={appUrl} />
+          <RulesSection group={group} />
+          <BuyInAmountSection group={group} />
         </TabPanel>
       ) : null}
 
       {tab === "feed" ? (
         <TabPanel idBase="admin-settings" value="feed">
           <DataFeedSection groupId={group.id} />
+        </TabPanel>
+      ) : null}
+
+      {tab === "emails" ? (
+        <TabPanel idBase="admin-settings" value="emails">
+          <RemindersSection groupId={group.id} />
         </TabPanel>
       ) : null}
     </Drawer>

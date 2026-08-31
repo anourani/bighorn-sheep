@@ -37,11 +37,21 @@ ignored — `--phase kickoff` ran `final` and `--winners` was a coin flip. Fixed
    SUPABASE_SERVICE_ROLE_KEY=…            # server/scripts only — never NEXT_PUBLIC_
    NEXT_PUBLIC_APP_URL=http://localhost:3000
    ```
-3. **Apply the schema** — in the Supabase SQL Editor, run each migration in order:
-   `supabase/migrations/0001_init.sql`, `0002_join_by_invite.sql`,
-   `0003_group_create_and_pick_flags.sql`, `0004_profile_names_avatars.sql`, `0005_invite_code_without_pgcrypto.sql`.
-   (Or `supabase db push` with the CLI.) Run each **once**: `0004` backfills from
-   `display_name` and then drops it, so a second run has nothing to read.
+   Reminder emails need nothing here. Leave `RESEND_API_KEY` unset and the
+   Emails tab still loads and still shows who is due — it just cannot send. See
+   step 8.
+3. **Apply the schema** — in the Supabase SQL Editor, run every migration in
+   `supabase/migrations/` in numbered order, from `0001_init.sql` through
+   `0015_pick_and_buy_in_reminders.sql`. Note that `0013` is two files — apply
+   `0013_lock_membership_writes.sql` then `0013_remove_member.sql`. (Or
+   `supabase db push` with the CLI.)
+
+   Run each **once**: `0004` backfills from `display_name` and then drops it, so
+   a second run has nothing to read and the file cannot be replayed. Most of the
+   later ones are replayable, but there is no reason to.
+
+   `supabase/setup.sql` bundles them into one paste for a fresh project — but
+   see the KNOWN BROKEN note in its header before reaching for it.
 4. **Auth redirect** — under **Authentication → URL Configuration**, add
    `http://localhost:3000/**` to the redirect allowlist so the magic-link email
    returns to your local app.
@@ -191,6 +201,51 @@ standings with one or zero members alive rather than a declared result.
 Seed the next week, have everyone pick again (note: teams used already are locked
 out), and advance it. Repeat until you're confident the loop holds.
 
+## 8. Testing reminder emails without spamming the league
+
+The Emails tab in the admin drawer sends real mail to real people, so there are
+three ways to exercise it, in ascending order of realism. Use the first two
+freely; the third once, before you rely on it.
+
+**a. The tab itself, with no key.** With `RESEND_API_KEY` unset, the panel still
+loads and still shows exactly who is due — the list, the counts and the
+last-reminded stamps all come from the database, not from the mail provider. The
+send button reports that email isn't configured. This is the cheapest way to
+check the *decisions* (is the right week being talked about? is the right person
+listed?), which is where the bugs are.
+
+**b. `REMINDER_DRY_RUN=1`.** Resolves recipients, renders every message and logs
+it, and sends nothing:
+
+```bash
+REMINDER_DRY_RUN=1 npm run dev
+```
+
+Then open the Emails tab and press send. The messages appear in the terminal as
+`[reminders] would send to …`.
+
+**It deliberately writes nothing to `reminder_sends`.** That matters more than it
+looks: those rows are what stop a player being emailed twice, so a dry run that
+recorded them would silently suppress the real send afterwards. Same promise as
+`load-schedule`'s `dry=1` — fetch and report, write nothing. There is a test
+pinning it.
+
+**c. A real send to a test league.** The only way to prove deliverability, which
+is a property of DNS and the provider rather than of this code. Make a league
+with one member (you), don't pick, and send. Then press send again and confirm
+the second press sends nothing — that is the idempotence guarantee working, and
+it is worth seeing once.
+
+Two things to know while testing:
+
+- **The week is derived, not the "current week".** Between Monday night and
+  Thursday night the app's current week is the one that just finished, and the
+  reminder is about the one coming. If the tab names a week you didn't expect,
+  check the kickoff times in `games` before assuming it's wrong.
+- **Pick reminders switch off once the week's last game kicks off.** The test
+  weekend seeded in step 2 has kickoffs in the near future, so seed a fresh one
+  if the tab tells you picks are closed.
+
 ## Resetting
 
 The games live in the `games` table with ids like `test-2026-18-3` — always prefixed
@@ -198,3 +253,13 @@ The games live in the `games` table with ids like `test-2026-18-3` — always pr
 games; the foreign key forbids the other order). To wipe picks/members for a fresh
 run, delete from `picks` / `group_members` for your group (service role or SQL
 editor). Re-running `seed:test-week` just upserts the same ids.
+
+Reminder sends are their own table. To let yourself be reminded again about a
+week you have already tested, clear its rows:
+
+```sql
+delete from public.reminder_sends where group_id = '<your-group-uuid>';
+```
+
+Nothing else reads that table, so clearing it affects only what the Emails tab
+believes it has already sent.
