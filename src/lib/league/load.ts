@@ -346,15 +346,27 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   // Uses the season-typed RPC (0006) rather than 0003's week-only one, so a
   // rival's PRACTICE pick for the same week number can never light the regular
   // season's padlock.
+  //
+  // Asked in EVERY phase, preseason included, and that is not an oversight to
+  // tidy back up. `resolveCurrentWeek` returns 1 throughout preseason, so this
+  // asks for regular-season Week 1 — the week the standings board draws as live
+  // while entry is still open, now that the board renders during preseason
+  // rather than being replaced by the practice table or a bare sentence. Skip it
+  // there and a member who picked Week 1 early draws a hollow "No pick" circle:
+  // RLS returns another member's un-kicked row to nobody, so this team-less flag
+  // is the ONLY thing that can produce their padlock, and `rankMembers` would
+  // bucket them `none` and sort them below people who have not picked at all.
+  //
+  // `public_league_snapshot` (0009) has always computed the same flag in every
+  // phase, which is why the signed-out landing board already showed those
+  // padlocks while the signed-in table did not.
   let hiddenPickUserIds: string[] = [];
-  if (phase !== "preseason") {
-    const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
-      p_group_id: group.id,
-      p_season_type: "regular",
-      p_week: currentWeek,
-    });
-    if (Array.isArray(hidden)) hiddenPickUserIds = hidden as string[];
-  }
+  const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
+    p_group_id: group.id,
+    p_season_type: "regular",
+    p_week: currentWeek,
+  });
+  if (Array.isArray(hidden)) hiddenPickUserIds = hidden as string[];
 
   /*
    * Is the practice round switched on for THIS viewer?
