@@ -348,11 +348,13 @@ recover users' browsers en masse.
 
 ## Page layout: what a new page inherits, and what it must not add
 
-Every `/app` route renders inside one `<main>` — `src/app/app/layout.tsx` — and that
-element owns the whole page frame:
+Every `/app` route renders inside one `<main>` — `src/app/app/layout.tsx` — and the
+frame is split across two elements, deliberately: the WRAPPER owns the horizontal and
+`main` owns the vertical.
 
 ```
-<main className="flex-1 px-4 pb-20 pt-10 lg:px-0 lg:pb-32 lg:pt-20">
+<div className="… max-w-frame px-4 …">      // the gutter
+  <main className="flex-1 pb-20 pt-10 lg:pb-32 lg:pt-20">
 ```
 
 40px above the first block and 80px below the last on a phone; 80 and 128 from `lg`.
@@ -360,14 +362,21 @@ Those are the mockups' numbers. The desktop pair is asymmetric on purpose — th
 pads its section by 80 and then pads the page wrapper by another 48, so the foot of a
 page is deliberately wider than its head. Don't "balance" it.
 
-**The desktop column is the whole shell.** `lg:px-0`: 16px of inset on a phone and none
-at all from `lg`, where the content column is `max-w-shell`'s full 1000px rather than
-968. The standings mock-ups (`4082:139343`, `4158:150123`) draw every block flush to the
-shell at desktop and inset by 16 on a phone, and that was read as the app's frame rather
-than as one page's, so Picks and Account take it too. It is not free: `TeamGrid`'s
-desktop cards were sized against the old 968 and are **160px now, not 154.66**, and
-`DRAWER_RAIL` had to gain the same `lg:px-0` or every desktop drawer would sit 16px
-narrower than the page it is supposed to line up with.
+**The horizontal has NO breakpoint, and the content column is
+`min(viewport − 32, 1000)` at every width.** `maxWidth.frame` in
+`tailwind.config.ts` is the 1000px column plus 16px either side, derived from
+`SHELL_COLUMN`/`SHELL_GUTTER` rather than retyped as 1032, and it is capped on the
+wrapper — so the column widens with the window until it reaches 1000 and then stops,
+and nothing ever comes closer than 16px to the window edge. One rule, two regimes.
+
+It was three bands before, and the middle one was an accident: `max-w-shell` on the
+wrapper with `px-4 lg:px-0` on `main` gave the old 968 column between 1000 and 1023px
+and then **jumped 32px wider at `lg`**, where the gutter all but vanished — 4.5px at
+1024 with a classic scrollbar. The column is continuous now: measured 976 → 977 → 984
+→ 993 → 1000 across 1023/1024/1031/1040/1047, with the gutter pinned at exactly 16
+throughout. `DRAWER_RAIL` is `max-w-frame px-4` for the same reason — its premise is
+lining up with the page behind it — and `TeamGrid`'s desktop cards are **160px, not the
+154.66** they were drawn at against 968.
 
 **A new page therefore adds no vertical padding of its own: no `py-*`, `pt-*`, `pb-*`
 or `mt-*` on its root.** Every `src/app/app/*/page.tsx` is a thin Server Component
@@ -379,19 +388,22 @@ than every other screen for as long as it existed.
 
 Five more rules, roughly in the order they come up:
 
-- **`px-4` on that same element is a separate contract.** `StandingsGrid`, `WeekStrip`
-  and `TeamGrid` full-bleed by cancelling it with `-mx-4` (plus `lg:mx-0` where the
-  bleed stops at desktop). They stop at exactly the width the inset itself now stops at,
-  so `lg:px-0` reaches none of them. `Headcount` is no longer in that list — it is a
-  filled card that fills the column at both widths and bleeds nowhere. Nothing cancels
-  the *vertical* padding — there is no `-mt-*` anywhere in `src/` — so the two halves of
-  that class string move independently.
+- **The gutter is on the WRAPPER, and `-mx-4` still reaches it.** `StandingsGrid`,
+  `WeekStrip` and `TeamGrid` full-bleed by cancelling 16px with `-mx-4` (plus `lg:mx-0`
+  where the bleed stops at desktop). `main` carries no padding of its own any more, and
+  that changes nothing for them: a negative margin shifts a box rather than depending on
+  the parent's padding, and it lands in the wrapper's 16px, which is the window edge
+  wherever the wrapper is narrower than `max-w-frame`. Measured: the bled element's left
+  edge is 0 below `lg` at 320 / 393 / 768 / 1023. `Headcount` is not in that list — it is
+  a filled card that fills the column and bleeds nowhere. Nothing cancels the *vertical*
+  padding — there is no `-mt-*` anywhere in `src/`.
 - **The breakpoint is `lg` (1024px), never `md`.** It is the app's single turn-over
   width: `WeekStrip`, `StandingsGrid`, `PickHero`, the headcount card's cube scale and
-  the account grid all change shape there, and it is where `main` drops its inset and
-  the column reaches `max-w-shell`'s full 1000px. `md` steps *scale* only, so a page
-  that turns over there takes desktop padding while every component inside it is still
-  phone-shaped.
+  the account grid all change shape there. It is NOT where the column width turns over —
+  the horizontal has no breakpoint at all now, and the two are independent on purpose:
+  shape steps at 1024, width caps at 1000 wherever the window allows it. `md` steps
+  *scale* only, so a page that turns over there takes desktop padding while every
+  component inside it is still phone-shaped.
 - **Think twice before putting `space-y-*` on a page root.** It compiles to `> * + *`,
   which outranks a child's own `mt-*` on specificity, so no single child can opt out —
   it is all-or-nothing. `StandingsClient` and `MyPicksClient` both dropped theirs for
@@ -426,7 +438,10 @@ and presents as padding that "didn't take":
 ```js
 const m = document.querySelector('main');
 [getComputedStyle(m).paddingTop, getComputedStyle(m).paddingBottom];
-// 40px / 80px below lg, 80px / 128px from lg — and paddingLeft 16px / 0px
+// 40px / 80px below lg, 80px / 128px from lg. `main` has NO horizontal padding —
+// the gutter is the wrapper's, so check the column itself instead:
+const w = m.getBoundingClientRect().width;
+[w, Math.min(document.body.clientWidth - 32, 1000)]; // equal at every width
 ```
 
 ---

@@ -47,29 +47,39 @@ export default async function AppLayout({ children }: { children: React.ReactNod
        desktop or mobile browser, so the measurement below is unchanged there,
        and `lg:pt-0` keeps desktop byte-identical. Preflight's global
        `border-box` puts this padding inside `min-h-dvh`, so it adds no scroll. */
-    <div className="relative mx-auto flex min-h-dvh max-w-shell flex-col pt-[env(safe-area-inset-top)] lg:pt-0">
+    <div className="relative mx-auto flex min-h-dvh max-w-frame flex-col px-4 pt-[env(safe-area-inset-top)] lg:pt-0">
       <AppHeader />
       {/* The page rhythm, straight off the mockups: 40px above the first block
           and 80px below the last on a phone, 80/128 from `lg`.
 
-          THE DESKTOP COLUMN IS THE WHOLE SHELL. `px-4 lg:px-0` — 16px of inset
-          on a phone and none at all from `lg`, where the content column is the
-          full 1000px of `max-w-shell` rather than 968. The standings mock-ups
-          (`4082:139343`, `4158:150123`) draw every block flush to the shell at
-          desktop and inset by 16 on a phone, and that was taken as the app's
-          frame rather than as one page's, so Picks and Account get it too.
+          THE HORIZONTAL HAS NO BREAKPOINT, and that is deliberate. `main`
+          carries no `px-*` at all: the gutter lives on the WRAPPER above, which
+          is capped at `max-w-frame` (the 1000px column plus 16px either side).
+          So the content column is `min(viewport - 32, 1000)` at every width —
+          one rule, two regimes, and no third band.
 
-          What that costs, stated because it is easy to miss: `TeamGrid`'s
-          desktop cards were sized against the old 968 and are 160px now, not
-          154.66. Its own comment carries the new number.
+          It was three bands until this: `max-w-shell` on the wrapper with
+          `px-4 lg:px-0` on `main` gave 968 between 1000 and 1023px, then jumped
+          to a flush 1000 at `lg` with the gutter all but gone at 1024. Now the
+          column widens smoothly to 1000 and stops, and nothing ever comes closer
+          than 16px to the window edge. The standings mock-ups
+          (`4082:139343`, `4158:150123`) draw the 1000; the gutter is what keeps
+          that honest on a small laptop.
 
-          `px-4` is still a separate contract from the vertical, and it still
-          must not move with it: Headcount no longer bleeds, but StandingsGrid,
-          WeekStrip and TeamGrid all cancel that inset with `-mx-4` below `lg`.
-          They stop at `lg` (`lg:mx-0`), which is exactly where the inset itself
-          now stops, so dropping it there reaches none of them. Nothing cancels
-          the vertical padding — there is no `-mt-*` anywhere in src/ — so the
-          two can still be reasoned about apart.
+          Two things follow it rather than being left behind: `DRAWER_RAIL` is
+          `max-w-frame px-4` for the same reason (its premise is lining up with
+          the page), and `TeamGrid`'s desktop cards are 160px rather than the
+          154.66 they were drawn at against the old 968.
+
+          The gutter is still a separate contract from the vertical: StandingsGrid,
+          WeekStrip and TeamGrid cancel it with `-mx-4` below `lg`, which reaches
+          the wrapper's padding box — the window edge, wherever the wrapper is
+          narrower than its cap. `main` having no padding of its own does not
+          change that: a negative margin shifts a box, it does not depend on the
+          parent's padding, and the wrapper's 16px is there to absorb it.
+          Headcount is not in that list any more — it is a filled card that fills
+          the column. Nothing cancels the vertical padding — there is no `-mt-*`
+          anywhere in src/ — so the two can still be reasoned about apart.
 
           Historical note, since the number has now moved twice: this was `pb-28`
           while a fixed bottom tab bar sat over the page, then `pb-12` once
@@ -82,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           rather than a guess at how much to hide behind. That held when the bar
           grew from 64px to 70, which is the point of reserving rather than
           overlaying. */}
-      <main className="flex-1 px-4 pb-20 pt-10 lg:px-0 lg:pb-32 lg:pt-20">{children}</main>
+      <main className="flex-1 pb-20 pt-10 lg:pb-32 lg:pt-20">{children}</main>
       {/* Last child, and that is not a free ordering — `sticky bottom-0` works
           because this element's flow position is the foot of the document. */}
       <BottomTabBar buyInUnpaid={buyInUnpaid} />

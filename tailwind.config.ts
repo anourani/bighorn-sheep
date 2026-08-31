@@ -78,6 +78,19 @@ const shade = (hex: string, amount: number) => mix(hex, "#000000", amount);
 /** For the `rgba()` slots inside `boxShadow`, which take no hex. */
 const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(",")},${a})`;
 
+/**
+ * The app shell, as two numbers rather than one.
+ *
+ * `SHELL_COLUMN` is what the mock-ups draw content into at desktop.
+ * `SHELL_GUTTER` is the smallest gap that column is ever allowed to leave
+ * between itself and the window edge, at EVERY width — which is what collapses
+ * the frame to two regimes: below `column + 2 * gutter` the content is the
+ * window less the gutter, and above it the content is the column, centred.
+ * There is no third band and no breakpoint in the horizontal any more.
+ */
+const SHELL_COLUMN = 1000;
+const SHELL_GUTTER = 16;
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
   theme: {
@@ -334,7 +347,12 @@ const config: Config = {
       },
       maxWidth: {
         app: "480px", // mobile-first single-column shell (modals, auth, narrow content)
-        shell: "1000px", // widened app shell on desktop — responsive down to phones
+        shell: `${SHELL_COLUMN}px`, // the app's content column
+        // The column PLUS its gutter — what the shell wrapper is capped at, so
+        // that the column itself tops out at `shell` and never comes closer than
+        // `SHELL_GUTTER` to the window edge. Derived, never retyped: a hand-typed
+        // 1032 is a number that goes stale the moment either half of it moves.
+        frame: `${SHELL_COLUMN + SHELL_GUTTER * 2}px`,
         wide: "1120px",
       },
       boxShadow: {
