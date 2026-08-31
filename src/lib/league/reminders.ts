@@ -336,6 +336,23 @@ export interface MessageInput {
   buyInCents: number;
   /** Absolute link back into the app. Never relative — this is an email. */
   url: string;
+  /**
+   * The admin who pressed Send — "the commissioner" in the copy.
+   *
+   * Whoever acted, not the league's creator: "let them know" has to name the
+   * person who just chased you, and with two admins those differ. Resolved
+   * server-side in `sendReminders`; the preview passes the viewing admin, who
+   * is the same person.
+   */
+  commissionerFirstName?: string;
+  /** The commissioner's own address, for the mailto link. */
+  commissionerEmail?: string;
+  /**
+   * From `profile_private.phone` (0008), which is free text and documented as
+   * "never parsed or dialled" — so it is printed verbatim and NOT turned into a
+   * `tel:` link. Null or blank simply drops the "or text …" half of the line.
+   */
+  commissionerPhone?: string | null;
 }
 
 /**
@@ -345,7 +362,7 @@ export interface MessageInput {
  * someone's life and "You haven't picked yet" from an unknown sender is spam.
  */
 export function reminderSubject(input: MessageInput): string {
-  if (input.kind === "buy_in") return `${input.leagueName}: your buy-in is outstanding`;
+  if (input.kind === "buy_in") return `Payment confirmation for ${input.leagueName}`;
   return `${input.leagueName}: you haven't picked for Week ${input.week ?? ""}`.trim();
 }
 
@@ -365,27 +382,95 @@ export function reminderSubject(input: MessageInput): string {
  */
 export function reminderBody(input: MessageInput): { text: string; html: string } {
   const lines = bodyLines(input);
-  const text = [`Hi ${input.firstName || "there"},`, "", ...lines, "", input.url, ""].join("\n");
+  const contact = contactLine(input);
+
+  /*
+   * The buy-in email carries NO app link, and that is deliberate rather than an
+   * omission: its call to action is to pay a person, so a link to a page that
+   * only restates the debt competes with the thing you want them to do. The
+   * pick reminder keeps its link, because "go and pick" IS a link.
+   */
+  const link = input.kind === "pick" ? input.url : null;
+
+  const footer = `You're getting this because you're in ${input.leagueName}.`;
+
+  // Blank lines BETWEEN blocks in the text part. The previous version joined
+  // every body line with a single newline, so the paragraphs ran together for
+  // anyone reading the plain-text alternative — invisible while you only ever
+  // look at the HTML one.
+  const text = [
+    `Hi ${input.firstName || "there"},`,
+    ...lines,
+    ...(contact ? [contact.text] : []),
+    ...(link ? [link] : []),
+    footer,
+  ].join("\n\n");
 
   const html = [
     `<p>Hi ${esc(input.firstName || "there")},</p>`,
     ...lines.filter(Boolean).map((l) => `<p>${esc(l)}</p>`),
-    `<p><a href="${esc(input.url)}">${esc(input.url)}</a></p>`,
-    `<p style="color:#757575;font-size:12px">You're getting this because you're in ${esc(
-      input.leagueName,
-    )}.</p>`,
+    ...(contact ? [`<p>${contact.html}</p>`] : []),
+    ...(link ? [`<p><a href="${esc(link)}">${esc(link)}</a></p>`] : []),
+    `<p style="color:#757575;font-size:12px">${esc(footer)}</p>`,
   ].join("\n");
 
-  return { text, html };
+  return { text: `${text}\n`, html };
+}
+
+/**
+ * "Email or text Alex at 818…" — the one line that is a link rather than prose.
+ *
+ * It cannot go through `bodyLines`, because that escapes every line into a
+ * `<p>`; this needs an anchor in the HTML and a spelled-out address in the text,
+ * where no link is possible. Hence two renderings of one sentence.
+ *
+ * Buy-in only. A pick reminder is answered in the app, not by replying to a
+ * person, and the link above already says so.
+ *
+ * Returns null when there is no commissioner address to link to, so the
+ * paragraph is dropped whole rather than rendering "Email  at ." — the caller
+ * spreads it conditionally for exactly that reason.
+ */
+function contactLine(input: MessageInput): { text: string; html: string } | null {
+  if (input.kind !== "buy_in") return null;
+
+  const email = (input.commissionerEmail ?? "").trim();
+  if (!email) return null;
+
+  const who = (input.commissionerFirstName ?? "").trim() || "the commissioner";
+  // Printed verbatim. profile_private.phone is free text and 0008 documents it
+  // as "never parsed or dialled", so it is not normalised and not made a `tel:`
+  // link — a stored "(818) 312-2718" and a stored "818 312 2718" both read fine.
+  const phone = (input.commissionerPhone ?? "").trim();
+
+  // Pre-filling the subject is what makes this a DRAFT rather than a blank
+  // compose window — the reply lands with the league already named.
+  const href = `mailto:${email}?subject=${encodeURIComponent(`Buy-in for ${input.leagueName}`)}`;
+
+  if (phone) {
+    return {
+      text: `Email ${who} at ${email}, or text ${phone}.`,
+      html: `<a href="${esc(href)}">Email</a> or text ${esc(who)} at ${esc(phone)}.`,
+    };
+  }
+
+  return {
+    text: `Email ${who} at ${email}.`,
+    html: `<a href="${esc(href)}">Email ${esc(who)}</a>.`,
+  };
 }
 
 function bodyLines(input: MessageInput): string[] {
   if (input.kind === "buy_in") {
+    // "the commissioner" when we do not know who sent it — the field is
+    // optional so a caller that has not wired it through still reads correctly
+    // rather than printing "undefined" at somebody.
+    const who = (input.commissionerFirstName ?? "").trim() || "the commissioner";
     return [
-      `Your buy-in for ${input.leagueName} hasn't been marked as paid yet${
-        input.buyInCents > 0 ? ` — it's ${formatMoney(input.buyInCents)}` : ""
-      }.`,
-      "If you've already settled up, let your commissioner know and they'll tick you off.",
+      `Your buy-in for ${input.leagueName} hasn't been paid yet.${
+        input.buyInCents > 0 ? ` The buy-in is ${formatMoney(input.buyInCents)}.` : ""
+      } Please pay the commissioner asap or you'll be removed from the league before Week 1 kicks off.`,
+      `If you already paid, let ${who} know so they can update your status and keep you in the league.`,
     ];
   }
 

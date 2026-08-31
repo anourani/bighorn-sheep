@@ -58,6 +58,10 @@ export interface ReminderRunOptions {
   partiallyStarted: boolean;
   /** Absolute, resolved server-side. Never taken from the browser. */
   appUrl: string;
+  /** The admin who pressed Send — named in the buy-in copy. */
+  commissionerFirstName?: string;
+  commissionerEmail?: string;
+  commissionerPhone?: string | null;
   now: Date;
   mailer?: Mailer;
   /** Resolve recipients and render, but send nothing and write nothing. */
@@ -83,6 +87,9 @@ export async function runReminderSend(
     partiallyStarted,
     appUrl,
     now,
+    commissionerFirstName,
+    commissionerEmail,
+    commissionerPhone,
     dryRun = false,
     budgetMs = 8000,
   } = opts;
@@ -157,6 +164,9 @@ export async function runReminderSend(
       partiallyStarted,
       buyInCents,
       url: `${appUrl}${kind === "pick" ? "/app" : "/app/account"}`,
+      commissionerFirstName,
+      commissionerEmail,
+      commissionerPhone,
     };
     const { text, html } = reminderBody(input);
     return { to: r.email as string, subject: reminderSubject(input), text, html };

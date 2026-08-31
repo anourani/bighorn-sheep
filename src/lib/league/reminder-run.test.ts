@@ -206,11 +206,28 @@ describe("runReminderSend", () => {
       expect(writes[0]?.p_kind).toBe("buy_in");
     });
 
-    it("point at the account page, where the money is", async () => {
+    /**
+     * The buy-in email points at a PERSON, not a page — its call to action is
+     * to pay someone, so a link that only restates the debt competes with it.
+     * The commissioner travels down from the action for exactly this.
+     */
+    it("name the commissioner and carry no app link", async () => {
       const { client } = fakeClient([row("u1", "a@e.com")]);
       const mailer = new CapturingMailer();
-      await runReminderSend(client, { ...BASE, kind: "buy_in", week: null, mailer });
-      expect(mailer.sent[0]?.text).toContain("https://sheepwithglasses.com/app/account");
+      await runReminderSend(client, {
+        ...BASE,
+        kind: "buy_in",
+        week: null,
+        mailer,
+        commissionerFirstName: "Sam",
+        commissionerEmail: "sam@example.com",
+        commissionerPhone: "8183122718",
+      });
+      const sent = mailer.sent[0];
+      expect(sent?.text).toContain("let Sam know");
+      expect(sent?.text).toContain("or text 8183122718.");
+      expect(sent?.html).toContain("mailto:sam@example.com");
+      expect(sent?.text).not.toContain("https://sheepwithglasses.com/app/account");
     });
 
     it("send a buy-in even while a pick week is open, week untouched", async () => {

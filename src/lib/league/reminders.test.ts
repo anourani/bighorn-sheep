@@ -331,7 +331,7 @@ describe("the message", () => {
       "Sheep with Glasses: you haven't picked for Week 5",
     );
     expect(reminderSubject({ ...base, kind: "buy_in" })).toBe(
-      "Sheep with Glasses: your buy-in is outstanding",
+      "Payment confirmation for Sheep with Glasses",
     );
   });
 
@@ -384,6 +384,70 @@ describe("the message", () => {
 
   it("falls back to a greeting when a first name is missing", () => {
     expect(reminderBody({ ...base, firstName: "" }).text.startsWith("Hi there,")).toBe(true);
+  });
+
+  describe("the buy-in copy", () => {
+    const buyIn = {
+      ...base,
+      kind: "buy_in" as const,
+      week: null,
+      commissionerFirstName: "Sam",
+      commissionerEmail: "sam@example.com",
+      commissionerPhone: "8183122718",
+    };
+
+    it("names the commissioner and reaches them two ways", () => {
+      const { text, html } = reminderBody(buyIn);
+      expect(text).toContain("let Sam know");
+      // The plain-text part cannot carry a link, so it spells the address out.
+      expect(text).toContain("Email Sam at sam@example.com, or text 8183122718.");
+      // The HTML part makes "Email" a mailto that arrives with a subject
+      // already filled in — that is what makes it a draft, not a blank compose.
+      expect(html).toContain('<a href="mailto:sam@example.com?subject=');
+      expect(html).toContain("Buy-in%20for%20Sheep%20with%20Glasses");
+      expect(html).toContain(">Email</a> or text Sam at 8183122718.");
+    });
+
+    /** profile_private.phone is optional, and half a sentence is worse than none. */
+    it("drops the text half when no phone is stored", () => {
+      const { text, html } = reminderBody({ ...buyIn, commissionerPhone: null });
+      expect(text).toContain("Email Sam at sam@example.com.");
+      expect(text).not.toContain("or text");
+      expect(html).toContain(">Email Sam</a>.");
+    });
+
+    /** Rather than rendering "Email  at ." at somebody. */
+    it("drops the whole contact line when there is no address", () => {
+      const { text, html } = reminderBody({ ...buyIn, commissionerEmail: "" });
+      expect(text).not.toContain("Email");
+      expect(html).not.toContain("mailto:");
+    });
+
+    it("falls back to 'the commissioner' rather than printing undefined", () => {
+      const { text } = reminderBody({ ...buyIn, commissionerFirstName: undefined });
+      expect(text).toContain("let the commissioner know");
+      expect(text).not.toContain("undefined");
+    });
+
+    /**
+     * The call to action is to pay a person, so a link to a page that only
+     * restates the debt competes with it. The pick reminder keeps its link.
+     */
+    it("carries no app link, where the pick reminder does", () => {
+      expect(reminderBody(buyIn).text).not.toContain(buyIn.url);
+      expect(reminderBody(base).text).toContain(base.url);
+    });
+
+    it("keeps the removal warning, which is the whole point of sending it", () => {
+      expect(reminderBody(buyIn).text).toContain("removed from the league before Week 1");
+    });
+  });
+
+  /** Paragraphs, not a wall — the text part ran together before. */
+  it("separates blocks with blank lines in the plain-text part", () => {
+    const { text } = reminderBody(base);
+    expect(text).toContain("\n\n");
+    expect(text.split("\n\n").length).toBeGreaterThan(3);
   });
 
   it("omits the amount when the league has no buy-in set", () => {

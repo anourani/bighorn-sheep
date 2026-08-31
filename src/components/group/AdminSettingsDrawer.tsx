@@ -36,6 +36,8 @@ import {
 import {
   describeReminders,
   mapReminderStatus,
+  reminderBody,
+  reminderSubject,
   type PickWindow,
   type ReminderKind,
   type ReminderSnapshot,
@@ -1337,6 +1339,7 @@ function ReminderCard({
   kind,
   snapshot,
   window: pickWindow,
+  context,
   busy,
   disabled,
   disabledNote,
@@ -1346,6 +1349,7 @@ function ReminderCard({
   kind: ReminderKind;
   snapshot: ReminderSnapshot | null;
   window: PickWindow | null;
+  context: ReminderContext | null;
   busy: boolean;
   disabled: boolean;
   disabledNote: string | null;
@@ -1364,9 +1368,40 @@ function ReminderCard({
     setExcluded(new Set());
   }, [due]);
   const [confirming, setConfirming] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const selected = due.filter((t) => !excluded.has(t.userId));
   const now = snapshot?.now ?? "";
+
+  /*
+   * The preview renders through `reminderBody` — the SAME pure function the
+   * send calls — rather than the drawer keeping its own copy of the wording.
+   * That is the whole point of it: a second copy would drift, and a preview
+   * that drifts from what is sent is worse than no preview at all.
+   *
+   * It follows the first TICKED recipient, so unticking someone changes whose
+   * name you are looking at. Everything else it needs (the league, the money,
+   * the commissioner, the app URL) comes from the server with the status, so
+   * the browser is not guessing at any of it.
+   */
+  const previewFor = selected[0] ?? null;
+  const preview = useMemo(() => {
+    if (!previewFor || !context) return null;
+    const input = {
+      kind,
+      firstName: previewFor.firstName,
+      leagueName: context.leagueName,
+      week: kind === "pick" ? (snapshot?.week ?? null) : null,
+      deadlineIso: pickWindow?.lastKickoffIso ?? null,
+      partiallyStarted: pickWindow?.partiallyStarted ?? false,
+      buyInCents: context.buyInCents,
+      url: `${context.appUrl}${kind === "pick" ? "/app" : "/app/account"}`,
+      commissionerFirstName: context.commissioner.firstName,
+      commissionerEmail: context.commissioner.email,
+      commissionerPhone: context.commissioner.phone,
+    };
+    return { subject: reminderSubject(input), text: reminderBody(input).text };
+  }, [previewFor, context, kind, snapshot?.week, pickWindow]);
 
   function toggle(userId: string) {
     setExcluded((prev) => {
@@ -1429,6 +1464,41 @@ function ReminderCard({
         </ul>
       ) : null}
 
+      {preview ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="text-sm font-medium text-brand-strong underline underline-offset-2 hover:text-ink"
+          >
+            {showPreview ? "Hide preview" : "Preview the email"}
+          </button>
+          {showPreview ? (
+            <div className="space-y-2 rounded-control border border-line bg-[#FAFAFB] p-3">
+              <p className="text-xs text-ink-mute">
+                What {formatDisplayName(previewFor?.firstName, previewFor?.lastName)} will receive.
+                {selected.length > 1
+                  ? ` The other ${selected.length - 1} ${
+                      selected.length - 1 === 1 ? "email is" : "emails are"
+                    } the same but for the name.`
+                  : ""}
+              </p>
+              <p className="text-sm font-medium text-ink">{preview.subject}</p>
+              {/* The TEXT part, deliberately — it is the same message as the
+                  HTML one and needs no `dangerouslySetInnerHTML` to show. The
+                  only thing it cannot render is the mailto link, which the
+                  plain-text version spells out as an address anyway. */}
+              {/* `break-words` because the copy contains an email address and a
+                  URL, neither of which has a space to wrap at — and nothing in
+                  this drawer may scroll to absorb an overflow. */}
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-mute">
+                {preview.text.trim()}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {disabled && disabledNote ? <HintLine>{disabledNote}</HintLine> : null}
 
       {due.length > 0 && !disabled ? (
@@ -1482,18 +1552,44 @@ function ReminderCard({
  * buy-in never closes, matching `set_group_buy_in`, which has no lock check at
  * all — money admin stays open all season.
  */
+/**
+ * Everything the preview needs that the browser cannot know on its own — the
+ * commissioner's own contact details and the app URL the SERVER would build
+ * links from (not `window.location.origin`, which would render a preview
+ * pointing somewhere the real email never would).
+ */
+interface ReminderContext {
+  leagueName: string;
+  buyInCents: number;
+  appUrl: string;
+  commissioner: { firstName: string; email: string; phone: string | null };
+}
+
 function RemindersSection({ groupId }: { groupId: string }) {
   const [snapshot, setSnapshot] = useState<ReminderSnapshot | null>(null);
   const [pickWindow, setPickWindow] = useState<PickWindow | null>(null);
+  const [context, setContext] = useState<ReminderContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
   const apply = useCallback((data: unknown) => {
-    const payload = data as { status?: unknown; window?: PickWindow | null } | null;
+    const payload = data as
+      | ({ status?: unknown; window?: PickWindow | null } & Partial<ReminderContext>)
+      | null;
     setSnapshot(mapReminderStatus(payload?.status));
     setPickWindow(payload?.window ?? null);
+    // Only replace the context when the payload carries one, so a send's
+    // response cannot blank the preview if its shape ever narrows.
+    if (payload?.commissioner && typeof payload.leagueName === "string") {
+      setContext({
+        leagueName: payload.leagueName,
+        buyInCents: payload.buyInCents ?? 0,
+        appUrl: payload.appUrl ?? "",
+        commissioner: payload.commissioner,
+      });
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -1552,6 +1648,7 @@ function RemindersSection({ groupId }: { groupId: string }) {
           kind="pick"
           snapshot={snapshot}
           window={pickWindow}
+          context={context}
           busy={busy}
           disabled={pickClosed}
           disabledNote={pickWindowNote(pickWindow, snapshot)}
@@ -1562,6 +1659,7 @@ function RemindersSection({ groupId }: { groupId: string }) {
           kind="buy_in"
           snapshot={snapshot}
           window={null}
+          context={context}
           busy={busy}
           disabled={false}
           disabledNote={null}

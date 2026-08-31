@@ -1109,6 +1109,40 @@ async function reminderContext(
 }
 
 /**
+ * The acting admin's own name, address and phone — "the commissioner" in the
+ * buy-in copy, and what the drawer's preview renders with.
+ *
+ * All three are the CALLER's own row, so nothing here needs a definer function:
+ * `profiles` is world-readable within the league, `profile_private` is readable
+ * by its owner (0008), and the address comes from the session rather than from
+ * the database at all. That is what keeps 0015's rule intact — the one address
+ * this feature puts in front of a browser is the viewer's own.
+ *
+ * Every field degrades on its own. A missing phone drops the "or text …" half
+ * of the line; a missing name falls back to "the commissioner"; a missing
+ * address drops the whole paragraph. None of them can fail a send.
+ */
+async function commissionerDetails(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  email: string | null,
+) {
+  const [{ data: profile }, { data: priv }] = await Promise.all([
+    supabase.from("profiles").select("first_name").eq("id", userId).maybeSingle(),
+    // `select("*")` rather than naming the column: this table is small, and
+    // naming a column PostgREST does not know raises 42703 and fails the whole
+    // query rather than returning undefined — the trap CLAUDE.md records.
+    supabase.from("profile_private").select("*").eq("id", userId).maybeSingle(),
+  ]);
+
+  return {
+    firstName: (profile?.first_name ?? "").trim(),
+    email: email ?? "",
+    phone: (priv?.phone ?? "").trim() || null,
+  };
+}
+
+/**
  * Who still needs a reminder, for the drawer's Emails tab.
  *
  * Admin-gated in Postgres by `reminder_status_for_admin` (0015), which returns
@@ -1145,7 +1179,23 @@ export async function getReminderStatus(input: {
       return { ok: false, error: reason };
     }
 
-    return { ok: true, data: { status: data, window: ctx.window } };
+    // The commissioner and the server's own app URL travel with the status so
+    // the preview can call `reminderBody` — the same function the send calls —
+    // rather than the drawer keeping a second copy of the wording that could
+    // drift from what actually goes out.
+    const commissioner = await commissionerDetails(supabase, user.id, user.email ?? null);
+
+    return {
+      ok: true,
+      data: {
+        status: data,
+        window: ctx.window,
+        commissioner,
+        leagueName: ctx.group.name,
+        buyInCents: ctx.group.buy_in_cents ?? 0,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "",
+      },
+    };
   });
 }
 
@@ -1241,6 +1291,11 @@ export async function sendReminders(input: {
 
     if (!getMailer()) return { ok: false, error: "reminder_mail_unconfigured" };
 
+    // Whoever pressed Send is "the commissioner" the copy names and the mailto
+    // link points at — not the league's creator, because "let them know" has to
+    // reach the person who just chased you.
+    const commissioner = await commissionerDetails(supabase, user.id, user.email ?? null);
+
     // reminder_due and record_reminder_send are granted to service_role alone,
     // and the former reads auth.users. The anon-key client cannot do either.
     const service = serviceClient();
@@ -1261,6 +1316,9 @@ export async function sendReminders(input: {
       partiallyStarted: ctx.window?.partiallyStarted ?? false,
       appUrl: appUrl.replace(/\/$/, ""),
       now: ctx.now,
+      commissionerFirstName: commissioner.firstName,
+      commissionerEmail: commissioner.email,
+      commissionerPhone: commissioner.phone,
     });
 
     if (outcome.httpStatus >= 500) {
