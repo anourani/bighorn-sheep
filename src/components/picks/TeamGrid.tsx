@@ -25,11 +25,15 @@ import type { UsedPick } from "@/components/picks/WeekSchedule";
  * is the default. One tap picks; this layout is one tap away in the filters.
  *
  * The geometry is exact rather than approximate, and both ends come straight off
- * the mockups: six 154px cards with 8px gutters inside the 968px column
- * (`max-w-shell` minus the shell's `px-4`), and three cards edge-to-edge on a
- * 393px phone with 4px of everything. `-mx-4` cancelling the host's inset is the
- * same full-bleed idiom `StandingsGrid` and `Headcount` use, and it assumes,
- * as they do, that the host supplies exactly 16px.
+ * the mockups: six cards with 8px gutters across the desktop column and three
+ * edge-to-edge on a 393px phone with 4px of everything. `-mx-4` cancelling the
+ * host's inset is the same full-bleed idiom `StandingsGrid` uses, and it
+ * assumes, as that does, that the host supplies exactly 16px below `lg`.
+ *
+ * The desktop card is 160px, not the 154.66 it was drawn at: `main` stopped
+ * insetting at `lg`, so the column is the shell's full 1000px rather than 968.
+ * The card count and the gutters are the mock-up's; only the width the six of
+ * them divide has moved.
  *
  * Column count steps more than once on the way between them: three across is a
  * phone layout, and holding it to `lg` would draw 328px cards on a tablet.

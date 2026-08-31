@@ -10,7 +10,7 @@ import { CUBE_DESKTOP, CUBE_GAP, CUBE_PHONE, cubeLayout, type CubeLayout } from 
 /**
  * One square per member, still-standing first: accent for the living, grey for
  * the dead, wrapped into as many rows as the width needs. Figma cube atom
- * `3746:39826` — 24-30px from `lg`, 12-16px below it.
+ * `3746:39826` — 20-24px from `lg`, 14-18px below it.
  *
  * Its own module rather than an export from whichever section draws it, so a
  * signed-out landing page never risks pulling server-only league loading in to
@@ -111,8 +111,9 @@ export function HeadcountGrid({
       because a browser allowed to reach its own count could reach one more than
       the solver did and put the lone cube straight back. Its `minmax(0, …)` is
       belt and braces on the same edge: given a width the tracks cannot quite
-      fit, they shrink together rather than overflow, and below `lg` this grid is
-      full-bleed, where an overflow is a document-level horizontal scrollbar.
+      fit, they shrink together rather than overflow. An overflow would break out
+      of the card's fill at any width, and at `lg` — where the page has no
+      horizontal inset left to absorb it — it would reach the document.
 
       The cube takes its width from the track and its height from `aspect-square`,
       so the two cannot be given different numbers — including on a shrunk track.

@@ -19,7 +19,11 @@ import { FOCUSABLE_SELECTOR, nextFocusIndex } from "./drawer";
  * `globals.css` sets `scrollbar-gutter: stable`; without it the scroll lock
  * shifts the page and not the drawer.)
  */
-export const DRAWER_RAIL = "mx-auto w-full max-w-shell px-4";
+// `lg:px-0` mirrors the app shell's `main` exactly, and that is the whole point
+// of this constant: the drawer's premise is that its content column lines up
+// with the page behind it, so when `main` stopped insetting at `lg` this had to
+// stop too or every desktop drawer would sit 16px narrower than the page.
+export const DRAWER_RAIL = "mx-auto w-full max-w-shell px-4 lg:px-0";
 
 /**
  * A full-width sheet that rises from the bottom edge, at every width.

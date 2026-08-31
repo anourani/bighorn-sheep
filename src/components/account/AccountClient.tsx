@@ -21,7 +21,7 @@ import type { Member } from "@/lib/league/types";
  *
  * Geometry, all of it transcribed from the mock-ups rather than approximated:
  *
- * - **The column is 656px**, centred in `main`'s 968px (`max-w-shell` 1000 less
+ * - **The column is 656px**, centred in `main`'s 1000px (`max-w-shell`, which
  *   its `px-4`). There are no columns inside it: every block is full width and
  *   the page is one stack at both sizes.
  * - **Blocks are 32px apart on a phone and 40px on a desktop**, uniformly, in

@@ -24,7 +24,7 @@ import tailwind from "../../../tailwind.config";
 // USED pixel lengths, one per track. These are the four widths TeamGrid draws
 // (`grid-cols-3 min-[480px]:grid-cols-4 md:grid-cols-5 lg:grid-cols-6`) and the
 // two WeekSchedule's `repeat(auto-fill, minmax(260px,1fr))` resolves to inside
-// the 968px column.
+// the desktop column.
 const used = (n: number, px: number) => Array.from({ length: n }, () => `${px}px`).join(" ");
 
 describe("columnCountFrom", () => {
@@ -32,7 +32,7 @@ describe("columnCountFrom", () => {
     expect(columnCountFrom(used(3, 125.66))).toBe(3); // phone
     expect(columnCountFrom(used(4, 116.5))).toBe(4); // min-[480px]
     expect(columnCountFrom(used(5, 148.8))).toBe(5); // md
-    expect(columnCountFrom(used(6, 154.66))).toBe(6); // lg
+    expect(columnCountFrom(used(6, 160))).toBe(6); // lg
   });
 
   it("counts an auto-fill grid's RESOLVED tracks, which is why this reads the used value", () => {

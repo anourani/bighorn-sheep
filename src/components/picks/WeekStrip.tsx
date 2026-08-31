@@ -219,14 +219,14 @@ export function WeekStrip({
         {/* w-max so the row sizes to its chips and actually overflows; without it
             it would be capped at the scroller's width and never scroll.
 
-            The 2px gutter is the spec's, and it is now measured rather than
-            loose: 18 chips come to 18×52 + 17×2 = 970px against the 968px this
-            row has on desktop (`max-w-shell` 1000 less the shell's `px-4`, plus
-            and minus the 4px `lg:-mx-1`/`lg:px-1` pair below, which cancel).
-            So the regular season overhangs by exactly 2px and the row is
-            technically scrollable all year — imperceptible, and the scroller
-            absorbs it. Anything further added here (a border, a ring, row
-            padding, a wider gap) comes straight off that budget. */}
+            The 2px gutter is the spec's, and the budget is measured rather
+            than loose: 18 chips come to 18×52 + 17×2 = 970px against the 1000px
+            this row has on desktop (`max-w-shell`, which `main` no longer insets
+            at `lg`, plus and minus the 4px `lg:-mx-1`/`lg:px-1` pair below,
+            which cancel). It used to overhang that by exactly 2px and be
+            technically scrollable all year; the wider column bought 30px and it
+            now fits. Anything further added here (a border, a ring, row padding,
+            a wider gap) comes off those 30. */}
         <div
           role="tablist"
           aria-label={HEADING}

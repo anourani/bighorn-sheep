@@ -11,9 +11,11 @@ import {
 
 describe("columnsFor", () => {
   it("counts the cubes that fit, gaps included", () => {
-    // The two frames: 968px desktop at 24px, 359px mobile at 16px.
+    // The card's inner grid at each width: 968 at desktop (the 1000px column
+    // less the card's 16px sides), 333 on a 393px phone (361 less 12px sides
+    // less the frame's own 2px inset).
     expect(columnsFor(968, 24, 2)).toBe(37);
-    expect(columnsFor(359, 16, 2)).toBe(20);
+    expect(columnsFor(333, 16, 2)).toBe(18);
   });
 
   it("never reports fewer than one column", () => {
@@ -42,15 +44,18 @@ describe("cubeLayout", () => {
     expect(cubeLayout(74, 968, CUBE_DESKTOP)).toEqual({ size: 24, columns: 37 });
   });
 
-  it("grows a desktop cube to break up a lone one", () => {
-    // 38 across 37 columns leaves one on its own; 25px fits 35.
-    expect(cubeLayout(38, 968, CUBE_DESKTOP)).toEqual({ size: 25, columns: 35 });
+  it("shrinks a desktop cube to break up a lone one", () => {
+    // 38 across 37 columns leaves one on its own; 23px fits 38, so they land on
+    // a single row. Desktop can only shrink — its base IS its max.
+    expect(cubeLayout(38, 968, CUBE_DESKTOP)).toEqual({ size: 23, columns: 38 });
   });
 
-  it("shrinks a phone cube to break up a lone one", () => {
-    // 389px is a 393px viewport less the wrapper's 2px either side. 22 cubes
-    // over 21 columns strands one; 15px fits 23, so they land on a single row.
-    expect(cubeLayout(22, 389, CUBE_PHONE)).toEqual({ size: 15, columns: 23 });
+  it("grows a phone cube to break up a lone one", () => {
+    // 333px is the card's inner grid on a 393px phone. 19 cubes over 18 columns
+    // strands one; 17px fits 17. Note it GREW — 15px would have worked too (19
+    // columns, remainder 0) and is exactly as far from the base, and the
+    // tie-break sends it up rather than down.
+    expect(cubeLayout(19, 333, CUBE_PHONE)).toEqual({ size: 17, columns: 17 });
   });
 
   it("solves against a fractional width, which is what the observer reports", () => {
@@ -71,14 +76,14 @@ describe("cubeLayout", () => {
   });
 
   it("keeps the cube in range even when no size clears the orphan", () => {
-    // At 37px every size from 12 to 16 fits exactly two columns, so three cubes
+    // At 40px every size from 14 to 18 fits exactly two columns, so three cubes
     // strand one whatever we do. A cube outside the design's min/max would be
     // the worse answer.
-    expect(cubeLayout(3, 37, CUBE_PHONE)).toEqual({ size: 16, columns: 2 });
+    expect(cubeLayout(3, 40, CUBE_PHONE)).toEqual({ size: 16, columns: 2 });
   });
 
   it("solves within range, or admits the base, at every plausible width", () => {
-    const widths = [320, 360, 389, 393, 430, 640, 768, 966, 967.6, 968, 1000];
+    const widths = [264, 288, 321, 333, 374, 640, 936, 966, 967.6, 968, 1000];
     for (const scale of [CUBE_PHONE, CUBE_DESKTOP]) {
       for (const width of widths) {
         for (let count = 1; count <= 200; count += 1) {
@@ -96,7 +101,7 @@ describe("cubeLayout", () => {
   // document-level horizontal scrollbar below `lg`.
   it("never lays a row wider than the box it measured", () => {
     for (const scale of [CUBE_PHONE, CUBE_DESKTOP]) {
-      for (const width of [320, 359.5, 360, 392.7, 768, 967.6, 968, 1000]) {
+      for (const width of [264, 288, 320.5, 333, 640, 936, 967.6, 968]) {
         for (let count = 1; count <= 120; count += 1) {
           const { size, columns } = cubeLayout(count, width, scale);
           const row = columns * size + (columns - 1) * CUBE_GAP;
@@ -108,10 +113,26 @@ describe("cubeLayout", () => {
 });
 
 describe("the cube scales", () => {
-  // The solver has no separate grow-or-shrink rule; it falls out of where the
-  // base sits in the range, so these two facts are what make it correct.
-  it("lets a phone cube only shrink and a desktop cube only grow", () => {
-    expect(CUBE_PHONE.base).toBe(CUBE_PHONE.max);
-    expect(CUBE_DESKTOP.base).toBe(CUBE_DESKTOP.min);
+  it("transcribes the cube atom", () => {
+    expect(CUBE_PHONE).toEqual({ base: 16, min: 14, max: 18 });
+    expect(CUBE_DESKTOP).toEqual({ base: 24, min: 20, max: 24 });
+    expect(CUBE_GAP).toBe(2);
+  });
+
+  // The desktop base sits at the top of its range, so that cube only ever
+  // shrinks and the tie-break can never fire on it. The phone's sits INSIDE
+  // its range, which is what makes the tie-break real — 15 and 17 are equally
+  // far from 16, and only one of them can be tried first.
+  it("only ever shrinks a desktop cube", () => {
+    expect(CUBE_DESKTOP.base).toBe(CUBE_DESKTOP.max);
+  });
+
+  it("breaks a phone tie upward, never downward", () => {
+    // Both 15 and 17 clear the orphan at this width (19 columns and 17), and
+    // both are one step from the base. Growing is the answer: a cube under the
+    // drawn size reads as a rendering fault, one over it as a chosen size.
+    expect(columnsFor(333, 15, CUBE_GAP)).toBe(19);
+    expect(columnsFor(333, 17, CUBE_GAP)).toBe(17);
+    expect(cubeLayout(19, 333, CUBE_PHONE).size).toBe(17);
   });
 });

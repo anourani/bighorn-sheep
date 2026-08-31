@@ -210,10 +210,15 @@ export default async function LandingPage() {
              sections, and a wrapper that inset or shrank either one would
              break that. */
           <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
-            {/* Still `px-4` at every width. The grid inside goes edge to edge
-                below `lg` on its own, by cancelling this inset — the label above
-                it stays put, which is the whole point of the mobile variant. */}
-            <Headcount headcount={board.headcount} className="px-4 pb-2 sm:py-3" />
+            {/* The inset is a WRAPPER now, not a `className`. `Headcount`'s
+                root is the card itself — a fill and a radius — so `px-4` passed
+                to it would pad the inside of that card rather than sit it in
+                from the page. This page's `main` carries no padding of its own,
+                so each section supplies its own 16px; the card takes the
+                vertical seam and the wrapper takes the horizontal one. */}
+            <div className="px-4 pb-2 sm:py-3">
+              <Headcount headcount={board.headcount} />
+            </div>
             {/* The design drops the "League" eyebrow that used to sit here: the
                 table follows the headcount directly in both mock-ups. */}
             {/* 200px, and it is measured from the PADLOCK NOTE rather than from

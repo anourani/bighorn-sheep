@@ -50,15 +50,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="relative mx-auto flex min-h-dvh max-w-shell flex-col pt-[env(safe-area-inset-top)] lg:pt-0">
       <AppHeader />
       {/* The page rhythm, straight off the mockups: 40px above the first block
-          and 80px below the last on a phone, 64/128 from `lg`. The desktop pair
-          looks lopsided written down and isn't — the mockup pads its section by
-          64 and then pads the page wrapper by another 64, so the foot of the
-          page is deliberately twice its head.
+          and 80px below the last on a phone, 80/128 from `lg`.
 
-          `px-4` is a separate contract and must not move with these: Headcount,
-          StandingsGrid, WeekStrip and TeamGrid all full-bleed by cancelling it
-          with `-mx-4`. Nothing cancels the vertical padding — there is no `-mt-*`
-          anywhere in src/ — so the two can be reasoned about apart.
+          THE DESKTOP COLUMN IS THE WHOLE SHELL. `px-4 lg:px-0` — 16px of inset
+          on a phone and none at all from `lg`, where the content column is the
+          full 1000px of `max-w-shell` rather than 968. The standings mock-ups
+          (`4082:139343`, `4158:150123`) draw every block flush to the shell at
+          desktop and inset by 16 on a phone, and that was taken as the app's
+          frame rather than as one page's, so Picks and Account get it too.
+
+          What that costs, stated because it is easy to miss: `TeamGrid`'s
+          desktop cards were sized against the old 968 and are 160px now, not
+          154.66. Its own comment carries the new number.
+
+          `px-4` is still a separate contract from the vertical, and it still
+          must not move with it: Headcount no longer bleeds, but StandingsGrid,
+          WeekStrip and TeamGrid all cancel that inset with `-mx-4` below `lg`.
+          They stop at `lg` (`lg:mx-0`), which is exactly where the inset itself
+          now stops, so dropping it there reaches none of them. Nothing cancels
+          the vertical padding — there is no `-mt-*` anywhere in src/ — so the
+          two can still be reasoned about apart.
 
           Historical note, since the number has now moved twice: this was `pb-28`
           while a fixed bottom tab bar sat over the page, then `pb-12` once
@@ -71,7 +82,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           rather than a guess at how much to hide behind. That held when the bar
           grew from 64px to 70, which is the point of reserving rather than
           overlaying. */}
-      <main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">{children}</main>
+      <main className="flex-1 px-4 pb-20 pt-10 lg:px-0 lg:pb-32 lg:pt-20">{children}</main>
       {/* Last child, and that is not a free ordering — `sticky bottom-0` works
           because this element's flow position is the foot of the document. */}
       <BottomTabBar buyInUnpaid={buyInUnpaid} />

@@ -158,40 +158,35 @@ export function StandingsClient({ data }: { data: LeagueData }) {
        null when closed, so neither ever occupied an :nth-child slot on load. */
     <>
       {/* No `space-y-*` here any more. The blocks below carry a rhythm a single
-          uniform gap can't express — tiles → 64px → headcount, then
-          16/48px to the table and 56/48 to the invite module under it — and
+          uniform gap can't express — league header → 24/30px → headcount card,
+          then 64/56 to the table and 56/48 to the invite module under it — and
           `space-y-6`'s `> * + *` selector outranks a child's own `mt-*` on
           specificity, so it can't be overridden per child either. `stagger`
           stays: it keys the entrance animation off direct children, and the
           count below is unchanged.
 
-          The desktop 48 reads as 60 on screen because Headcount carries its
-          own `lg:py-3`; the mockup measures the box, so the margin is 48. Note
-          the seam below the table measures a true 48 — nothing pads it — so the
-          two are equal as authored rather than as rendered. */}
+          Every one of those is a box-to-box measurement off the page mock-ups
+          (`4082:139343` desktop, `4158:150123` mobile), and they are box-to-box
+          rather than ink-to-ink because the headcount is a filled card now and
+          owns padding on both of its seams. */}
       <div className="stagger">
         <LeagueDetails
           group={group}
-          members={data.members}
-          currentWeek={currentWeek}
-          phase={phase}
+          memberCount={data.members.length}
+          appUrl={appUrl}
+          now={now}
           onOpenRules={() => setRulesOpen(true)}
         />
 
-        {/* The two mockups space this differently and both are reproduced here.
-            Phone: 64px below the tiles, no padding of its own. Desktop: 8px
-            below them plus 12px of padding of its own — the padding earns its
-            keep underneath, where it becomes 12 of the 60px down to the
-            standings table. (It measured to the "Standings" heading until that
-            heading went sr-only; the number is unchanged.)
-
-            Only the vertical is ours. The shell's `main` supplies the horizontal
-            inset that the cube grid inside cancels with `-mx-4`. */}
-        <Headcount headcount={headcount} className="mt-16 lg:mt-2 lg:py-3" />
+        {/* 24px below the league header on a phone, 30 from `lg`, both measured
+            between the two boxes. The card carries its own padding now, so this
+            is the whole seam — there is no `py-*` here any more, and passing
+            `px-*` would land inside the fill rather than around it. */}
+        <Headcount headcount={headcount} className="mt-6 lg:mt-[30px]" />
 
         {isPreseason ? (
           practice && practiceRanked && practiceColumns && practiceIdx ? (
-            <section className="mt-4 lg:mt-12">
+            <section className="mt-16 lg:mt-14">
               {/* sr-only, not absent. The redesign drops the visible heading
                   above both tables, but a `<section>` with no heading at all
                   falls out of the page's outline and heading-jump navigation
@@ -220,7 +215,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              * Two quite different causes land here, which is why `practiceEnabled`
              * exists as its own flag rather than being inferred from the null.
              */
-            <section className="mt-4 lg:mt-12">
+            <section className="mt-16 lg:mt-14">
               <SectionHeader title="Practice Standings" />
               <p className="mb-4 mt-2 text-xs leading-relaxed text-ink-mute">
                 {practiceEnabled
@@ -230,7 +225,7 @@ export function StandingsClient({ data }: { data: LeagueData }) {
             </section>
           )
         ) : (
-          <section className="mt-4 lg:mt-12">
+          <section className="mt-16 lg:mt-14">
             {/* See the practice branch above: heading kept for the outline,
                 hidden visually. The `mt-3` wrapper went with the visible
                 heading — it was the gap underneath it and had nothing left to

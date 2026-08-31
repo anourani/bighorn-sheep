@@ -3,8 +3,8 @@ import { HeadcountGrid } from "@/components/app/HeadcountGrid";
 import { headcountLine, type HeadcountInput } from "@/lib/league/view";
 
 /**
- * "W6 Headcount · 29 still standing · 54%" over the grid of member cubes.
- * Figma `3720:40767` (desktop) and `4118:147326` (mobile).
+ * "W6 Headcount · 29 still standing · 54%" over the grid of member cubes, on a
+ * soft-grey card. Figma `4158:148496` (desktop) and `4181:155234` (mobile).
  *
  * Shared by the landing page and the signed-in standings page — same data, same
  * `headcountLine()` strings, one column: a label line, then the grid. It lives
@@ -16,20 +16,13 @@ import { headcountLine, type HeadcountInput } from "@/lib/league/view";
  * and drawing this row here is what keeps `lib/league/view.ts` out of the
  * landing page's client bundle.
  *
- * Carries no *vertical* padding of its own because its two hosts space it
- * differently (the landing page's own rhythm vs. the app shell's `main`) — each
- * passes its own via `className`.
- *
- * Horizontally it is the other way round, and this is the one thing a third host
- * would trip over: below `lg` the grid runs edge to edge while the label stays
- * inset, and it gets there by cancelling the host's inset with `-mx-4`. That
- * assumes every host supplies exactly 16px of it. Both do today — the landing
- * page passes `px-4`, and the app shell's `main` has it (src/app/app/layout.tsx).
- * A host with any other inset will bleed by the wrong amount.
- *
- * "Headcount" is composed here rather than folded into `headcountLine()`,
- * because it's this section's own chrome: the same strings appear without it
- * wherever a bare "Week 6" is what's wanted.
+ * **The section root IS the card**, and that changed the deal with its hosts.
+ * It used to be a transparent block whose grid broke out of the page's inset
+ * with `-mx-4`; it is now a filled, rounded box that fills the content column
+ * exactly, so there is no bleed left anywhere in it and a host must NOT pass
+ * horizontal padding — `px-*` in `className` would land inside the fill and
+ * inset the card's own contents. A host that needs the card inset from
+ * something wraps it. Vertical spacing is still the host's, as everywhere else.
  */
 export function Headcount({
   headcount,
@@ -41,26 +34,33 @@ export function Headcount({
   const { lead, leadShort, primary, percent, percentLabel } = headcountLine(headcount);
 
   return (
-    <section className={cn("flex flex-col gap-1", className)}>
+    // 12px all round on a phone; 16 at the sides and underneath from `lg`, where
+    // the top stays 12. Asymmetric as drawn, not as a slip: the label's line box
+    // sits lower in its own row than the grid's last row does above the foot.
+    <section
+      className={cn(
+        "flex flex-col gap-2 rounded-control bg-fill-soft p-3 lg:gap-1 lg:px-4 lg:pb-4",
+        className,
+      )}
+    >
       {/* One row, two justifications: the mobile frame throws the label and the
-          tally to opposite edges, the desktop frame sits them 16px apart on the
-          left. `flex-wrap` stays as an escape valve only — this row is inside
-          the host's inset, so an overflow here would push the document. */}
-      <div className="flex flex-wrap items-center justify-between gap-4 lg:justify-start">
+          tally to opposite edges, the desktop frame sits them 12px apart on the
+          left. `flex-wrap` stays as an escape valve only. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 lg:justify-start">
         {/* `em`, not the frame's `-0.28px`. Figma reports letter-spacing as
             percent times 100, so this step's -2 IS -2% and `em` is that
             percentage directly, where px is a conversion to redo if the size
             ever moves. */}
         <span className="text-sm font-semibold leading-[1.2] tracking-[-0.02em] text-shell-ink">
-          {/* The design draws the abbreviation at BOTH widths now — the desktop
-              frame carries "W6 Headcount" too — so this is no longer a
-              breakpoint swap. It is still a pair, because "W6" names nothing out
-              loud: the drawn form is `aria-hidden` and the long one is `sr-only`
-              at every width, so the page shows "W6 Headcount" and a screen
-              reader hears "Week 6 Headcount". Reversing that — `hidden` on the
-              long form — would drop it from the tree entirely. `sr-only` is
-              absolutely positioned, so it takes no width and the space before
-              "Headcount" is the one that renders. */}
+          {/* The design draws the abbreviation at BOTH widths — the desktop
+              frame carries "W6 Headcount" too — so this is not a breakpoint
+              swap. It is still a pair, because "W6" names nothing out loud: the
+              drawn form is `aria-hidden` and the long one is `sr-only` at every
+              width, so the page shows "W6 Headcount" and a screen reader hears
+              "Week 6 Headcount". Reversing that — `hidden` on the long form —
+              would drop it from the tree entirely. `sr-only` is absolutely
+              positioned, so it takes no width and the space before "Headcount"
+              is the one that renders. */}
           <span aria-hidden>{leadShort}</span>
           <span className="sr-only">{lead}</span> Headcount
         </span>
@@ -80,14 +80,12 @@ export function Headcount({
         </div>
       </div>
 
-      {/* Below `lg` the grid spans the full viewport by cancelling the host's
-          16px inset, while the label above it stays put — which is the whole
-          point of the mobile variant. `-mx-4` inside a `px-4` parent resolves to
-          exactly that parent's border box, so this cannot overflow; the `px-0.5`
-          on top of it is the mobile frame's own 2px inset, and it sits on this
-          wrapper rather than on the grid so the grid's measured content box is
-          the width the solver is actually laying out into. */}
-      <div className="-mx-4 px-0.5 lg:mx-0 lg:px-0">
+      {/* The mobile frame insets its grid 2px inside the card's own padding and
+          the desktop frame does not. It sits on this wrapper rather than on the
+          grid so the grid's measured content box stays the box the solver is
+          laying out into — padding on the grid itself would make it measure 4px
+          more than it gets. */}
+      <div className="px-0.5 lg:px-0">
         <HeadcountGrid headcount={headcount} />
       </div>
     </section>

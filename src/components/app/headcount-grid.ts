@@ -15,10 +15,12 @@
  * A cube's drawn size and the range it may move within to avoid a lone cube on
  * the last row.
  *
- * The two scales encode the direction of travel on their own, which is why the
- * solver below needs no separate "grow or shrink?" rule: the phone's base IS its
- * max, so a phone cube can only shrink; the desktop's base IS its min, so a
- * desktop cube can only grow. Both are transcribed, not derived.
+ * The two scales no longer agree about direction, and that is the thing to know
+ * here. The desktop's base IS its max, so a desktop cube can only shrink. The
+ * phone's base sits INSIDE its range, so a phone cube can go either way — which
+ * makes `sizesFromBase`'s tie-break load-bearing rather than decorative, because
+ * 15 and 17 are equally far from 16. Both ranges are transcribed from the cube
+ * atom, not derived.
  */
 export interface CubeScale {
   /** What the design draws at, and what the pre-measurement CSS paints. */
@@ -28,10 +30,10 @@ export interface CubeScale {
 }
 
 /** Figma cube atom `3746:39826`, Mobile variant. */
-export const CUBE_PHONE: CubeScale = { base: 16, min: 12, max: 16 };
+export const CUBE_PHONE: CubeScale = { base: 16, min: 14, max: 18 };
 
 /** Figma cube atom `3746:39826`, Desktop variant. */
-export const CUBE_DESKTOP: CubeScale = { base: 24, min: 24, max: 30 };
+export const CUBE_DESKTOP: CubeScale = { base: 24, min: 20, max: 24 };
 
 /** 2px at both widths — the frames agree, where the old strip's gap did not. */
 export const CUBE_GAP = 2;
@@ -51,9 +53,9 @@ export interface CubeLayout {
  * point: fed the same fractional width the browser lays out against, our count
  * and its count cannot disagree. It also guarantees
  * `columns * size + (columns - 1) * gap <= width` for every input, so a row can
- * never be wider than the box it was solved for — which matters because below
- * `lg` this grid is full-bleed, and one column too many there is a
- * document-level horizontal scrollbar.
+ * never be wider than the box it was solved for — which matters because the grid
+ * sits inside a filled card that fills the content column, and at `lg` that
+ * column has no page inset left to absorb an overflow.
  */
 export function columnsFor(width: number, size: number, gap: number): number {
   if (!(width > 0) || !(size > 0)) return 1;
@@ -75,7 +77,12 @@ export function orphanRow(count: number, columns: number): boolean {
 /**
  * Integer sizes in the scale, nearest the base first — the order the solver
  * tries them in, so a cube never moves further from the design than it has to.
- * Ties go to the larger size, though neither scale currently has a tie to break.
+ *
+ * **Ties go to the LARGER size**, and on the phone that decides real output: its
+ * base is 16 in a 14-18 range, so 17 is tried before 15 and 18 before 14. Grow
+ * before shrink, because a cube below the drawn size reads as a rendering fault
+ * where one above it reads as a deliberate size. There is a test pinning the
+ * order; the desktop range has no tie to break.
  */
 function sizesFromBase(scale: CubeScale): number[] {
   const sizes: number[] = [];
