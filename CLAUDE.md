@@ -662,6 +662,55 @@ reading, but only the first kind is the lesson.
     season starts, while `set_group_buy_in` and `set_group_name` deliberately
     have no lock check at all. It must keep wrapping ONLY the rules radio groups.
 
+- **Standings draws the real board during preseason now, blank, instead of a
+  sentence.** `StandingsClient`'s preseason branch used to render the practice
+  table or — when `practice` was null — a "Practice Standings" header and one
+  line of copy, and nothing else. So a signed-out stranger on `/` saw the whole
+  roster over 18 empty week columns while the members of that same league saw a
+  paragraph. That branch now falls through to the same board, and the practice
+  table is unchanged when it exists. Six things:
+  - **It is literally the same element.** The grid plus its padlock note is
+    lifted into one `regularBoard` const and placed by both branches, so the
+    preseason board and the in-season board cannot drift. Those are also the
+    props `PublicStandings` passes; only `viewerId` differs, and it has to — the
+    landing page passes `""` because a stranger is nobody in this league.
+  - **`hiddenPickUserIds` is populated in preseason now**, because
+    `load.ts` used to skip the `hidden_picks_for_week` RPC on
+    `phase !== "preseason"` outright. `resolveCurrentWeek` returns 1 all
+    preseason, so the call asks for regular-season Week 1 — and without it a
+    member who picked Week 1 early draws a hollow "No pick" circle rather than a
+    padlock, and `rankMembers` buckets them `none` and sorts them BELOW people
+    who have not picked at all. `public_league_snapshot` (0009) always computed
+    the flag in every phase, which is exactly why the landing board already had
+    those padlocks and the signed-in table did not.
+  - **No migration, which is unusual here.** `hidden_picks_for_week` has existed
+    since 0006, is `security definer` gated on `is_group_member(p_group_id)`,
+    is granted to `authenticated` alone, and returns user_ids with no team
+    attached. The same flag is already published to anonymous visitors by 0009,
+    so showing it to members of the league is strictly less exposure.
+  - **The visible `SectionHeader` went and an `sr-only` "Standings" replaced
+    it.** It read "Practice Standings", which is a lie about the regular-season
+    table now directly beneath it. The paragraph's `mt-2` went with the header it
+    was spacing away from; `mb-4` stays as the seam down to the table.
+  - **A blank board is not filler.** Every row is somebody who has joined, and
+    the Week 1 column shows who has already picked — which is the whole question
+    while entry is open. Note what makes this state the COMMON one rather than an
+    edge case: 0011 adds `show_preseason` as `not null default false` and no
+    join/create RPC sets it, so **every member who joined after 0011 was applied
+    has practice off** until an admin turns it on for them.
+  - **That default is deliberate, and it is not a bug to go and fix.** 0011 says
+    so where the column is declared: "joining a league should not silently enrol
+    you in a practice game, and the admin turning it on per player is the
+    decision this implements." Practice is opt-in per member, by admin action.
+    The one-time backfill to `true` beside it is grandfathering — it keeps
+    existing members of a league still in preseason from being evicted the day
+    the migration lands — and `default false` governs everyone who joins from
+    there on. Read the backfill as evidence that "on" was the intended default
+    and you will go looking for a defect that does not exist; this entry
+    previously did exactly that. The rationale block above the column definition
+    is the primary source, and it is worth reading before theorising about this
+    flag at all.
+
 - **The standings page opens on a league header, not four grey tiles.**
   `LeagueDetails` was League / Current week / Survivors / Rules as four tiles on
   a soft-grey card; it is now the league's name set large beside its money, its
@@ -2172,7 +2221,9 @@ reading, but only the first kind is the lesson.
   removes the preseason chips from the week strip and the practice grid from
   Standings — `MyPicksClient` already fell back to the live regular week when a
   selected preseason week left the strip, because entry closing mid-session does
-  the same thing. Four consequences:
+  the same thing. It no longer leaves Standings with nothing to draw, though:
+  that page falls through to the blank regular-season board (its own entry
+  below). Four consequences:
   - **It gates access, not just visibility.** `submitPick` refuses a preseason
     pick from a switched-off member; a Server Action gated only in the UI isn't
     gated.
@@ -2194,7 +2245,11 @@ reading, but only the first kind is the lesson.
     causes.** Before it, a null mid-preseason rendered *nothing* between the
     headcount and the foot of Standings — no heading, no explanation. The two
     empty states are "your admin hasn't turned this on" and "no preseason
-    schedule is loaded", and they can't be told apart from the null alone.
+    schedule is loaded", and they can't be told apart from the null alone. The
+    hole itself is gone now — the board renders either way — so the flag's whole
+    remaining job is choosing which of those two sentences sits above it. That
+    makes it *less* load-bearing than it was, not more: getting it wrong now
+    costs one misleading line rather than a blank page.
 
 - **There is no create-a-league path.** One standalone league for the inaugural
   season, so every player arrives via an invite code. `CreateGroupModal` and the
