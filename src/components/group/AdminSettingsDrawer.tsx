@@ -89,7 +89,7 @@ const INPUT_CLASS =
 /**
  * One bordered card with a heading and a status pill on the right.
  *
- * Introduced for the Rules tab, where the two cards it holds lock on DIFFERENT
+ * Introduced for the rules pair on the League Settings tab, which lock on DIFFERENT
  * conditions — the game rules freeze at the first Week 1 kickoff, the entry fee
  * never freezes at all. Stating that per card is the entire reason this tab is
  * two cards instead of one column: a single lock affordance covering both would
@@ -167,7 +167,7 @@ async function runAction(
 /**
  * The league's name — always editable, which is the whole point.
  *
- * Lives on the Name tab beside the invite. It used to sit ABOVE the tab bar, in
+ * Lives on the League Settings tab beside the invite. It used to sit ABOVE the tab bar, in
  * `Drawer`'s `aside` slot, on the argument that it names the thing all the tabs
  * are about and burying it would make "rename any time" mean "rename any time
  * you're on the right tab". What changed is that it now shares a tab with the
@@ -418,13 +418,13 @@ function RadioGroup({
  * What the pot costs — a rule, and the one rule that is mandatory: paying it is
  * what it takes to be in the league.
  *
- * It lives on the RULES tab, beside elimination and ties, rather than beside the
- * per-member paid switches in {@link MembersSection}. The two are related but
- * they are not the same kind of thing: the amount is a condition of entry that
- * applies to everyone, and who has handed it over is bookkeeping about people.
- * Splitting them costs one cross-reference in each direction — the hint below,
- * and one in the Members rail — and buys a Rules tab that holds every term of
- * the deal.
+ * It lives on the LEAGUE SETTINGS tab, beside elimination and ties, rather than
+ * beside the per-member paid switches in {@link MembersSection}. The two are
+ * related but they are not the same kind of thing: the amount is a condition of
+ * entry that applies to everyone, and who has handed it over is bookkeeping
+ * about people. Splitting them costs one cross-reference in each direction — the
+ * hint below, and one in the Members rail — and buys a tab that holds every term
+ * of the deal.
  *
  * Dollars in the inputs, cents in the database (`groups.buy_in_cents`,
  * `groups.site_fee_cents` — migration 0010). The conversion happens here, at the
@@ -643,7 +643,7 @@ function MembersSection({
   // `entry_closes_at` is in the past — "the first Week 1 kickoff" is an
   // inference from it, and a deadline left on create_group's `now() + 7 days`
   // default makes that inference a false claim no one can check from here.
-  // Printing the moment is the same trade the Rules tab already makes beside
+  // Printing the moment is the same trade League Settings already makes beside
   // "Entry closes", in the same format as the paid stamp one column over.
   const preseasonClosedStamp = formatMonthDayClock(entryClosesAt);
   // remove_member (0013) refuses after entry_closes_at, for the same reason
@@ -933,7 +933,7 @@ function RemoveControl({
  * because the roster wanted the width back, so the measure has to be bought
  * here instead.
  *
- * The removal paragraph is NOT here any more. It moved to the Name tab, beside
+ * The removal paragraph is NOT here any more. It moved to League Settings, beside
  * the invite: `remove_member` closes at `entry_closes_at`, exactly as
  * `join_by_invite` does, so removal is the undo for a join and belongs with the
  * link that caused it. What is left is the two switches directly above these
@@ -967,9 +967,9 @@ function MembersHints({
         )}
       </HintLine>
       {/* The other half of the split. Someone marking people paid is one thought
-          away from wanting to change what they owe, and the Rules tab is not
-          where they would look for it unaided. */}
-      <HintLine>Set what the buy-in costs on the Rules tab.</HintLine>
+          away from wanting to change what they owe, and the next tab along is
+          not where they would look for it unaided. */}
+      <HintLine>Set what the buy-in costs on the League Settings tab.</HintLine>
     </div>
   );
 }
@@ -1024,7 +1024,7 @@ function MemberToggle({
  * The invite link, the code, and what the window they open and close on means.
  *
  * It used to sit in the Members rail, on the argument that sharing an invite is
- * membership admin. It is on the Name tab now with the league's name, because
+ * membership admin. It is on the League Settings tab now with the league's name, because
  * the roster wanted the rail's width back and these two are the pair a member
  * actually sees: the league is called X and here is how you get into it.
  *
@@ -1297,22 +1297,60 @@ function FeedFact({ term, children }: { term: string; children: React.ReactNode 
   );
 }
 
-type TabValue = "members" | "rules" | "name" | "feed";
+type TabValue = "members" | "league" | "feed";
 
-const TABS: { value: TabValue; label: string }[] = [
+/**
+ * `label` is a node rather than a string because "League Settings" does not fit
+ * on a phone.
+ *
+ * `Tabs` draws each option `flex-1 whitespace-nowrap px-3`, and a flex item's
+ * default `min-width: auto` refuses to shrink below its content — so an
+ * over-long label pushes the bar past the drawer's rail rather than truncating,
+ * and NOTHING in this dialog may scroll to absorb it.
+ *
+ * Measured in Chromium with Inter, three tabs, at 320 / 360 / 375 / 393 / 430 /
+ * 768 / 1023 / 1024 / 1280 / 1440: this spelling never overflows —
+ * `scrollWidth === clientWidth` at every one — and the three tabs stay equal
+ * (117.7 each at 393, 170.7 from `lg` inside the 520 cap). The control matters
+ * more than the pass: shipping "League Settings" unconditionally measures 125.2
+ * intrinsic and **overflows at 320** (bar 288, scroll 301), while merely looking
+ * fine from 360 up — where it instead takes 125.2 and squeezes its neighbours to
+ * ~97. So the failure is one width deep and lopsided everywhere else, which is
+ * exactly the kind that ships.
+ *
+ * The full name is therefore shown from `lg` and a short one below it. Both
+ * halves are `display: none` at their off width, which removes them from the
+ * accessibility tree — an `sr-only` sibling would be read out alongside the
+ * visible one instead of replacing it.
+ */
+const TABS: { value: TabValue; label: React.ReactNode }[] = [
   { value: "members", label: "Members" },
-  { value: "rules", label: "Rules" },
-  { value: "name", label: "Name" },
+  {
+    value: "league",
+    label: (
+      <>
+        <span className="lg:hidden">League</span>
+        <span className="hidden lg:inline">League Settings</span>
+      </>
+    ),
+  },
   { value: "feed", label: "Data Feed" },
 ];
 
 /**
- * The league admin's one surface: four tabs in a full-width bottom drawer.
+ * The league admin's one surface: three tabs in a full-width bottom drawer.
  *
  * Why tabs: five stacked sections made the panel taller than a phone, so it had
- * to be scrolled one-handed mid-week. Splitting membership, rules, identity and
- * feed health — four genuinely unrelated concerns — is both the organising fix
- * and the scroll fix.
+ * to be scrolled one-handed mid-week. Splitting the roster from the league's own
+ * settings from feed health — genuinely unrelated concerns — is both the
+ * organising fix and the scroll fix.
+ *
+ * Rules and Name were separate tabs for one revision and are one now. Name only
+ * ever existed because the league's name and its invite link had been evicted
+ * from a rail that was costing the roster a third of 1000px; nothing about them
+ * wanted its own tab, and both are details about the league rather than about
+ * its members. Merging also keeps the bar short enough to survive a phone, which
+ * is a live constraint here rather than a hypothetical one — see `TABS`.
  *
  * Why a drawer and not `Modal`: at 480px every one of these tabs was a single
  * narrow column, and the roster in particular stacked two full-width switch rows
@@ -1356,10 +1394,11 @@ const TABS: { value: TabValue; label: string }[] = [
  * cost a paint flash to render a default first.
  *
  * NO LOCK GLYPH ON THE TAB BAR, deliberately. It used to sit beside "Rules" once
- * the season started. That was honest when the whole tab froze together; now
- * that the always-editable buy-in shares the tab it would be a claim about the
- * tab that is false for half of it. Each card on the Rules tab states its own
- * lock instead, which is the only place the distinction can be made accurately.
+ * the season started. That was honest when the whole tab froze together; it grew
+ * false when the always-editable buy-in joined it, and merging Name in has made
+ * it falser still — of the four sections on League Settings, only the rules ever
+ * freeze. Each card states its own lock instead, which is the only place the
+ * distinction can be made accurately.
  */
 export function AdminSettingsDrawer({
   open,
@@ -1393,10 +1432,12 @@ export function AdminSettingsDrawer({
           label="Group settings sections"
           // Left-aligned and capped rather than stretched: tabs spread across
           // 1000px read as a navigation bar for the page rather than a control
-          // for the panel under them. 440 was the cap for three; a fourth at the
-          // same per-tab width wants ~587, and 560 keeps "Data Feed" on one line
-          // without reaching for the whole rail.
-          className="lg:max-w-[560px]"
+          // for the panel under them. 440 was the cap for three tabs of the old
+          // labels and 560 for four; merging Rules and Name gave the survivor a
+          // much wider label than either, so 520 is what keeps "League Settings"
+          // on one line at three tabs. Measure rather than derive this — the cap
+          // has to clear the widest LABEL, not a per-tab average.
+          className="lg:max-w-[520px]"
         />
       }
     >
@@ -1418,34 +1459,39 @@ export function AdminSettingsDrawer({
         </TabPanel>
       ) : null}
 
-      {tab === "rules" ? (
+      {tab === "league" ? (
         <TabPanel
           idBase="admin-settings"
-          value="rules"
+          value="league"
           className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
         >
-          {/* Two cards, side by side, because they lock on different conditions
-              and the point is that you can see both states at once. */}
-          <RulesSection group={group} />
-          <BuyInAmountSection group={group} />
-        </TabPanel>
-      ) : null}
+          {/* Four sections in two visual registers, and the split is the point.
+              `SettingsCard` carries a `pill` stating a per-card lock; the two
+              plain sections never lock at all, so a card there would be an
+              affordance with nothing to say — and it would break the real
+              `<label htmlFor="group-name">` wrapper below, since `SettingsCard`
+              puts its heading inside a `<Label>` span. Card = "this can freeze,
+              here is its state"; bare section = "this never freezes". The
+              roster's `<ul>` and the feed's sections are bare for the same
+              reason.
 
-      {tab === "name" ? (
-        <TabPanel
-          idBase="admin-settings"
-          value="name"
-          className="grid gap-5 lg:grid-cols-2 lg:items-start lg:gap-6"
-        >
-          {/* Two plain sections, not `SettingsCard`s. That card exists for the
-              Rules tab, where its `pill` states a per-card lock and the two
-              cards lock on DIFFERENT conditions; neither of these locks at all,
-              so a card here would carry an affordance with nothing to say. It
-              would also break the real `<label htmlFor="group-name">` wrapper
-              below, since `SettingsCard` puts its heading inside a `<Label>`
-              span. The roster's `<ul>` and the feed's sections are bare too. */}
+              DOM order is also the phone's stacking order: identity first, then
+              the two things that cost money or decide the game.
+
+              THE TRAP HERE is `RulesSection`'s `<fieldset disabled>`. Three lock
+              behaviours now sit on one tab — `set_group_rules` (0011) refuses
+              once the season starts, while `set_group_buy_in` (0010) and
+              `set_group_name` (0011) deliberately have no lock check at all —
+              so that fieldset must keep wrapping ONLY the rules radio groups.
+              Widening it to the buy-in or the name would grey out controls the
+              database would have accepted. For the same reason the tab label
+              carries no lock glyph: one came off "Rules" for being a false
+              claim about half a tab, and here it would be false about three
+              quarters of one. */}
           <GroupNameSection group={group} />
           <InviteSection group={group} appUrl={appUrl} />
+          <RulesSection group={group} />
+          <BuyInAmountSection group={group} />
         </TabPanel>
       ) : null}
 
