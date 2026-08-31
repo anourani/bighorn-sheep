@@ -1263,8 +1263,12 @@ export async function sendReminders(input: {
       return { ok: false, error: "reminder_too_soon" };
     }
 
-    // Picks close at the week's last kickoff, because that is the instant a
-    // missing pick becomes a loss. Money admin never closes, matching
+    // The only thing that can refuse a pick send is having no week to send
+    // ABOUT — the season is over, or no schedule is loaded. There is no
+    // "too early" any more: an admin chasing Week 1 picks through the preseason
+    // is the normal case, not one to guard against. The window test below is
+    // belt and braces, since a week `reminderWeek` chose has an open game by
+    // construction. Money admin never closes either, matching
     // set_group_buy_in, which has no lock check at all.
     if (input.kind === "pick") {
       if (ctx.week === null) return { ok: false, error: "reminder_week_closed" };

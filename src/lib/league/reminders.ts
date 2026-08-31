@@ -33,21 +33,6 @@ export type ReminderKind = "pick" | "buy_in";
  */
 export const REMINDER_MANUAL_COOLDOWN_MS = 60_000;
 
-/**
- * How long before a week's first kickoff a pick reminder starts being useful.
- *
- * Without a floor, `reminderWeek` happily returns week 1 in early August and an
- * admin can email the league about a deadline seven weeks out. A week is long
- * enough to cover "the Thursday game is on Thursday" and short enough that the
- * message is about something imminent.
- *
- * This is also why no phase test is needed anywhere in this module: during the
- * preseason `resolveCurrentWeek` returns 1, `reminderWeek` returns 1, and this
- * threshold is what makes the window report `too_early` until the season is
- * genuinely close.
- */
-export const PICK_REMINDER_OPENS_MS = 7 * 24 * 60 * 60 * 1000;
-
 /** Mirrors 0015's `p_min_interval` default. Buy-ins are throttled, not keyed. */
 export const BUY_IN_REMINDER_MIN_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -115,7 +100,7 @@ export function reminderWeek(games: Game[], now: Date, currentWeek: number): num
   return best;
 }
 
-export type PickWindowReason = "no_games" | "too_early" | "closed" | null;
+export type PickWindowReason = "no_games" | "closed" | null;
 
 export interface PickWindow {
   /** May a reminder for this week still do any good? */
@@ -143,6 +128,18 @@ export interface PickWindow {
  * so the window shrinks continuously: by Sunday evening a member can still pick,
  * but only from the Sunday-night and Monday games. That is worth an email, so
  * the window stays open and the copy says which games are left.
+ *
+ * THERE IS DELIBERATELY NO "too early" REFUSAL. One used to live here, gated on
+ * a seven-day threshold, and its effect was that the pick reminder could not be
+ * sent at all until the season was nearly on — including through the whole
+ * preseason, which is exactly when an admin wants to tell people to get their
+ * Week 1 pick in. Whether a reminder is premature is the admin's judgement, not
+ * a constant's, and the copy no longer asserts anything that goes stale if it
+ * is read a fortnight later.
+ *
+ * What remains is structural rather than editorial: with a week that
+ * `reminderWeek` chose, at least one game is open by construction, so `open` is
+ * true. The other two reasons survive for callers that pass an arbitrary week.
  */
 export function weekPickWindow(games: Game[], week: number, now: Date): PickWindow {
   const nowMs = now.getTime();
@@ -170,10 +167,6 @@ export function weekPickWindow(games: Game[], week: number, now: Date): PickWind
 
   if (openGames.length === 0) {
     return { open: false, reason: "closed", lastKickoffIso, nextKickoffIso, partiallyStarted };
-  }
-
-  if (nextKickoff !== null && nextKickoff - nowMs > PICK_REMINDER_OPENS_MS) {
-    return { open: false, reason: "too_early", lastKickoffIso, nextKickoffIso, partiallyStarted };
   }
 
   return { open: true, reason: null, lastKickoffIso, nextKickoffIso, partiallyStarted };
@@ -310,7 +303,6 @@ export function describeReminders(
 
 function closedHeadline(window: PickWindow): string {
   if (window.reason === "no_games") return "no games are scheduled";
-  if (window.reason === "too_early") return "too early to remind anyone";
   return "picks are closed";
 }
 
@@ -474,19 +466,28 @@ function bodyLines(input: MessageInput): string[] {
     ];
   }
 
+  /*
+   * Written to hold whenever it is READ, not only when it is sent.
+   *
+   * The previous version opened with "Every game this week is still open",
+   * which is a claim about the moment of sending — false by Sunday night, and
+   * plainly odd in a reminder sent a fortnight early. Explaining the rule
+   * ("picks lock at each game's kickoff") is true at every moment of every
+   * week, and it tells the reader the thing that actually helps: go early.
+   */
   const deadline = input.deadlineIso
-    ? `The last game of the week kicks off ${formatLong(input.deadlineIso, {
+    ? `The last game of Week ${input.week} kicks off ${formatLong(input.deadlineIso, {
         timeZone: "America/New_York",
       })}.`
     : "";
 
   return [
-    `You haven't made a pick for Week ${input.week} of ${input.leagueName}.`,
+    `You haven't made a pick for Week ${input.week} of ${input.leagueName} yet.`,
+    "Picks lock at each game's kickoff, so the earlier you pick, the more of the week you have to choose from. Miss it entirely and it counts as a loss.",
     input.partiallyStarted
-      ? "Some of this week's games have already started, so you can only pick from the ones that haven't kicked off yet."
-      : "Every game this week is still open.",
+      ? `Some of Week ${input.week}'s games have already kicked off, so those teams are no longer available.`
+      : "",
     deadline,
-    "Miss the week entirely and it counts as a loss.",
   ].filter(Boolean);
 }
 

@@ -1685,7 +1685,6 @@ function RemindersSection({ groupId }: { groupId: string }) {
 function pickWindowNote(w: PickWindow | null, snapshot: ReminderSnapshot | null): string | null {
   if (snapshot?.week === null) return "No week is open for picks right now.";
   if (!w || w.open) return null;
-  if (w.reason === "too_early") return "This week's games are still more than a week away.";
   if (w.reason === "no_games") return "No games are scheduled for that week yet.";
   return "Every game this week has kicked off, so a reminder can't help now.";
 }

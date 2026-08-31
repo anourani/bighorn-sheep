@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Game } from "../nfl/types";
 import {
   BUY_IN_REMINDER_MIN_INTERVAL_MS,
-  PICK_REMINDER_OPENS_MS,
   REMINDER_MANUAL_COOLDOWN_MS,
   describeReminders,
   formatMoney,
@@ -123,12 +122,19 @@ describe("weekPickWindow — may a reminder still do any good?", () => {
     expect(w.lastKickoffIso).toBe("2026-10-05T20:15:00.000Z");
   });
 
-  it("is too early more than a week out, and opens as the week approaches", () => {
-    const firstKickoff = Date.parse("2026-10-01T20:15:00Z");
-    const justOutside = new Date(firstKickoff - PICK_REMINDER_OPENS_MS - 60_000);
-    const justInside = new Date(firstKickoff - PICK_REMINDER_OPENS_MS + 60_000);
-    expect(weekPickWindow(SCHEDULE, 5, justOutside).reason).toBe("too_early");
-    expect(weekPickWindow(SCHEDULE, 5, justInside).open).toBe(true);
+  /**
+   * There is deliberately no "too early" refusal any more. One used to sit here
+   * on a seven-day threshold, and its effect was that the pick reminder could
+   * not be sent through the entire preseason — precisely when an admin wants to
+   * chase Week 1 picks. Whether a reminder is premature is the admin's call.
+   */
+  it("is open however far out the week is, including a whole preseason early", () => {
+    expect(weekPickWindow(SCHEDULE, 5, new Date("2026-09-24T00:00:00Z")).open).toBe(true);
+    expect(weekPickWindow(SCHEDULE, 5, new Date("2026-08-01T00:00:00Z")).open).toBe(true);
+    // Six weeks out, and still nothing standing in the way.
+    const w = weekPickWindow(SCHEDULE, 5, new Date("2026-08-20T00:00:00Z"));
+    expect(w.open).toBe(true);
+    expect(w.reason).toBeNull();
   });
 
   it("stays open but reports partiallyStarted once some games have gone", () => {
@@ -358,11 +364,27 @@ describe("the message", () => {
     expect(text).not.toContain("<p>");
   });
 
-  it("tells the reader which games are left when some have started", () => {
-    expect(reminderBody({ ...base, partiallyStarted: true }).text).toContain(
-      "only pick from the ones that haven't kicked off",
-    );
-    expect(reminderBody(base).text).toContain("Every game this week is still open");
+  /**
+   * The copy has to hold whenever it is READ, not only when it is sent — a
+   * reminder mailed on Wednesday is opened on Sunday. So the base text explains
+   * the RULE rather than asserting a state, and the only conditional sentence
+   * is the one that adds information rather than expiring.
+   */
+  it("explains the locking rule in every case, and adds the caveat when it applies", () => {
+    const early = reminderBody(base).text;
+    expect(early).toContain("Picks lock at each game's kickoff");
+    expect(early).toContain("counts as a loss");
+    // No claim about the current state of the slate that could go stale.
+    expect(early).not.toContain("Every game this week is still open");
+    expect(early).not.toContain("already kicked off");
+
+    const partway = reminderBody({ ...base, partiallyStarted: true }).text;
+    expect(partway).toContain("Picks lock at each game's kickoff");
+    expect(partway).toContain("already kicked off, so those teams are no longer available");
+  });
+
+  it("names the week in the deadline, so it reads right sent weeks ahead", () => {
+    expect(reminderBody(base).text).toContain("The last game of Week 5 kicks off");
   });
 
   it("puts the absolute link in both parts", () => {
