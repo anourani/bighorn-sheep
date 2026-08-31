@@ -18,6 +18,16 @@ import {
 } from "@/lib/league/feed";
 import { runScorePoll } from "@/lib/nfl/poll";
 import { serviceClient } from "@/lib/supabase/service";
+import { getMailer } from "@/lib/mail";
+import { runReminderSend } from "@/lib/league/reminder-run";
+import {
+  REMINDER_MANUAL_COOLDOWN_MS,
+  mapReminderStatus,
+  reminderSentRecently,
+  reminderWeek,
+  weekPickWindow,
+  type ReminderKind,
+} from "@/lib/league/reminders";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -1053,5 +1063,228 @@ export async function selectLeague(groupId: string): Promise<ActionResult> {
     revalidatePath("/app/account");
     revalidatePath("/app/standings");
     return { ok: true };
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Reminder emails
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Everything both reminder actions need to know about the league and the clock.
+ *
+ * Split out because `sendReminders` must derive the week the SAME way
+ * `getReminderStatus` displayed it — an action that took the week from its
+ * caller would let a stale tab (or a hand-rolled POST) name a week that is
+ * over, which consumes that week's row in 0015's unique index and silently
+ * forecloses the real reminder.
+ */
+async function reminderContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  groupId: string,
+) {
+  const { data: group, error: groupError } = await supabase
+    .from("groups")
+    .select("*")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (groupError || !group) return null;
+
+  // Regular season only, and never a mixed season_type list: preseason week 3
+  // and regular week 3 are indistinguishable to the week resolvers.
+  const { data: gameRows } = await supabase
+    .from("games")
+    .select("*")
+    .eq("season", group.season)
+    .eq("season_type", "regular");
+
+  const games = (gameRows ?? []).map(rowToGame);
+  const now = new Date();
+  const phase = seasonPhase(new Date(group.entry_closes_at), now);
+  const currentWeek = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
+  const week = reminderWeek(games, now, currentWeek);
+  const window = week === null ? null : weekPickWindow(games, week, now);
+
+  return { group, games, now, week, window };
+}
+
+/**
+ * Who still needs a reminder, for the drawer's Emails tab.
+ *
+ * Admin-gated in Postgres by `reminder_status_for_admin` (0015), which returns
+ * names and reasons and deliberately NOT addresses — see that migration's
+ * header. The week is derived here rather than by the browser, so the panel and
+ * the send cannot disagree about which week is being talked about.
+ */
+export async function getReminderStatus(input: {
+  groupId: string;
+}): Promise<ActionResult<unknown>> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const ctx = await reminderContext(supabase, input.groupId);
+    if (!ctx) return { ok: false, error: "group_not_found" };
+
+    const { data, error } = await supabase.rpc("reminder_status_for_admin", {
+      p_group_id: input.groupId,
+      p_season: ctx.group.season,
+      p_season_type: "regular",
+      p_week: ctx.week,
+    });
+    if (error) {
+      const reason = rpcErrorCode(
+        error,
+        ["not_authenticated", "not_admin"],
+        "reminder_status_unavailable",
+      );
+      console.error("[getReminderStatus] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    return { ok: true, data: { status: data, window: ctx.window } };
+  });
+}
+
+/**
+ * Send one kind of reminder to the admin's ticked selection.
+ *
+ * The ordering below is `runFeedCheck`'s, deliberately and for its reasons:
+ *
+ *   1. Authorise through the EXISTING definer read. `reminder_status_for_admin`
+ *      raises `not_admin` in Postgres, so there is no new RPC and no second
+ *      place for the admin check to rot. Its payload is also what the cooldown
+ *      reads.
+ *   2. The cooldown is checked BEFORE the service client is built, so a
+ *      leaned-on button never reaches the provider at all.
+ *   3. The status is re-read AFTER the send, and that payload is what comes
+ *      back. Returning the pre-send snapshot would show the people who were
+ *      just emailed as still outstanding.
+ *
+ * `userIds` NARROWS and can never widen: `runReminderSend` intersects it with
+ * what `reminder_due` says. That is what makes per-recipient tickboxes safe on
+ * an endpoint anyone can POST to — and the reason no address ever reaches the
+ * browser, so there is nothing here to substitute.
+ *
+ * Unlike `runFeedCheck`, a provider failure resolves `ok: false`. There is no
+ * status row recording a failed run for the panel to explain, so the code has
+ * to carry the news.
+ */
+export async function sendReminders(input: {
+  groupId: string;
+  kind: ReminderKind;
+  userIds?: string[];
+}): Promise<ActionResult<unknown>> {
+  return attempt(async () => {
+    if (input.kind !== "pick" && input.kind !== "buy_in") {
+      return { ok: false, error: "bad_reminder_kind" };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const ctx = await reminderContext(supabase, input.groupId);
+    if (!ctx) return { ok: false, error: "group_not_found" };
+
+    const { data: before, error: readError } = await supabase.rpc("reminder_status_for_admin", {
+      p_group_id: input.groupId,
+      p_season: ctx.group.season,
+      p_season_type: "regular",
+      p_week: ctx.week,
+    });
+    if (readError) {
+      const reason = rpcErrorCode(
+        readError,
+        ["not_authenticated", "not_admin"],
+        "reminder_status_unavailable",
+      );
+      console.error("[sendReminders] status read failed", readError);
+      return { ok: false, error: reason };
+    }
+
+    const snapshot = mapReminderStatus(before);
+    if (reminderSentRecently(snapshot, input.kind, REMINDER_MANUAL_COOLDOWN_MS)) {
+      return { ok: false, error: "reminder_too_soon" };
+    }
+
+    // Picks close at the week's last kickoff, because that is the instant a
+    // missing pick becomes a loss. Money admin never closes, matching
+    // set_group_buy_in, which has no lock check at all.
+    if (input.kind === "pick") {
+      if (ctx.week === null) return { ok: false, error: "reminder_week_closed" };
+      if (ctx.window && !ctx.window.open) return { ok: false, error: "reminder_week_closed" };
+    }
+
+    /*
+     * The app URL is resolved HERE, from the server's own environment, and a
+     * blank one refuses the send outright.
+     *
+     * NEXT_PUBLIC_APP_URL is deliberately blank outside production, so this
+     * makes reminders a production-only action — which is a feature: you cannot
+     * mail the league from a deploy preview. Falling back to a hardcoded origin
+     * would repeat a bug this repo has already shipped, and taking it from the
+     * browser would let a hand-rolled POST put any link it liked into
+     * league-branded mail from a verified domain. A wrong URL in a redirect is
+     * recoverable; the same URL in twelve inboxes is not.
+     */
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      console.error("[sendReminders] NEXT_PUBLIC_APP_URL is blank in this runtime");
+      return { ok: false, error: "reminder_url_unconfigured" };
+    }
+
+    if (!getMailer()) return { ok: false, error: "reminder_mail_unconfigured" };
+
+    // reminder_due and record_reminder_send are granted to service_role alone,
+    // and the former reads auth.users. The anon-key client cannot do either.
+    const service = serviceClient();
+    if (!service) {
+      console.error("[sendReminders] no service-role key in this runtime");
+      return { ok: false, error: "reminder_send_unavailable" };
+    }
+
+    const outcome = await runReminderSend(service, {
+      groupId: input.groupId,
+      kind: input.kind,
+      season: ctx.group.season,
+      week: input.kind === "pick" ? ctx.week : null,
+      userIds: input.userIds ?? [],
+      leagueName: ctx.group.name,
+      buyInCents: ctx.group.buy_in_cents ?? 0,
+      deadlineIso: ctx.window?.lastKickoffIso ?? null,
+      partiallyStarted: ctx.window?.partiallyStarted ?? false,
+      appUrl: appUrl.replace(/\/$/, ""),
+      now: ctx.now,
+    });
+
+    if (outcome.httpStatus >= 500) {
+      console.error("[sendReminders] send failed", outcome.httpStatus, outcome.body);
+      return { ok: false, error: "reminder_send_failed" };
+    }
+
+    const { data: after, error: afterError } = await supabase.rpc("reminder_status_for_admin", {
+      p_group_id: input.groupId,
+      p_season: ctx.group.season,
+      p_season_type: "regular",
+      p_week: ctx.week,
+    });
+    if (afterError) {
+      console.error("[sendReminders] status re-read failed", afterError);
+      return { ok: false, error: "reminder_status_unavailable" };
+    }
+
+    // Only the account page: this writes reminder_sends, which no page reads,
+    // so unlike a poll it cannot move the standings or the picks boards.
+    revalidatePath("/app/account");
+    return {
+      ok: true,
+      data: { status: after, window: ctx.window, sent: outcome.body.sent ?? 0 },
+    };
   });
 }
