@@ -47,14 +47,24 @@ export interface Database {
           id: string;
           /** Optional; free text, never parsed or dialled. */
           phone: string | null;
+          /**
+           * Added by 0015. Nothing in the app writes it yet — the SQL editor is
+           * the escape hatch — and it is read only inside `reminder_due`, so no
+           * .select() in the app names it. That matters: PostgREST raises 42703
+           * on an unknown column rather than returning undefined, so naming it
+           * before the migration lands would fail the whole query.
+           */
+          reminder_opt_out: boolean;
         };
         Insert: {
           id: string;
           phone?: string | null;
+          reminder_opt_out?: boolean;
         };
         Update: {
           id?: string;
           phone?: string | null;
+          reminder_opt_out?: boolean;
         };
         Relationships: [];
       };
@@ -115,6 +125,52 @@ export interface Database {
           error?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["feed_status"]["Insert"]>;
+        Relationships: [];
+      };
+      /**
+       * One row per reminder email, appended by the send job — see migration
+       * 0015. RLS is on with NO policies, so this is unreadable with the anon
+       * key and reachable only through `reminder_status_for_admin`; the writer
+       * is the service role via `record_reminder_send`.
+       *
+       * A partial unique index on (group, user, season, season_type, week)
+       * where kind = 'pick' and status = 'sent' is what makes sending
+       * idempotent. There is deliberately no equivalent for buy_in — its week
+       * is null, nulls are distinct, and a debt has no natural period — so
+       * those are throttled by an interval instead.
+       */
+      reminder_sends: {
+        Row: {
+          id: string;
+          /** Groups the rows written by one click, for "sent 12, 4 minutes ago". */
+          run_id: string;
+          group_id: string;
+          user_id: string;
+          kind: "pick" | "buy_in";
+          season: number;
+          season_type: string;
+          /** Null for buy_in. */
+          week: number | null;
+          status: "sent" | "failed";
+          provider_id: string | null;
+          error: string | null;
+          sent_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          group_id: string;
+          user_id: string;
+          kind: "pick" | "buy_in";
+          season: number;
+          season_type?: string;
+          week?: number | null;
+          status: "sent" | "failed";
+          provider_id?: string | null;
+          error?: string | null;
+          sent_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["reminder_sends"]["Insert"]>;
         Relationships: [];
       };
       groups: {
@@ -406,6 +462,65 @@ export interface Database {
       feed_status_for_admin: {
         Args: { p_group_id: string };
         Returns: unknown;
+      };
+      /**
+       * Who is due a reminder, INCLUDING their email (0015). Granted to
+       * `service_role` only — this is the one function in the project that
+       * emits an address, and `reminder_status_for_admin` below is the
+       * browser's view of the same definition with that column dropped.
+       */
+      reminder_due: {
+        Args: {
+          p_group_id: string;
+          p_kind: "pick" | "buy_in";
+          p_season: number;
+          p_season_type?: string;
+          p_week?: number | null;
+          p_min_interval?: string;
+        };
+        Returns: {
+          user_id: string;
+          first_name: string | null;
+          last_name: string | null;
+          email: string | null;
+          last_sent_at: string | null;
+        }[];
+      };
+      /**
+       * The admin drawer's read (0015). `unknown` rather than a shape, matching
+       * feed_status_for_admin: it returns jsonb `{ now, season, seasonType,
+       * week, pick, buyIn }`, and `now` is the DATABASE's clock so "reminded 2
+       * hours ago" cannot go negative. Mapped by mapReminderStatus in
+       * src/lib/league/reminders.ts. Raises `not_admin`.
+       */
+      reminder_status_for_admin: {
+        Args: {
+          p_group_id: string;
+          p_season: number;
+          p_season_type?: string;
+          p_week?: number | null;
+        };
+        Returns: unknown;
+      };
+      /**
+       * The send log's write path (0015). Granted to `service_role` only.
+       * `on conflict do nothing` against the partial unique index, so a retry
+       * after a crash is a no-op rather than an error.
+       */
+      record_reminder_send: {
+        Args: {
+          p_run_id: string;
+          p_group_id: string;
+          p_user_id: string;
+          p_kind: "pick" | "buy_in";
+          p_season: number;
+          p_season_type?: string;
+          p_week?: number | null;
+          p_status?: "sent" | "failed";
+          p_provider_id?: string | null;
+          p_error?: string | null;
+        };
+        Returns: undefined;
       };
       invite_preview: {
         Args: { p_code: string };
