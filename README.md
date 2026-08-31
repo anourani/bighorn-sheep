@@ -109,19 +109,27 @@ from unnest(array['account_exists','create_group','join_by_invite',
                   'invite_preview','hidden_pick_user_ids','handle_new_user',
                   'public_league_snapshot','set_member_buy_in','set_group_buy_in',
                   'close_own_account','set_group_name','set_group_rules',
-                  'set_member_preseason','record_feed_sync','feed_status_for_admin']) f
+                  'set_member_preseason','record_feed_sync','feed_status_for_admin',
+                  'reminder_due','reminder_status_for_admin','record_reminder_send']) f
 union all
 select 'table: ' || t,
        case when exists (select 1 from information_schema.tables
          where table_schema='public' and table_name=t)
        then 'PRESENT' else 'MISSING' end
-from unnest(array['public_league','profile_private','account_closures','feed_status']) t
+from unnest(array['public_league','profile_private','account_closures','feed_status',
+                  'reminder_sends']) t
 union all
 select 'column: groups.' || c,
        case when exists (select 1 from information_schema.columns
          where table_schema='public' and table_name='groups' and column_name=c)
        then 'PRESENT' else 'MISSING' end
 from unnest(array['buy_in_cents','site_fee_cents']) c
+union all
+select 'column: profile_private.reminder_opt_out',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='profile_private'
+           and column_name='reminder_opt_out')
+       then 'PRESENT' else 'MISSING' end
 union all
 select 'column: group_members.show_preseason',
        case when exists (select 1 from information_schema.columns
