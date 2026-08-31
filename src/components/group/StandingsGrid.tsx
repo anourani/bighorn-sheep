@@ -135,7 +135,7 @@ export function StandingsGrid({
           below it — and the landing page's padlock note, which is a sibling of
           this whole component — stay lined up with the rest of the page.
 
-          `-mx-4` assumes a `px-4` host, same as `StatusReport` above it: true of
+          `-mx-4` assumes a `px-4` host, same as `Headcount` above it: true of
           the app shell's `main` and of the landing page's own section.
 
           The side borders go with the inset, for the same reason the radius

@@ -19,7 +19,12 @@ import { FOCUSABLE_SELECTOR, nextFocusIndex } from "./drawer";
  * `globals.css` sets `scrollbar-gutter: stable`; without it the scroll lock
  * shifts the page and not the drawer.)
  */
-export const DRAWER_RAIL = "mx-auto w-full max-w-shell px-4";
+// `max-w-frame px-4` mirrors the app shell's wrapper exactly, and that is the
+// whole point of this constant: the drawer's premise is that its content column
+// lines up with the page behind it, so it resolves to the same
+// `min(viewport - 32, 1000)` the page does, at every width and with no
+// breakpoint of its own. `max-w-shell` here would be 32px narrow.
+export const DRAWER_RAIL = "mx-auto w-full max-w-frame px-4";
 
 /**
  * A full-width sheet that rises from the bottom edge, at every width.

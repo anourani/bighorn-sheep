@@ -348,17 +348,35 @@ recover users' browsers en masse.
 
 ## Page layout: what a new page inherits, and what it must not add
 
-Every `/app` route renders inside one `<main>` — `src/app/app/layout.tsx` — and that
-element owns the whole page frame:
+Every `/app` route renders inside one `<main>` — `src/app/app/layout.tsx` — and the
+frame is split across two elements, deliberately: the WRAPPER owns the horizontal and
+`main` owns the vertical.
 
 ```
-<main className="flex-1 px-4 pb-20 pt-10 lg:pb-32 lg:pt-16">
+<div className="… max-w-frame px-4 …">      // the gutter
+  <main className="flex-1 pb-20 pt-10 lg:pb-32 lg:pt-20">
 ```
 
-40px above the first block and 80px below the last on a phone; 64 and 128 from `lg`.
+40px above the first block and 80px below the last on a phone; 80 and 128 from `lg`.
 Those are the mockups' numbers. The desktop pair is asymmetric on purpose — the mockup
-pads its section by 64 and then pads the page wrapper by another 64, so the foot of a
-page is deliberately twice its head. Don't "balance" it.
+pads its section by 80 and then pads the page wrapper by another 48, so the foot of a
+page is deliberately wider than its head. Don't "balance" it.
+
+**The horizontal has NO breakpoint, and the content column is
+`min(viewport − 32, 1000)` at every width.** `maxWidth.frame` in
+`tailwind.config.ts` is the 1000px column plus 16px either side, derived from
+`SHELL_COLUMN`/`SHELL_GUTTER` rather than retyped as 1032, and it is capped on the
+wrapper — so the column widens with the window until it reaches 1000 and then stops,
+and nothing ever comes closer than 16px to the window edge. One rule, two regimes.
+
+It was three bands before, and the middle one was an accident: `max-w-shell` on the
+wrapper with `px-4 lg:px-0` on `main` gave the old 968 column between 1000 and 1023px
+and then **jumped 32px wider at `lg`**, where the gutter all but vanished — 4.5px at
+1024 with a classic scrollbar. The column is continuous now: measured 976 → 977 → 984
+→ 993 → 1000 across 1023/1024/1031/1040/1047, with the gutter pinned at exactly 16
+throughout. `DRAWER_RAIL` is `max-w-frame px-4` for the same reason — its premise is
+lining up with the page behind it — and `TeamGrid`'s desktop cards are **160px, not the
+154.66** they were drawn at against 968.
 
 **A new page therefore adds no vertical padding of its own: no `py-*`, `pt-*`, `pb-*`
 or `mt-*` on its root.** Every `src/app/app/*/page.tsx` is a thin Server Component
@@ -370,16 +388,22 @@ than every other screen for as long as it existed.
 
 Five more rules, roughly in the order they come up:
 
-- **`px-4` on that same element is a separate contract.** `StatusReport`,
-  `StandingsGrid`, `WeekStrip` and `TeamGrid` full-bleed by cancelling it with `-mx-4`
-  (plus `lg:mx-0` where the bleed stops at desktop). Nothing cancels the *vertical*
-  padding — there is no `-mt-*` anywhere in `src/` — so the two halves of that class
-  string move independently, and only the horizontal half has downstream readers.
+- **The gutter is on the WRAPPER, and `-mx-4` still reaches it.** `StandingsGrid`,
+  `WeekStrip` and `TeamGrid` full-bleed by cancelling 16px with `-mx-4` (plus `lg:mx-0`
+  where the bleed stops at desktop). `main` carries no padding of its own any more, and
+  that changes nothing for them: a negative margin shifts a box rather than depending on
+  the parent's padding, and it lands in the wrapper's 16px, which is the window edge
+  wherever the wrapper is narrower than `max-w-frame`. Measured: the bled element's left
+  edge is 0 below `lg` at 320 / 393 / 768 / 1023. `Headcount` is not in that list — it is
+  a filled card that fills the column and bleeds nowhere. Nothing cancels the *vertical*
+  padding — there is no `-mt-*` anywhere in `src/`.
 - **The breakpoint is `lg` (1024px), never `md`.** It is the app's single turn-over
-  width: `WeekStrip`, `StandingsGrid`, `PickHero` and the account grid all change shape
-  there, and `max-w-shell` (1000px) less its `px-4` only reaches its full 968px
-  content column around that width. `md` steps *scale* only, so a page that turns over
-  there takes desktop padding while every component inside it is still phone-shaped.
+  width: `WeekStrip`, `StandingsGrid`, `PickHero`, the headcount card's cube scale and
+  the account grid all change shape there. It is NOT where the column width turns over —
+  the horizontal has no breakpoint at all now, and the two are independent on purpose:
+  shape steps at 1024, width caps at 1000 wherever the window allows it. `md` steps
+  *scale* only, so a page that turns over there takes desktop padding while every
+  component inside it is still phone-shaped.
 - **Think twice before putting `space-y-*` on a page root.** It compiles to `> * + *`,
   which outranks a child's own `mt-*` on specificity, so no single child can opt out —
   it is all-or-nothing. `StandingsClient` and `MyPicksClient` both dropped theirs for
@@ -414,7 +438,10 @@ and presents as padding that "didn't take":
 ```js
 const m = document.querySelector('main');
 [getComputedStyle(m).paddingTop, getComputedStyle(m).paddingBottom];
-// 40px / 80px below lg, 64px / 128px from lg
+// 40px / 80px below lg, 80px / 128px from lg. `main` has NO horizontal padding —
+// the gutter is the wrapper's, so check the column itself instead:
+const w = m.getBoundingClientRect().width;
+[w, Math.min(document.body.clientWidth - 32, 1000)]; // equal at every width
 ```
 
 ---
@@ -554,6 +581,177 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The standings page opens on a league header, not four grey tiles.**
+  `LeagueDetails` was League / Current week / Survivors / Rules as four tiles on
+  a soft-grey card; it is now the league's name set large beside its money, its
+  headcount and its two actions. Figma `4181:154890`; page `4082:139343`
+  (desktop) and `4158:150123` (mobile). Nine things:
+  - **The week and the survivor count are not missing, they moved down.** The
+    `Headcount` card directly below already prints "W6" and "29 still standing",
+    which is what that card is for, and keeping them here would put the same two
+    numbers on one screen twice.
+  - **DOM order is the mobile order and the desktop layout falls out of it.**
+    Two column divs rendered once, `flex-col` below `lg` and `lg:flex-row
+    lg:gap-5` above it, which stacks them full-width into exactly the mobile
+    frame's sequence. Nothing is rendered twice, so no branch can drift.
+  - **`Label` renders a `<span>`, and in a plain block that costs 12px.** An
+    inline span's line box takes the PARENT's strut — 24px off the page's 16/1.5
+    body type — not its own `leading-none` 12, so the name module came out 12px
+    tall at both widths until it became a `flex flex-col`. Blockified as a flex
+    item it measures itself, and the module lands on the frame's 76.4. The tiles
+    this replaced were flex columns and never hit it. Measured, not reasoned
+    about: 88.4 before, 76.4 after, against a frame that says 76.
+  - **The title is `H4` with one override, not a third constant.** The design
+    library's H4 and H3 differ by nothing but size, so desktop is
+    `cn(H4, "lg:text-[32px]")`. Both are `-0.04em`, so the tracking follows the
+    size for free — a transcribed `-0.96px`/`-1.28px` pair would not.
+  - **It is the page's `<h1>`, which the page did not have.** `/app/standings`
+    carried two `sr-only` `<h2>`s ("Standings", "Grow the League") hanging off
+    nothing. The league's own name is the honest title.
+  - **"Winner takes" is derived and nothing stores it.** `buyInCents ×
+    memberCount`: `siteFeeCents` is the site's cut charged on top, so the pot is
+    the buy-in alone. No migration — the alternative was a column, and a column
+    here would be a hand-applied migration for a number that is already implied.
+  - **The invite row hides once entry closes**, matching `InviteCta` further
+    down the page: the code still exists but `join_by_invite` refuses it. That
+    can leave the desktop's second column holding only "Rules", which is fine.
+  - **Rows are `min-h-[34px]`, not the frame's fixed height.** A clipboard
+    failure swaps "Copy Link" for the invite code — the same reveal `InviteCta`
+    makes, and the only way to the link when the code is nowhere on screen — and
+    a fixed height would clip it. Both halves are `flex-1 min-w-0`, which is what
+    stops a `whitespace-nowrap` value refusing to shrink and blowing the column
+    out.
+  - **`phase` and `currentWeek` left the props rather than going unused**, and
+    `appUrl`/`now` arrived for the invite row. `members: Member[]` became
+    `memberCount: number` — only the length was ever read.
+
+  Measured in Chromium at 1440: the block is **1000 x 102**, children 490 /
+  235 / 235 at gap 20 (the frame's 490, +510, +765), name module 490 x 76.4,
+  h1 32px/38.4px/-1.28px/600 `#1E1E1E`, label 12px `#757575` uppercase, row 34
+  tall with 6/2 padding over a 1px `#D9D9D9` rule, value 16px/21.6px/-0.16px/600,
+  link 16px `#151E9D`/500. Under mobile emulation at 393: **361 x 236.8** against
+  a frame that says 237, one column, five rows, title 24px/28.8px/-0.96px.
+
+- **The status report is the HEADCOUNT now, and its one row of proportional bars
+  is a wrapped grid of equal squares.** `StatusReport` → `Headcount`,
+  `SurvivorStrip` → `HeadcountGrid`, `statusLine` → `headcountLine`,
+  `StatusLineInput` → `HeadcountInput`, and `PublicLeagueData.status` →
+  `.headcount` (that file already used `status` for a game's and a member's).
+  Figma `3720:40767` (desktop), `4118:147326` (mobile), cube atom `3746:39826`.
+  Sixteen things:
+  - **No cube may sit alone on the last row, and that rule is why there is JS
+    here at all.** CSS can *compute* a column count — `round()`, `mod()`, `cqw`
+    — but it cannot branch on one, so the size is solved against the measured
+    width in `headcount-grid.ts` (pure, tested) and applied by `HeadcountGrid`.
+    The solver walks the integer sizes in range nearest the design's base first
+    and takes the first whose column count clears `count % columns === 1`.
+  - **The two size ranges encode the direction of travel, so the solver needs no
+    grow-or-shrink rule.** The phone's base IS its max (16, floor 12) so a phone
+    cube can only shrink; the desktop's base IS its min (24, ceiling 30) so a
+    desktop cube can only grow. There is a test asserting exactly that, because
+    a future range straddling its base would make the tie-break load-bearing
+    overnight.
+  - **`count > columns` in the orphan test is not a micro-optimisation.** Without
+    it a one-member league — one cube, alone by necessity — reports an orphan at
+    every size, exhausts the range and lands on the fallback for a row it was
+    never going to share.
+  - **The width comes off the ResizeObserver entry, and BOTH halves of that
+    matter.** It is a layout box, where `getBoundingClientRect()` is the
+    transformed one — the landing page wraps this section in `blur-in`, which
+    starts at `scale(1.04)`, so a rect read mid-animation is 4% wide and buys an
+    extra column. That is `readColumns`/`offsetTop`'s lesson in a second place.
+    And it is FRACTIONAL, where `clientWidth` is rounded: `columnsFor` restates
+    CSS Grid's own `auto-fill` formula, so on the real number our count and the
+    browser's cannot disagree, and on a rounded one they can. `clientWidth`
+    survives only as a last-resort fallback.
+  - **The measured template is explicit — `repeat(N, …)`, never `auto-fill`.** A
+    browser allowed to reach its own count could reach one more than the solver
+    did and put the lone cube straight back. Its `minmax(0, …)` is belt and
+    braces on the same edge: given a width the tracks cannot quite fit they
+    shrink together instead of overflowing. An overflow breaks out of the card's
+    fill at any width, and at `lg` — where `main` keeps no horizontal inset to
+    absorb it — it reaches the document.
+  - **`auto-fill` IS the other template, and it is not a placeholder.** The
+    class-based `repeat(auto-fill, var(--cube))` is what the server renders, what
+    paints before hydration, and what a browser whose JS never arrives keeps —
+    and because `auto-fill` reaches the browser's own count from the true width,
+    it is already the design's size at both widths. Only a genuine orphan ever
+    moves off it. Measured with JS disabled: 20 columns of 16px at 393 and 37 of
+    24px at 1280, identical to the solved pass. A much softer failure than
+    `TeamGrid`'s blank-if-JS-fails trade.
+  - **The cube takes its width from the track and its height from
+    `aspect-square`**, so the two cannot be handed different numbers — including
+    on a track `minmax` has shrunk. Do not add a fixed row height; it would
+    un-square exactly that case.
+  - **`HeadcountGrid` is the only file that takes `"use client"`.** The label row
+    stays a Server Component, which is what keeps `lib/league/view.ts` — and the
+    whole ranking apparatus it imports — out of the landing page's client bundle.
+    `/` still builds as `○` with `Revalidate 1m`; the boundary cost it nothing.
+  - **Which range applies is `matchMedia("(min-width: 1024px)")`, not a width
+    test.** Below `lg` the grid is full-bleed, so its own box IS roughly the
+    viewport, and a width threshold would read a 990px browser window as a
+    desktop. It is a listener, not a one-time read: measured live, 1023 → 1025
+    with no reload steps the cube 16 → 24.
+  - **The percentage is the share ELIMINATED, and it is drawn in accent where the
+    muted half used to be.** `percent` is `round(eliminated / total)`, guarded so
+    an empty league reads "0%" rather than "NaN%". The pre-season has no Type 2
+    frame; it prints "N joined" and no percentage at all, because the only number
+    that branch could carry is zero. Every trailing period in the old copy is
+    gone, and there is a test that walks the returned strings asserting so.
+  - **"W6" is drawn at BOTH widths now, so the old `sm` text swap is gone — but
+    the pair isn't.** The desktop frame carries "W6 Headcount" too. The
+    abbreviation names nothing out loud, so the drawn form is `aria-hidden` and
+    the long one is `sr-only` at every width: the page shows "W6 Headcount", a
+    screen reader hears "Week 6 Headcount". `percentLabel` does the same job one
+    line down — a bare "54%" beside "29 still standing" names neither of them, so
+    "34% eliminated" is what gets spoken. This component now has exactly one
+    breakpoint, `lg`, where it used to have two.
+  - **Still-standing cubes come FIRST, and the two frames disagree about that.**
+    The desktop frame draws eliminated-first (which is what the bars did); the
+    mobile frame draws alive-first. One grid cannot do both. The user's call was
+    alive-first, so the orange block leads and the grey trails — which also puts
+    the block "29 still standing" names at the start of the reading order.
+  - **The ~59-member 1px limit is retired, and so is its recorded fix.** Those
+    bars fell below one CSS pixel at roughly 59 members at 390px and their gaps
+    ate the whole track past ~87; the note proposing a two-segment proportional
+    bar above a ~48 threshold went with them, because a cube is 12-30px whatever
+    the count and the ratio is no longer approximated. The new limit is height:
+    rows are `ceil(count / columns)` at `size + gap` each, so ~21 members per
+    phone row and ~37 per desktop row, and a 500-member league is ~25 rows.
+    Linear and visible, rather than silent.
+
+  - **It is a CARD now, and that ended the full-bleed contract it used to
+    carry.** `rounded-control bg-fill-soft` (#F3F3F3 at 8px, the design's
+    `General Card BG` and `Radius/small`), 12px of padding all round on a phone
+    and 16 at the sides and foot from `lg`, where the top stays 12. It fills the
+    content column at both widths and bleeds nowhere: no `-mx-4`, no host `px-4`
+    contract, and it came off that list in the page-layout section above.
+  - **The section root IS the card, so a host must not pass `px-*`.** The
+    landing page did — `className="px-4 pb-2 sm:py-3"` — and that string would
+    now pad the INSIDE of the fill rather than sit the card in from the page, so
+    that host wraps it in a `px-4` div instead and passes only the vertical.
+    `StandingsClient` passes only `mt-*`, which is the rule everywhere else.
+  - **The 2px is inside the card now, not against the viewport.** The mobile
+    frame insets its grid 2px within the card's own 12px, and the desktop frame
+    does not — `px-0.5 lg:px-0`, on the wrapper rather than on the grid so the
+    grid's measured box stays the box the solver lays out into.
+
+  Measured in Chromium: at 1440, the card is **1000 x 127** for 104 cubes —
+  exactly the frame — with 37 columns of 24px, gap 2, padding 12/16/16/16,
+  `#F3F3F3` at radius 8, label row `flex-start` at gap 12 over a 4px section gap,
+  heading 600/14px/16.8px/-0.28px `#1E1E1E`, details 500/14px/18.9px/-0.14px,
+  percent `#FC5F38`. Under mobile emulation at 393 the card is **361 x 157** —
+  also exactly the frame — 18 columns of 16px in a 333px grid inset 14 from the
+  card edge (12 padding + 2), label row `space-between` over an 8px gap. 38 cubes
+  at 1440 shrink to 23px in 38 columns, one row; 19 cubes at 393 GROW to 17px in
+  17 columns, which is the tie-break firing. `document.scrollWidth ===
+  window.innerWidth` at 320 / 360 / 375 / 393 / 430.
+
+  The hosts' seams moved with it: `StandingsClient` is `mt-6 lg:mt-[30px]` above
+  the card and `mt-16 lg:mt-14` below it, all four measured box-to-box off the
+  page mock-ups rather than ink-to-ink, because the card owns padding on both
+  sides now.
 
 - **The signed-out header is the same pill as the signed-in one, and the mirror
   that was deliberately broken is deliberately restored.** `LandingHeader` was a
@@ -1161,7 +1359,7 @@ reading, but only the first kind is the lesson.
   orange in the app is derived from it.** `ACCENT` is `#FC5F38` (the design
   library's `Text Color/Accent`); `tailwind.config.ts` imports it and mixes the
   rest. Before this there were four unrelated oranges and a green all meaning
-  "this is lit / this is yours" — `shell.alive` #FC855C (survivor bars),
+  "this is lit / this is yours" — `shell.alive` #FC855C (the headcount cubes),
   `selected` #0C6F28 (week chip + picked card), `brand.strong` #ED7B46 (focus
   rings, sheen, `live`), plus #B85C2B / #C2551F / #8A4A24 hand-typed in four
   component files — so there was no single place to retune the accent and no way
@@ -1170,7 +1368,7 @@ reading, but only the first kind is the lesson.
     accent with an alpha byte on it (`#FC5F3814`, 0x14 = 20/255 ≈ 8%), written
     as an 8-digit hex rather than as `accent/8` so it is a NAME that tracks the
     accent for free. It is the picked team card's fill; `accent` is its ring,
-    the week strip's selected chip and the survivor bars.
+    the week strip's selected chip and the headcount grid's living cubes.
   - **`brand.*` survived as the accent's light ramp, and is not a second
     palette.** `brand.strong` IS `accent`; `DEFAULT`/`soft`/`wash` are build-time
     mixes toward white. The 39 `brand-*` call sites were deliberately NOT
@@ -1291,7 +1489,7 @@ reading, but only the first kind is the lesson.
   `InviteCta.tsx` (was `WhosIn.tsx`, which also held the deleted roster) is now a
   heading with the headcount beside it over a white 12px-radius card: the
   league's sheep photo, one sentence, the entry deadline set at 24px, and a
-  black "Copy Link" button. Desktop is one 968px row with a 133px square; below
+  black "Copy Link" button. Desktop is one 1000px row with a 133px square; below
   `lg` it stacks with a full-bleed square. Six things are load-bearing:
   - **The photo lives at `public/icons/grow-the-league.webp` and the `/icons/`
     part is not a filing preference.** The service worker's runtime cache accepts
@@ -1329,7 +1527,7 @@ reading, but only the first kind is the lesson.
     as a substring, which fails WCAG 2.5.3 Label in Name for voice control.
     `MoreSection.tsx` still has both bugs on the same label.
   - **The headcount beside the heading is the THIRD copy of that number on the
-    page.** `LeagueDetails` prints "N in" and the status report "N joined.", both
+    page.** `LeagueDetails` prints "N in" and the headcount "N joined", both
     off the same `members.length`. That is the design's call. It is also why
     deleting the roster lost nothing: the count was never unique to it.
 
@@ -1415,10 +1613,10 @@ reading, but only the first kind is the lesson.
     verbatim. A new rule about what is pickable goes in that one place; putting it
     in a layout means the other layout disagrees with it, silently.
   - **The geometry is exact, not approximate**, and both ends come off the
-    mockups. Desktop is six 154.66px cards with 8px gutters inside the 968px
-    column, which is `max-w-shell` (1000) minus the shell's `px-4`. Mobile is
-    three 125.66px cards at 393px, full-bleed via `-mx-4` with 4px of padding and
-    4px gutters. Change `main`'s `px-4` or `max-w-shell` and both stop matching.
+    mockups. Desktop is six 160px cards with 8px gutters inside the 1000px
+    column, which is where `maxWidth.shell` caps it. Mobile is three 125.66px
+    cards at 393px, full-bleed via `-mx-4` with 4px of padding and 4px gutters.
+    Move the shell's cap or its gutter and both stop matching.
     The column count steps at `480px`/`md`/`lg` — holding three across up to `lg`
     would draw 328px cards on a tablet. `lg` is still where the *shape* turns
     over: it is where the grid stops bleeding.
@@ -1775,7 +1973,7 @@ reading, but only the first kind is the lesson.
     full-width roster.** The name used to sit above the bar in `Drawer`'s `aside`
     slot, on the argument that it names the thing every tab is about; the invite
     link, the code and four hint paragraphs sat in a ~300px rail beside the
-    roster. The rail cost Members a third of 968px — on the one tab that needs
+    roster. The rail cost Members a third of 1000px — on the one tab that needs
     the width, for two things that are not membership admin — so both moved into
     a tab of their own and Members runs the full rail. `aside` had no other
     caller and is **gone from `Drawer`** rather than left as an empty slot; the
@@ -1786,7 +1984,7 @@ reading, but only the first kind is the lesson.
     `remove_member` closes at `entry_closes_at` exactly as `join_by_invite` does,
     so removal is the undo for a join and reads correctly beside the link that
     caused it. The Paid and Preseason paragraphs stayed under the roster they
-    describe, in `lg:grid-cols-3` — at the full 968px a stacked hint runs to a
+    describe, in `lg:grid-cols-3` — at the full 1000px a stacked hint runs to a
     ~130-character measure, and three columns buy back the ~45 the rail used to
     give them. Widening that back to one column is the regression to watch for.
   - **`ui/Tabs.tsx` is a real tablist; `ui/Segmented.tsx` is not, and is still
@@ -1914,7 +2112,7 @@ reading, but only the first kind is the lesson.
     the round, not your existence in it.
   - **`LeagueData.practiceEnabled` exists because a null `practice` has two
     causes.** Before it, a null mid-preseason rendered *nothing* between the
-    status report and the foot of Standings — no heading, no explanation. The two
+    headcount and the foot of Standings — no heading, no explanation. The two
     empty states are "your admin hasn't turned this on" and "no preseason
     schedule is loaded", and they can't be told apart from the null alone.
 
@@ -1951,8 +2149,8 @@ reading, but only the first kind is the lesson.
   redesign supersedes them, and `git log` is where they live now. Eight things
   are load-bearing:
   - **`lg` is where it turns over**, as everywhere else in the app, and the
-    column is `max-w-[656px]` inside `main`'s 968 (`max-w-shell` less its
-    `px-4`). **Blocks are 32px apart on a phone and 40px on a desktop**,
+    column is `max-w-[656px]` inside the content column's 1000. **Blocks are
+    32px apart on a phone and 40px on a desktop**,
     uniformly. Nothing splits into columns any more, so exactly four things turn
     over at `lg` and all four are *inside* a block: Personal Details lays its
     four fields two across (a `lg:grid lg:grid-cols-2`, tracks measured at

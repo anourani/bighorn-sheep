@@ -3,7 +3,7 @@ import type { Config } from "tailwindcss";
 /**
  * THE BRAND ACCENT, and the whole ramp below is derived from it.
  *
- * Change `ACCENT` and the status report's survivor bars, the week strip's
+ * Change `ACCENT` and the headcount grid's living cubes, the week strip's
  * selected chip, the picked team card, every focus ring, the primary button's
  * sheen, the `live` status hue, the text selection colour and the PWA theme
  * colour all move together. That is the entire point of it: "the accent" used
@@ -77,6 +77,19 @@ const tint = (hex: string, amount: number) => mix(hex, "#FFFFFF", amount);
 const shade = (hex: string, amount: number) => mix(hex, "#000000", amount);
 /** For the `rgba()` slots inside `boxShadow`, which take no hex. */
 const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(",")},${a})`;
+
+/**
+ * The app shell, as two numbers rather than one.
+ *
+ * `SHELL_COLUMN` is what the mock-ups draw content into at desktop.
+ * `SHELL_GUTTER` is the smallest gap that column is ever allowed to leave
+ * between itself and the window edge, at EVERY width — which is what collapses
+ * the frame to two regimes: below `column + 2 * gutter` the content is the
+ * window less the gutter, and above it the content is the column, centred.
+ * There is no third band and no breakpoint in the horizontal any more.
+ */
+const SHELL_COLUMN = 1000;
+const SHELL_GUTTER = 16;
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
@@ -215,14 +228,14 @@ const config: Config = {
         shell: {
           ink: "#1E1E1E", // app name, league name, "Week 6", chevron
           mute: "#757575", // the LEAGUE eyebrow, and every `Label` in the app
-          soft: "#6A6A6A", // unused since "15 deaths." moved to `mute` in the mock-up
+          soft: "#6A6A6A", // unused since the headcount tally lost its muted half
           faint: "#858585", // the spec's tertiary text — an unselected filter option
           // unused since the Sort filter was removed — it was the only inert
           // control in the app, greyed on the matchup layout. Kept, like `soft`.
           disabled: "#BABABA",
-          line: "#D9D9D9", // hairlines, eliminated cells, the app-mark placeholder
+          line: "#D9D9D9", // hairlines, eliminated cubes, the app-mark placeholder
           dark: "#A5ACAF", // the spec's "border-dark" — the picks hero's inert strips
-          // `alive` (#FC855C) lived here — the survivor strip's living cells,
+          // `alive` (#FC855C) lived here — the headcount grid's living cubes,
           // a fourth orange that was neither `brand` nor the green `alive`
           // hue. It is `accent` now, which is what it always meant.
         },
@@ -334,7 +347,12 @@ const config: Config = {
       },
       maxWidth: {
         app: "480px", // mobile-first single-column shell (modals, auth, narrow content)
-        shell: "1000px", // widened app shell on desktop — responsive down to phones
+        shell: `${SHELL_COLUMN}px`, // the app's content column
+        // The column PLUS its gutter — what the shell wrapper is capped at, so
+        // that the column itself tops out at `shell` and never comes closer than
+        // `SHELL_GUTTER` to the window edge. Derived, never retyped: a hand-typed
+        // 1032 is a number that goes stale the moment either half of it moves.
+        frame: `${SHELL_COLUMN + SHELL_GUTTER * 2}px`,
         wide: "1120px",
       },
       boxShadow: {

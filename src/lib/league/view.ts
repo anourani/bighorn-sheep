@@ -254,65 +254,92 @@ export function rankMembers(members: readonly Member[], ctx: RankContext): Ranke
 }
 
 /**
- * What the league status bar reads, in one shape for both of its variants.
+ * What the headcount section reads, in one shape for both of its variants.
  *
  * Discriminated on pre-season vs. not, rather than on `SeasonPhase`, because
  * "regular" and "ended" render identically — a week number and a tally — and a
  * three-armed union would invite a third copy of the same strings.
+ *
+ * `startsIn` has no reader since the pre-season line became a bare "N joined",
+ * and it stays because the pre-season is the one state the redesign has no frame
+ * for: this is the section's data contract, and the countdown is what a
+ * pre-season variant would most likely want back.
  */
-export type StatusLineInput =
+export type HeadcountInput =
   | { kind: "preseason"; joined: number; startsIn: string }
   | { kind: "season"; week: number; alive: number; eliminated: number };
 
-export interface StatusLine {
-  /** Top line: the week's name, or "Pre-season". */
+export interface HeadcountLine {
+  /** The week's name, or "Pre-season". Spoken, never drawn — see `leadShort`. */
   lead: string;
   /**
-   * `lead` abbreviated for narrow screens — "W6" for "Week 6". The mobile mockup
-   * uses it so the label and the tally fit one line at 393px.
+   * `lead` abbreviated — "W6" for "Week 6". This is the form the design DRAWS,
+   * at every width: the desktop frame carries "W6 Headcount" too, so the pair is
+   * no longer the breakpoint swap it was. `lead` survives as the string a screen
+   * reader is handed, which is now the only reason there are two of them.
    *
    * Equal to `lead` in the pre-season, which has no shorter form: "Pre-season"
    * is already the short name for a stretch of weeks, not a week number.
    */
   leadShort: string;
-  /** The emphasised half of the second line, in near-black. */
+  /** The counted half of the second line, in near-black. */
   primary: string;
-  /** The muted half of the second line. */
-  secondary: string;
+  /**
+   * The share of the league already out, drawn in accent beside `primary` —
+   * `null` in the pre-season, where it could only ever read "0%".
+   */
+  percent: string | null;
+  /**
+   * `percent` with the noun a bare percentage does not carry. "54%" beside
+   * "29 still standing" is read by eye as the share of one or the other; a
+   * screen reader hearing "fifty four percent" has nothing to go on at all, so
+   * the drawn span is hidden from it and this is what gets spoken.
+   */
+  percentLabel: string | null;
 }
 
 /**
  * `1 survivor` / `2 survivors`, with the count.
  *
  * Exported for the invite card's "27 members", which is the same shape and has
- * the same one failure mode — see `statusLine` below for the bug that made this
- * a helper rather than a ternary at each call site.
+ * the same one failure mode — see `headcountLine` below for the bug that made
+ * this a helper rather than a ternary at each call site. It has no caller left
+ * in this file: neither half of the headcount line inflects.
  */
 export function countNoun(n: number, singular: string, plural = `${singular}s`): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
 /**
- * The status bar's copy. Extracted from the JSX so the two variants are one
- * function with tests rather than two nearly-identical blocks — which is how
+ * The headcount section's copy. Extracted from the JSX so the two variants are
+ * one function with tests rather than two nearly-identical blocks — which is how
  * `{joined === 1 ? "joined" : "joined"}` survived in the old header: a plural
  * form dutifully applied to a word that has none. "joined" is a past participle
- * here ("29 joined."), not a countable noun, so it never inflects.
+ * here ("29 joined"), not a countable noun, so it never inflects. Neither does
+ * "still standing", which is why the season line stopped counting nouns too.
  */
-export function statusLine(input: StatusLineInput): StatusLine {
+export function headcountLine(input: HeadcountInput): HeadcountLine {
   if (input.kind === "preseason") {
     return {
       lead: "Pre-season",
       leadShort: "Pre-season",
-      primary: `Starts in ${input.startsIn}.`,
-      secondary: `${input.joined} joined.`,
+      primary: `${input.joined} joined`,
+      // Nobody is out before Week 1, so the only percentage this branch could
+      // print is zero. The section drops the span rather than draw that.
+      percent: null,
+      percentLabel: null,
     };
   }
+  const total = input.alive + input.eliminated;
+  // The share ELIMINATED, not the share left. An empty league is 0/0, and NaN
+  // reaches the screen as "NaN%" with nothing anywhere to say why.
+  const percent = `${total === 0 ? 0 : Math.round((input.eliminated / total) * 100)}%`;
   return {
     lead: `Week ${input.week}`,
     leadShort: `W${input.week}`,
-    primary: `${countNoun(input.alive, "survivor")}.`,
-    secondary: `${countNoun(input.eliminated, "death")}.`,
+    primary: `${input.alive} still standing`,
+    percent,
+    percentLabel: `${percent} eliminated`,
   };
 }
 

@@ -183,7 +183,7 @@ export function PickStickyBar({
           outright and centres a 67px container in it (11px each side). Letting
           it fall out of `py-2` gave 83 once the matchup block dropped to 12px,
           and the bar's height is also its slide distance. */}
-      <div className="mx-auto flex h-[89px] max-w-shell items-center px-4">
+      <div className="mx-auto flex h-[89px] max-w-frame items-center px-4">
         <div className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1">
           <Label>{eyebrowFor(weekName)}</Label>
 

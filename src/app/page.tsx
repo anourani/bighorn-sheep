@@ -2,7 +2,7 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
 import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
-import { StatusReport } from "@/components/app/StatusReport";
+import { Headcount } from "@/components/app/Headcount";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
 import { cn } from "@/lib/cn";
@@ -66,7 +66,7 @@ export default async function LandingPage() {
 
      The title is the only block that cascades internally; the other two are
      one piece each, so each resolves as a whole. Three blocks, not four: the
-     status report and the standings table animate together. When no league is
+     headcount and the standings table animate together. When no league is
      published `board` is null and the third never renders — its start is
      computed anyway, and costs nothing.
 
@@ -78,16 +78,28 @@ export default async function LandingPage() {
   );
 
   return (
+    // `max-w-frame`, the same cap the app shell takes, so this page resolves to
+    // the same `min(viewport - 32, 1000)` column /app does — the frame is the
+    // 1000px column plus 16px either side. It was `max-w-shell` (the bare 1000),
+    // which made every section here 968 at desktop against the app's 1000.
+    //
+    // The gutter stays on the SECTIONS rather than moving up here, and that is
+    // the one way this page's frame differs from the app shell's. `main` below
+    // carries `overflow-x-clip`, so anything cancelling a gutter that lived
+    // outside `main` would bleed straight into the clip and be cut off. Padding
+    // per section keeps every `-mx-4` landing inside the clipping box, which is
+    // exactly where it has to be.
+    //
     // Deliberately no background class: this wrapper is transparent so the grid
     // in `AmbientBackground` shows through here exactly as it does on /app. It
     // used to paint `bg-bg` to sit over the old orange bloom; with the bloom
     // gone that only produced a flat column between two grid gutters on screens
-    // wider than `max-w-shell`.
-    <div className="mx-auto flex min-h-dvh max-w-shell flex-col">
+    // wider than the cap.
+    <div className="mx-auto flex min-h-dvh max-w-frame flex-col">
       <LandingHeader />
 
       {/* `overflow-x: clip` guards the reveal, not the layout. `blur-in` starts
-          on `transform: scale(1.04)`, and below `lg` both the status strip and
+          on `transform: scale(1.04)`, and below `lg` both the headcount grid and
           the standings Panel already reach the viewport edges by cancelling
           their host's `px-4` with `-mx-4` — so their block scales past the
           viewport and the page grows a horizontal scrollbar for the length of
@@ -145,10 +157,13 @@ export default async function LandingPage() {
             nothing and carries that risk.
 
             The ramp is anchored on the two mock widths: 3rem + 4vw is 63.7px at
-            393px and exactly 88px at 1000px, where `max-w-shell` caps the
-            column and the size should stop growing. The 3.5rem floor only
-            engages below ~360px, so narrow phones shed a little rather than
-            overflowing "Standing".
+            393px and exactly 88px at 1000px, which is the design's ceiling for
+            it. That used to be the width the column stopped growing at too;
+            since the frame gained its gutter the column runs on to 1032, so the
+            title now tops out 32px of viewport before the column does — which
+            is 32px of nothing, and not a reason to restate a drawn type size.
+            The 3.5rem floor only engages below ~360px, so narrow phones shed a
+            little rather than overflowing "Standing".
 
             Tracking is a flat −2px, not the −0.023em it used to be: the design
             specifies −2px at both 64px and 88px, so it does not scale.
@@ -180,7 +195,7 @@ export default async function LandingPage() {
               section is `flex justify-end`, i.e. full width, and `scale(1.04)`
               about a full-width box's centre would swing right-aligned copy
               sideways as it settles; about a 339px box it barely moves. Same
-              reason the status report and the standings below carry it on the
+              reason the headcount and the standings below carry it on the
               element that holds their content rather than on a wrapper. */}
           <div
             className={cn(
@@ -194,28 +209,33 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          /* The status report and the table are ONE block of the sequence, not
+          /* The headcount and the table are ONE block of the sequence, not
              two. They are one thought — the week's tally and the board that
-             tally is read off — and revealing them apart made the strip look
+             tally is read off — and revealing them apart made the grid look
              like it belonged to the description above it. It also cost 1.2s: as
              separate blocks the page did not finish until 5.93s.
 
              Hence a wrapper rather than the fragment that was here. It also
-             does the job the status report cannot do for itself: `StatusReport`
-             is shared with the signed-in standings page and takes only `status`
-             and `className`, and widening a shared component's props for one
+             does the job the headcount section cannot do for itself: `Headcount`
+             is shared with the signed-in standings page and takes only
+             `headcount` and `className`, and widening a shared component's props for one
              host's animation is the wrong trade when a block box does the same
              job. The wrapper must stay full-width and padding-free — both
              children bleed with `-mx-4` against the `px-4` on their own
              sections, and a wrapper that inset or shrank either one would
              break that. */
           <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
-            {/* Still `px-4` at every width. The strip inside goes edge to edge
-                below `lg` on its own, by cancelling this inset — the label above
-                it stays put, which is the whole point of the mobile variant. */}
-            <StatusReport status={board.status} className="px-4 pb-2 sm:py-3" />
+            {/* The inset is a WRAPPER now, not a `className`. `Headcount`'s
+                root is the card itself — a fill and a radius — so `px-4` passed
+                to it would pad the inside of that card rather than sit it in
+                from the page. This page's `main` carries no padding of its own,
+                so each section supplies its own 16px; the card takes the
+                vertical seam and the wrapper takes the horizontal one. */}
+            <div className="px-4 pb-2 sm:py-3">
+              <Headcount headcount={board.headcount} />
+            </div>
             {/* The design drops the "League" eyebrow that used to sit here: the
-                table follows the status report directly in both mock-ups. */}
+                table follows the headcount directly in both mock-ups. */}
             {/* 200px, and it is measured from the PADLOCK NOTE rather than from
                 the table — `PublicStandings` renders that note and
                 `StandingsGrid` renders its own result legend, both as

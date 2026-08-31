@@ -395,9 +395,9 @@ function LockLines({
 // alignment with the filled one.
 //
 // The breakpoint throughout is `lg`, not `md`: the desktop row needs ~986px to
-// hold an 80px headline beside a 168px lock column, and the shell is
-// `max-w-shell` (1000px) inside a `px-4` gutter. It is also where WeekStrip and
-// StandingsGrid change shape, so the page turns over at one width.
+// hold an 80px headline beside a 168px lock column, and the content column tops
+// out at 1000 (the shell's gutter sits outside it). It is also where WeekStrip
+// and StandingsGrid change shape, so the page turns over at one width.
 
 /**
  * Outer frame: the eyebrow, and the row/lock split below it.

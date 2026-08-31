@@ -927,7 +927,7 @@ function RemoveControl({
  * buy-in AMOUNT went.
  *
  * THREE COLUMNS, not a stack, and that is the same argument the 312px rail used
- * to make. Across the drawer's full 968px a stacked hint runs to a
+ * to make. Across the drawer's full 1000px a stacked hint runs to a
  * ~130-character measure, which is past the point anyone reads it; in a third of
  * that width it is about 45, which is what the rail gave them. The rail is gone
  * because the roster wanted the width back, so the measure has to be bought
@@ -1338,7 +1338,7 @@ const TABS: { value: TabValue; label: string }[] = [
  * THE NAME TAB IS WHY THE MEMBERS TAB IS FULL WIDTH. The league name used to
  * ride above the bar in `Drawer`'s `aside` slot, and the invite link, the code
  * and four paragraphs of hint copy sat in a ~300px rail beside the roster. That
- * rail cost the roster a third of 968px on the one tab that needs the width — a
+ * rail cost the roster a third of 1000px on the one tab that needs the width — a
  * sixteen-player league with phone numbers under the names — to hold two things
  * that are not membership admin at all. They are the league's identity, so they
  * are a tab: name and invite together, third in the bar, and Members runs the
@@ -1392,7 +1392,7 @@ export function AdminSettingsDrawer({
           idBase="admin-settings"
           label="Group settings sections"
           // Left-aligned and capped rather than stretched: tabs spread across
-          // 968px read as a navigation bar for the page rather than a control
+          // 1000px read as a navigation bar for the page rather than a control
           // for the panel under them. 440 was the cap for three; a fourth at the
           // same per-tab width wants ~587, and 560 keeps "Data Feed" on one line
           // without reaching for the whole rail.
