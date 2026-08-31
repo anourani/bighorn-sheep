@@ -1614,9 +1614,9 @@ reading, but only the first kind is the lesson.
     in a layout means the other layout disagrees with it, silently.
   - **The geometry is exact, not approximate**, and both ends come off the
     mockups. Desktop is six 160px cards with 8px gutters inside the 1000px
-    column, which is `max-w-shell` (1000) minus the shell's `px-4`. Mobile is
-    three 125.66px cards at 393px, full-bleed via `-mx-4` with 4px of padding and
-    4px gutters. Change `main`'s `px-4` or `max-w-shell` and both stop matching.
+    column, which is where `maxWidth.shell` caps it. Mobile is three 125.66px
+    cards at 393px, full-bleed via `-mx-4` with 4px of padding and 4px gutters.
+    Move the shell's cap or its gutter and both stop matching.
     The column count steps at `480px`/`md`/`lg` — holding three across up to `lg`
     would draw 328px cards on a tablet. `lg` is still where the *shape* turns
     over: it is where the grid stops bleeding.
@@ -2149,8 +2149,8 @@ reading, but only the first kind is the lesson.
   redesign supersedes them, and `git log` is where they live now. Eight things
   are load-bearing:
   - **`lg` is where it turns over**, as everywhere else in the app, and the
-    column is `max-w-[656px]` inside `main`'s 1000 (`max-w-shell`, which
-    `px-4`). **Blocks are 32px apart on a phone and 40px on a desktop**,
+    column is `max-w-[656px]` inside the content column's 1000. **Blocks are
+    32px apart on a phone and 40px on a desktop**,
     uniformly. Nothing splits into columns any more, so exactly four things turn
     over at `lg` and all four are *inside* a block: Personal Details lays its
     four fields two across (a `lg:grid lg:grid-cols-2`, tracks measured at

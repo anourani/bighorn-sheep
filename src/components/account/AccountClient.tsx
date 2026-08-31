@@ -21,9 +21,9 @@ import type { Member } from "@/lib/league/types";
  *
  * Geometry, all of it transcribed from the mock-ups rather than approximated:
  *
- * - **The column is 656px**, centred in `main`'s 1000px (`max-w-shell`, which
- *   its `px-4`). There are no columns inside it: every block is full width and
- *   the page is one stack at both sizes.
+ * - **The column is 656px**, centred in the content column, which tops out at
+ *   1000px. There are no columns inside it: every block is full width and the
+ *   page is one stack at both sizes.
  * - **Blocks are 32px apart on a phone and 40px on a desktop**, uniformly, in
  *   both mock-ups.
  * - **`lg` is where it turns over**, not `md` — the same width `PickHero`,

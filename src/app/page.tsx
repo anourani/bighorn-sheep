@@ -78,12 +78,24 @@ export default async function LandingPage() {
   );
 
   return (
+    // `max-w-frame`, the same cap the app shell takes, so this page resolves to
+    // the same `min(viewport - 32, 1000)` column /app does — the frame is the
+    // 1000px column plus 16px either side. It was `max-w-shell` (the bare 1000),
+    // which made every section here 968 at desktop against the app's 1000.
+    //
+    // The gutter stays on the SECTIONS rather than moving up here, and that is
+    // the one way this page's frame differs from the app shell's. `main` below
+    // carries `overflow-x-clip`, so anything cancelling a gutter that lived
+    // outside `main` would bleed straight into the clip and be cut off. Padding
+    // per section keeps every `-mx-4` landing inside the clipping box, which is
+    // exactly where it has to be.
+    //
     // Deliberately no background class: this wrapper is transparent so the grid
     // in `AmbientBackground` shows through here exactly as it does on /app. It
     // used to paint `bg-bg` to sit over the old orange bloom; with the bloom
     // gone that only produced a flat column between two grid gutters on screens
-    // wider than `max-w-shell`.
-    <div className="mx-auto flex min-h-dvh max-w-shell flex-col">
+    // wider than the cap.
+    <div className="mx-auto flex min-h-dvh max-w-frame flex-col">
       <LandingHeader />
 
       {/* `overflow-x: clip` guards the reveal, not the layout. `blur-in` starts
@@ -145,10 +157,13 @@ export default async function LandingPage() {
             nothing and carries that risk.
 
             The ramp is anchored on the two mock widths: 3rem + 4vw is 63.7px at
-            393px and exactly 88px at 1000px, where `max-w-shell` caps the
-            column and the size should stop growing. The 3.5rem floor only
-            engages below ~360px, so narrow phones shed a little rather than
-            overflowing "Standing".
+            393px and exactly 88px at 1000px, which is the design's ceiling for
+            it. That used to be the width the column stopped growing at too;
+            since the frame gained its gutter the column runs on to 1032, so the
+            title now tops out 32px of viewport before the column does — which
+            is 32px of nothing, and not a reason to restate a drawn type size.
+            The 3.5rem floor only engages below ~360px, so narrow phones shed a
+            little rather than overflowing "Standing".
 
             Tracking is a flat −2px, not the −0.023em it used to be: the design
             specifies −2px at both 64px and 88px, so it does not scale.
