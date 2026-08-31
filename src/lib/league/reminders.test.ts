@@ -326,10 +326,10 @@ describe("the message", () => {
     firstName: "Ada",
     leagueName: "Sheep with Glasses",
     week: 5,
-    deadlineIso: "2026-10-05T20:15:00Z",
-    partiallyStarted: false,
     buyInCents: 5000,
-    url: "https://sheepwithglasses.com/app",
+    // The LANDING page for a pick reminder — whoever opens it is most likely
+    // signed out, and /app bounces a signed-out visitor back to / anyway.
+    url: "https://sheepwithglasses.com",
   };
 
   it("names the league in the subject, so it is not anonymous in an inbox", () => {
@@ -342,19 +342,16 @@ describe("the message", () => {
   });
 
   /**
-   * An email has no mount and no JavaScript, so `LocalTime`'s swap to the
-   * reader's zone cannot happen. The zone is chosen here and named in the text.
+   * No clock anywhere, which is what retired this file's timezone problem: a
+   * time printed in an email has to pick a zone, because `LocalTime`'s swap to
+   * the reader's own needs a mount an email never gets. Saying nothing about
+   * when the week ends sidesteps it, and suits a message read later than sent.
    */
-  it("prints the deadline in US Eastern with the zone spelled out", () => {
+  it("prints no times or dates at all", () => {
     const { text } = reminderBody(base);
-    expect(text).toContain("EDT");
-    expect(text).toContain("October");
-  });
-
-  it("resolves the abbreviation against the kickoff, not against today", () => {
-    const winter = reminderBody({ ...base, deadlineIso: "2026-12-20T18:00:00Z" });
-    expect(winter.text).toContain("EST");
-    expect(winter.text).not.toContain("EDT");
+    expect(text).not.toMatch(/\bE[SD]T\b/);
+    expect(text).not.toMatch(/\b(September|October|December)\b/);
+    expect(text).not.toMatch(/kicks off/);
   });
 
   it("always carries a text part as well as HTML", () => {
@@ -365,32 +362,46 @@ describe("the message", () => {
   });
 
   /**
-   * The copy has to hold whenever it is READ, not only when it is sent — a
-   * reminder mailed on Wednesday is opened on Sunday. So the base text explains
-   * the RULE rather than asserting a state, and the only conditional sentence
-   * is the one that adds information rather than expiring.
+   * Four blocks, no conditionals: greeting, the one fact, the consequence with
+   * its link, the footer. A reminder is read later than it is sent, so every
+   * sentence has to hold at any point in any week — which is what ruled out
+   * everything describing the state of the slate.
    */
-  it("explains the locking rule in every case, and adds the caveat when it applies", () => {
-    const early = reminderBody(base).text;
-    expect(early).toContain("Picks lock at each game's kickoff");
-    expect(early).toContain("counts as a loss");
-    // No claim about the current state of the slate that could go stale.
-    expect(early).not.toContain("Every game this week is still open");
-    expect(early).not.toContain("already kicked off");
-
-    const partway = reminderBody({ ...base, partiallyStarted: true }).text;
-    expect(partway).toContain("Picks lock at each game's kickoff");
-    expect(partway).toContain("already kicked off, so those teams are no longer available");
+  it("is the same four blocks whenever it is sent", () => {
+    const blocks = reminderBody(base).text.trim().split("\n\n");
+    expect(blocks).toHaveLength(4);
+    expect(blocks[0]).toBe("Hi Ada,");
+    expect(blocks[1]).toBe("You haven't made a pick for Week 5 of Sheep with Glasses yet.");
+    expect(blocks[2]).toBe(
+      "Pick a team or miss every game and get the automatic loss. Log in here: https://sheepwithglasses.com",
+    );
+    expect(blocks[3]).toBe("You're getting this because you're in Sheep with Glasses.");
   });
 
-  it("names the week in the deadline, so it reads right sent weeks ahead", () => {
-    expect(reminderBody(base).text).toContain("The last game of Week 5 kicks off");
+  /** "here" is the link; the text part has no anchor, so it spells the URL. */
+  it("links the word 'here' in the HTML and spells the URL in the text", () => {
+    const { text, html } = reminderBody(base);
+    expect(html).toContain('Log in <a href="https://sheepwithglasses.com">here</a>.');
+    expect(text).toContain("Log in here: https://sheepwithglasses.com");
+    expect(text).not.toContain("<a");
+  });
+
+  /** The landing page, not /app — the reader is most likely signed out. */
+  it("points at the landing page rather than a signed-in route", () => {
+    expect(reminderBody(base).text).not.toContain("/app");
+  });
+
+  /** Rather than rendering "Log in here: " at somebody. */
+  it("drops the whole action line when there is no URL to link to", () => {
+    const { text, html } = reminderBody({ ...base, url: "" });
+    expect(text).not.toContain("Log in here");
+    expect(html).not.toContain("<a");
   });
 
   it("puts the absolute link in both parts", () => {
     const { text, html } = reminderBody(base);
-    expect(text).toContain("https://sheepwithglasses.com/app");
-    expect(html).toContain('href="https://sheepwithglasses.com/app"');
+    expect(text).toContain("https://sheepwithglasses.com");
+    expect(html).toContain('href="https://sheepwithglasses.com"');
   });
 
   it("says why the reader is getting it", () => {
@@ -456,7 +467,8 @@ describe("the message", () => {
      * restates the debt competes with it. The pick reminder keeps its link.
      */
     it("carries no app link, where the pick reminder does", () => {
-      expect(reminderBody(buyIn).text).not.toContain(buyIn.url);
+      const withUrl = { ...buyIn, url: "https://sheepwithglasses.com/app/account" };
+      expect(reminderBody(withUrl).text).not.toContain("/app/account");
       expect(reminderBody(base).text).toContain(base.url);
     });
 

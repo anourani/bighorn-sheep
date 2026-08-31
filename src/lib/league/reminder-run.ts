@@ -53,9 +53,6 @@ export interface ReminderRunOptions {
   userIds?: string[];
   leagueName: string;
   buyInCents: number;
-  /** The week's last kickoff, for the deadline line. */
-  deadlineIso: string | null;
-  partiallyStarted: boolean;
   /** Absolute, resolved server-side. Never taken from the browser. */
   appUrl: string;
   /** The admin who pressed Send — named in the buy-in copy. */
@@ -83,8 +80,6 @@ export async function runReminderSend(
     userIds = [],
     leagueName,
     buyInCents,
-    deadlineIso,
-    partiallyStarted,
     appUrl,
     now,
     commissionerFirstName,
@@ -160,10 +155,12 @@ export async function runReminderSend(
       firstName: (r.first_name ?? "").trim(),
       leagueName,
       week,
-      deadlineIso,
-      partiallyStarted,
       buyInCents,
-      url: `${appUrl}${kind === "pick" ? "/app" : "/app/account"}`,
+      // The pick reminder points at the LANDING page, not /app: whoever opens
+      // it is most likely signed out, and /app bounces a signed-out visitor
+      // back to / anyway. The buy-in one points at the account page, where the
+      // money is.
+      url: `${appUrl}${kind === "pick" ? "" : "/app/account"}`,
       commissionerFirstName,
       commissionerEmail,
       commissionerPhone,

@@ -1392,16 +1392,14 @@ function ReminderCard({
       firstName: previewFor.firstName,
       leagueName: context.leagueName,
       week: kind === "pick" ? (snapshot?.week ?? null) : null,
-      deadlineIso: pickWindow?.lastKickoffIso ?? null,
-      partiallyStarted: pickWindow?.partiallyStarted ?? false,
       buyInCents: context.buyInCents,
-      url: `${context.appUrl}${kind === "pick" ? "/app" : "/app/account"}`,
+      url: `${context.appUrl}${kind === "pick" ? "" : "/app/account"}`,
       commissionerFirstName: context.commissioner.firstName,
       commissionerEmail: context.commissioner.email,
       commissionerPhone: context.commissioner.phone,
     };
     return { subject: reminderSubject(input), text: reminderBody(input).text };
-  }, [previewFor, context, kind, snapshot?.week, pickWindow]);
+  }, [previewFor, context, kind, snapshot?.week]);
 
   function toggle(userId: string) {
     setExcluded((prev) => {

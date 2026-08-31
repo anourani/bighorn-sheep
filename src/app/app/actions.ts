@@ -1316,8 +1316,6 @@ export async function sendReminders(input: {
       userIds: input.userIds ?? [],
       leagueName: ctx.group.name,
       buyInCents: ctx.group.buy_in_cents ?? 0,
-      deadlineIso: ctx.window?.lastKickoffIso ?? null,
-      partiallyStarted: ctx.window?.partiallyStarted ?? false,
       appUrl: appUrl.replace(/\/$/, ""),
       now: ctx.now,
       commissionerFirstName: commissioner.firstName,

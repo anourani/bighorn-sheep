@@ -239,10 +239,16 @@ describe("runReminderSend", () => {
     });
   });
 
-  it("points a pick reminder at the picks page", async () => {
+  /**
+   * The LANDING page, not /app. Whoever opens a reminder on their phone is most
+   * likely signed out, and /app bounces a signed-out visitor back to / anyway —
+   * so "Log in here" points at the page that has the Log In button on it.
+   */
+  it("points a pick reminder at the landing page", async () => {
     const { client } = fakeClient([row("u1", "a@e.com")]);
     const mailer = new CapturingMailer();
     await runReminderSend(client, { ...BASE, mailer });
-    expect(mailer.sent[0]?.text).toContain("https://sheepwithglasses.com/app");
+    expect(mailer.sent[0]?.text).toContain("Log in here: https://sheepwithglasses.com");
+    expect(mailer.sent[0]?.text).not.toContain("/app");
   });
 });
