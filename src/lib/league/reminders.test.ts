@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Game } from "../nfl/types";
 import {
   BUY_IN_REMINDER_MIN_INTERVAL_MS,
-  PICK_REMINDER_OPENS_MS,
   REMINDER_MANUAL_COOLDOWN_MS,
   describeReminders,
   formatMoney,
@@ -123,12 +122,19 @@ describe("weekPickWindow — may a reminder still do any good?", () => {
     expect(w.lastKickoffIso).toBe("2026-10-05T20:15:00.000Z");
   });
 
-  it("is too early more than a week out, and opens as the week approaches", () => {
-    const firstKickoff = Date.parse("2026-10-01T20:15:00Z");
-    const justOutside = new Date(firstKickoff - PICK_REMINDER_OPENS_MS - 60_000);
-    const justInside = new Date(firstKickoff - PICK_REMINDER_OPENS_MS + 60_000);
-    expect(weekPickWindow(SCHEDULE, 5, justOutside).reason).toBe("too_early");
-    expect(weekPickWindow(SCHEDULE, 5, justInside).open).toBe(true);
+  /**
+   * There is deliberately no "too early" refusal any more. One used to sit here
+   * on a seven-day threshold, and its effect was that the pick reminder could
+   * not be sent through the entire preseason — precisely when an admin wants to
+   * chase Week 1 picks. Whether a reminder is premature is the admin's call.
+   */
+  it("is open however far out the week is, including a whole preseason early", () => {
+    expect(weekPickWindow(SCHEDULE, 5, new Date("2026-09-24T00:00:00Z")).open).toBe(true);
+    expect(weekPickWindow(SCHEDULE, 5, new Date("2026-08-01T00:00:00Z")).open).toBe(true);
+    // Six weeks out, and still nothing standing in the way.
+    const w = weekPickWindow(SCHEDULE, 5, new Date("2026-08-20T00:00:00Z"));
+    expect(w.open).toBe(true);
+    expect(w.reason).toBeNull();
   });
 
   it("stays open but reports partiallyStarted once some games have gone", () => {
@@ -320,10 +326,10 @@ describe("the message", () => {
     firstName: "Ada",
     leagueName: "Sheep with Glasses",
     week: 5,
-    deadlineIso: "2026-10-05T20:15:00Z",
-    partiallyStarted: false,
     buyInCents: 5000,
-    url: "https://sheepwithglasses.com/app",
+    // The LANDING page for a pick reminder — whoever opens it is most likely
+    // signed out, and /app bounces a signed-out visitor back to / anyway.
+    url: "https://sheepwithglasses.com",
   };
 
   it("names the league in the subject, so it is not anonymous in an inbox", () => {
@@ -331,24 +337,21 @@ describe("the message", () => {
       "Sheep with Glasses: you haven't picked for Week 5",
     );
     expect(reminderSubject({ ...base, kind: "buy_in" })).toBe(
-      "Sheep with Glasses: your buy-in is outstanding",
+      "Payment confirmation for Sheep with Glasses",
     );
   });
 
   /**
-   * An email has no mount and no JavaScript, so `LocalTime`'s swap to the
-   * reader's zone cannot happen. The zone is chosen here and named in the text.
+   * No clock anywhere, which is what retired this file's timezone problem: a
+   * time printed in an email has to pick a zone, because `LocalTime`'s swap to
+   * the reader's own needs a mount an email never gets. Saying nothing about
+   * when the week ends sidesteps it, and suits a message read later than sent.
    */
-  it("prints the deadline in US Eastern with the zone spelled out", () => {
+  it("prints no times or dates at all", () => {
     const { text } = reminderBody(base);
-    expect(text).toContain("EDT");
-    expect(text).toContain("October");
-  });
-
-  it("resolves the abbreviation against the kickoff, not against today", () => {
-    const winter = reminderBody({ ...base, deadlineIso: "2026-12-20T18:00:00Z" });
-    expect(winter.text).toContain("EST");
-    expect(winter.text).not.toContain("EDT");
+    expect(text).not.toMatch(/\bE[SD]T\b/);
+    expect(text).not.toMatch(/\b(September|October|December)\b/);
+    expect(text).not.toMatch(/kicks off/);
   });
 
   it("always carries a text part as well as HTML", () => {
@@ -358,17 +361,47 @@ describe("the message", () => {
     expect(text).not.toContain("<p>");
   });
 
-  it("tells the reader which games are left when some have started", () => {
-    expect(reminderBody({ ...base, partiallyStarted: true }).text).toContain(
-      "only pick from the ones that haven't kicked off",
+  /**
+   * Four blocks, no conditionals: greeting, the one fact, the consequence with
+   * its link, the footer. A reminder is read later than it is sent, so every
+   * sentence has to hold at any point in any week — which is what ruled out
+   * everything describing the state of the slate.
+   */
+  it("is the same four blocks whenever it is sent", () => {
+    const blocks = reminderBody(base).text.trim().split("\n\n");
+    expect(blocks).toHaveLength(4);
+    expect(blocks[0]).toBe("Hi Ada,");
+    expect(blocks[1]).toBe("You haven't made a pick for Week 5 of Sheep with Glasses yet.");
+    expect(blocks[2]).toBe(
+      "Pick a team or miss every game and get the automatic loss. Log in here: https://sheepwithglasses.com",
     );
-    expect(reminderBody(base).text).toContain("Every game this week is still open");
+    expect(blocks[3]).toBe("You're getting this because you're in Sheep with Glasses.");
+  });
+
+  /** "here" is the link; the text part has no anchor, so it spells the URL. */
+  it("links the word 'here' in the HTML and spells the URL in the text", () => {
+    const { text, html } = reminderBody(base);
+    expect(html).toContain('Log in <a href="https://sheepwithglasses.com">here</a>.');
+    expect(text).toContain("Log in here: https://sheepwithglasses.com");
+    expect(text).not.toContain("<a");
+  });
+
+  /** The landing page, not /app — the reader is most likely signed out. */
+  it("points at the landing page rather than a signed-in route", () => {
+    expect(reminderBody(base).text).not.toContain("/app");
+  });
+
+  /** Rather than rendering "Log in here: " at somebody. */
+  it("drops the whole action line when there is no URL to link to", () => {
+    const { text, html } = reminderBody({ ...base, url: "" });
+    expect(text).not.toContain("Log in here");
+    expect(html).not.toContain("<a");
   });
 
   it("puts the absolute link in both parts", () => {
     const { text, html } = reminderBody(base);
-    expect(text).toContain("https://sheepwithglasses.com/app");
-    expect(html).toContain('href="https://sheepwithglasses.com/app"');
+    expect(text).toContain("https://sheepwithglasses.com");
+    expect(html).toContain('href="https://sheepwithglasses.com"');
   });
 
   it("says why the reader is getting it", () => {
@@ -384,6 +417,71 @@ describe("the message", () => {
 
   it("falls back to a greeting when a first name is missing", () => {
     expect(reminderBody({ ...base, firstName: "" }).text.startsWith("Hi there,")).toBe(true);
+  });
+
+  describe("the buy-in copy", () => {
+    const buyIn = {
+      ...base,
+      kind: "buy_in" as const,
+      week: null,
+      commissionerFirstName: "Sam",
+      commissionerEmail: "sam@example.com",
+      commissionerPhone: "8183122718",
+    };
+
+    it("names the commissioner and reaches them two ways", () => {
+      const { text, html } = reminderBody(buyIn);
+      expect(text).toContain("let Sam know");
+      // The plain-text part cannot carry a link, so it spells the address out.
+      expect(text).toContain("Email Sam at sam@example.com, or text 8183122718.");
+      // The HTML part makes "Email" a mailto that arrives with a subject
+      // already filled in — that is what makes it a draft, not a blank compose.
+      expect(html).toContain('<a href="mailto:sam@example.com?subject=');
+      expect(html).toContain("Buy-in%20for%20Sheep%20with%20Glasses");
+      expect(html).toContain(">Email</a> or text Sam at 8183122718.");
+    });
+
+    /** profile_private.phone is optional, and half a sentence is worse than none. */
+    it("drops the text half when no phone is stored", () => {
+      const { text, html } = reminderBody({ ...buyIn, commissionerPhone: null });
+      expect(text).toContain("Email Sam at sam@example.com.");
+      expect(text).not.toContain("or text");
+      expect(html).toContain(">Email Sam</a>.");
+    });
+
+    /** Rather than rendering "Email  at ." at somebody. */
+    it("drops the whole contact line when there is no address", () => {
+      const { text, html } = reminderBody({ ...buyIn, commissionerEmail: "" });
+      expect(text).not.toContain("Email");
+      expect(html).not.toContain("mailto:");
+    });
+
+    it("falls back to 'the commissioner' rather than printing undefined", () => {
+      const { text } = reminderBody({ ...buyIn, commissionerFirstName: undefined });
+      expect(text).toContain("let the commissioner know");
+      expect(text).not.toContain("undefined");
+    });
+
+    /**
+     * The call to action is to pay a person, so a link to a page that only
+     * restates the debt competes with it. The pick reminder keeps its link.
+     */
+    it("carries no app link, where the pick reminder does", () => {
+      const withUrl = { ...buyIn, url: "https://sheepwithglasses.com/app/account" };
+      expect(reminderBody(withUrl).text).not.toContain("/app/account");
+      expect(reminderBody(base).text).toContain(base.url);
+    });
+
+    it("keeps the removal warning, which is the whole point of sending it", () => {
+      expect(reminderBody(buyIn).text).toContain("removed from the league before Week 1");
+    });
+  });
+
+  /** Paragraphs, not a wall — the text part ran together before. */
+  it("separates blocks with blank lines in the plain-text part", () => {
+    const { text } = reminderBody(base);
+    expect(text).toContain("\n\n");
+    expect(text.split("\n\n").length).toBeGreaterThan(3);
   });
 
   it("omits the amount when the league has no buy-in set", () => {

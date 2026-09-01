@@ -19,7 +19,6 @@
 
 import type { Game } from "../nfl/types";
 import { agoLabel } from "./feed";
-import { formatLong } from "../time";
 
 export type ReminderKind = "pick" | "buy_in";
 
@@ -32,21 +31,6 @@ export type ReminderKind = "pick" | "buy_in";
  * cheap outer guard rather than the guarantee — see 0015 for the guarantee.
  */
 export const REMINDER_MANUAL_COOLDOWN_MS = 60_000;
-
-/**
- * How long before a week's first kickoff a pick reminder starts being useful.
- *
- * Without a floor, `reminderWeek` happily returns week 1 in early August and an
- * admin can email the league about a deadline seven weeks out. A week is long
- * enough to cover "the Thursday game is on Thursday" and short enough that the
- * message is about something imminent.
- *
- * This is also why no phase test is needed anywhere in this module: during the
- * preseason `resolveCurrentWeek` returns 1, `reminderWeek` returns 1, and this
- * threshold is what makes the window report `too_early` until the season is
- * genuinely close.
- */
-export const PICK_REMINDER_OPENS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Mirrors 0015's `p_min_interval` default. Buy-ins are throttled, not keyed. */
 export const BUY_IN_REMINDER_MIN_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -115,7 +99,7 @@ export function reminderWeek(games: Game[], now: Date, currentWeek: number): num
   return best;
 }
 
-export type PickWindowReason = "no_games" | "too_early" | "closed" | null;
+export type PickWindowReason = "no_games" | "closed" | null;
 
 export interface PickWindow {
   /** May a reminder for this week still do any good? */
@@ -143,6 +127,18 @@ export interface PickWindow {
  * so the window shrinks continuously: by Sunday evening a member can still pick,
  * but only from the Sunday-night and Monday games. That is worth an email, so
  * the window stays open and the copy says which games are left.
+ *
+ * THERE IS DELIBERATELY NO "too early" REFUSAL. One used to live here, gated on
+ * a seven-day threshold, and its effect was that the pick reminder could not be
+ * sent at all until the season was nearly on — including through the whole
+ * preseason, which is exactly when an admin wants to tell people to get their
+ * Week 1 pick in. Whether a reminder is premature is the admin's judgement, not
+ * a constant's, and the copy no longer asserts anything that goes stale if it
+ * is read a fortnight later.
+ *
+ * What remains is structural rather than editorial: with a week that
+ * `reminderWeek` chose, at least one game is open by construction, so `open` is
+ * true. The other two reasons survive for callers that pass an arbitrary week.
  */
 export function weekPickWindow(games: Game[], week: number, now: Date): PickWindow {
   const nowMs = now.getTime();
@@ -170,10 +166,6 @@ export function weekPickWindow(games: Game[], week: number, now: Date): PickWind
 
   if (openGames.length === 0) {
     return { open: false, reason: "closed", lastKickoffIso, nextKickoffIso, partiallyStarted };
-  }
-
-  if (nextKickoff !== null && nextKickoff - nowMs > PICK_REMINDER_OPENS_MS) {
-    return { open: false, reason: "too_early", lastKickoffIso, nextKickoffIso, partiallyStarted };
   }
 
   return { open: true, reason: null, lastKickoffIso, nextKickoffIso, partiallyStarted };
@@ -310,7 +302,6 @@ export function describeReminders(
 
 function closedHeadline(window: PickWindow): string {
   if (window.reason === "no_games") return "no games are scheduled";
-  if (window.reason === "too_early") return "too early to remind anyone";
   return "picks are closed";
 }
 
@@ -328,14 +319,27 @@ export interface MessageInput {
   leagueName: string;
   /** Null for a buy-in reminder. */
   week: number | null;
-  /** The week's last kickoff, for the deadline line. Null when unknown. */
-  deadlineIso: string | null;
-  /** True when some of the week's games have already started. */
-  partiallyStarted: boolean;
   /** Cents. Only read for a buy-in reminder. */
   buyInCents: number;
   /** Absolute link back into the app. Never relative — this is an email. */
   url: string;
+  /**
+   * The admin who pressed Send — "the commissioner" in the copy.
+   *
+   * Whoever acted, not the league's creator: "let them know" has to name the
+   * person who just chased you, and with two admins those differ. Resolved
+   * server-side in `sendReminders`; the preview passes the viewing admin, who
+   * is the same person.
+   */
+  commissionerFirstName?: string;
+  /** The commissioner's own address, for the mailto link. */
+  commissionerEmail?: string;
+  /**
+   * From `profile_private.phone` (0008), which is free text and documented as
+   * "never parsed or dialled" — so it is printed verbatim and NOT turned into a
+   * `tel:` link. Null or blank simply drops the "or text …" half of the line.
+   */
+  commissionerPhone?: string | null;
 }
 
 /**
@@ -345,7 +349,7 @@ export interface MessageInput {
  * someone's life and "You haven't picked yet" from an unknown sender is spam.
  */
 export function reminderSubject(input: MessageInput): string {
-  if (input.kind === "buy_in") return `${input.leagueName}: your buy-in is outstanding`;
+  if (input.kind === "buy_in") return `Payment confirmation for ${input.leagueName}`;
   return `${input.leagueName}: you haven't picked for Week ${input.week ?? ""}`.trim();
 }
 
@@ -357,52 +361,118 @@ export function reminderSubject(input: MessageInput): string {
  * which is what lets an admin see exactly what will be sent without the panel
  * reaching for `dangerouslySetInnerHTML`.
  *
- * THE DEADLINE IS PRINTED IN US EASTERN, deliberately. Everywhere else in this
- * app `LocalTime` swaps to the reader's own zone after mount; an email has no
- * mount and no JavaScript, so the zone has to be chosen here and named out loud.
- * `formatLong` resolves the abbreviation against the kickoff rather than against
- * `new Date()`, so a December game prints EST and a September one EDT.
+ * NO TIMES ANYWHERE, which is what retired this file's one timezone problem.
+ * `LocalTime` swaps to the reader's own zone after mount and an email has no
+ * mount, so any clock printed here had to pick a zone and name it. Saying
+ * nothing about when the week ends sidesteps that entirely — and the copy is
+ * the better for it, since a reminder is read later than it is sent.
  */
 export function reminderBody(input: MessageInput): { text: string; html: string } {
   const lines = bodyLines(input);
-  const text = [`Hi ${input.firstName || "there"},`, "", ...lines, "", input.url, ""].join("\n");
+  const action = actionLine(input);
+
+  const footer = `You're getting this because you're in ${input.leagueName}.`;
+
+  // Blank lines BETWEEN blocks in the text part. The previous version joined
+  // every body line with a single newline, so the paragraphs ran together for
+  // anyone reading the plain-text alternative — invisible while you only ever
+  // look at the HTML one.
+  const text = [
+    `Hi ${input.firstName || "there"},`,
+    ...lines,
+    ...(action ? [action.text] : []),
+    footer,
+  ].join("\n\n");
 
   const html = [
     `<p>Hi ${esc(input.firstName || "there")},</p>`,
     ...lines.filter(Boolean).map((l) => `<p>${esc(l)}</p>`),
-    `<p><a href="${esc(input.url)}">${esc(input.url)}</a></p>`,
-    `<p style="color:#757575;font-size:12px">You're getting this because you're in ${esc(
-      input.leagueName,
-    )}.</p>`,
+    ...(action ? [`<p>${action.html}</p>`] : []),
+    `<p style="color:#757575;font-size:12px">${esc(footer)}</p>`,
   ].join("\n");
 
-  return { text, html };
+  return { text: `${text}\n`, html };
+}
+
+/**
+ * The sentence that carries the link — "Log in here", "Email or text Alex".
+ *
+ * It cannot go through `bodyLines`, because that escapes every line into a
+ * `<p>`; this needs an anchor in the HTML and something spelled out in the
+ * text, where no link is possible. Hence two renderings of one sentence, per
+ * kind.
+ *
+ * Returns null when there is nothing to link to, so the paragraph is dropped
+ * whole rather than rendering "Log in here: " or "Email  at ." at somebody —
+ * the caller spreads it conditionally for exactly that reason.
+ */
+function actionLine(input: MessageInput): { text: string; html: string } | null {
+  if (input.kind === "pick") {
+    const url = (input.url ?? "").trim();
+    if (!url) return null;
+    // The LANDING page, not /app: whoever opens this on their phone is most
+    // likely signed out, and /app bounces a signed-out visitor back to / anyway.
+    // "Log in here" pointing at the page with the Log In button on it.
+    return {
+      text: `Pick a team or miss every game and get the automatic loss. Log in here: ${url}`,
+      html: `Pick a team or miss every game and get the automatic loss. Log in <a href="${esc(
+        url,
+      )}">here</a>.`,
+    };
+  }
+
+  const email = (input.commissionerEmail ?? "").trim();
+  if (!email) return null;
+
+
+  const who = (input.commissionerFirstName ?? "").trim() || "the commissioner";
+  // Printed verbatim. profile_private.phone is free text and 0008 documents it
+  // as "never parsed or dialled", so it is not normalised and not made a `tel:`
+  // link — a stored "(818) 312-2718" and a stored "818 312 2718" both read fine.
+  const phone = (input.commissionerPhone ?? "").trim();
+
+  // Pre-filling the subject is what makes this a DRAFT rather than a blank
+  // compose window — the reply lands with the league already named.
+  const href = `mailto:${email}?subject=${encodeURIComponent(`Buy-in for ${input.leagueName}`)}`;
+
+  if (phone) {
+    return {
+      text: `Email ${who} at ${email}, or text ${phone}.`,
+      html: `<a href="${esc(href)}">Email</a> or text ${esc(who)} at ${esc(phone)}.`,
+    };
+  }
+
+  return {
+    text: `Email ${who} at ${email}.`,
+    html: `<a href="${esc(href)}">Email ${esc(who)}</a>.`,
+  };
 }
 
 function bodyLines(input: MessageInput): string[] {
   if (input.kind === "buy_in") {
+    // "the commissioner" when we do not know who sent it — the field is
+    // optional so a caller that has not wired it through still reads correctly
+    // rather than printing "undefined" at somebody.
+    const who = (input.commissionerFirstName ?? "").trim() || "the commissioner";
     return [
-      `Your buy-in for ${input.leagueName} hasn't been marked as paid yet${
-        input.buyInCents > 0 ? ` — it's ${formatMoney(input.buyInCents)}` : ""
-      }.`,
-      "If you've already settled up, let your commissioner know and they'll tick you off.",
+      `Your buy-in for ${input.leagueName} hasn't been paid yet.${
+        input.buyInCents > 0 ? ` The buy-in is ${formatMoney(input.buyInCents)}.` : ""
+      } Please pay the commissioner asap or you'll be removed from the league before Week 1 kicks off.`,
+      `If you already paid, let ${who} know so they can update your status and keep you in the league.`,
     ];
   }
 
-  const deadline = input.deadlineIso
-    ? `The last game of the week kicks off ${formatLong(input.deadlineIso, {
-        timeZone: "America/New_York",
-      })}.`
-    : "";
-
-  return [
-    `You haven't made a pick for Week ${input.week} of ${input.leagueName}.`,
-    input.partiallyStarted
-      ? "Some of this week's games have already started, so you can only pick from the ones that haven't kicked off yet."
-      : "Every game this week is still open.",
-    deadline,
-    "Miss the week entirely and it counts as a loss.",
-  ].filter(Boolean);
+  /*
+   * One line, and no conditionals at all.
+   *
+   * Everything that used to sit here described the STATE of the week — which
+   * games were still open, when the last one kicked off — and a reminder is
+   * read later than it is sent, so each of those could be stale by the time
+   * anyone opened it. What survives is the only thing that is true of every
+   * week at every moment: you have not picked. The consequence and the link
+   * follow in `actionLine`.
+   */
+  return [`You haven't made a pick for Week ${input.week} of ${input.leagueName} yet.`];
 }
 
 /** "$25" / "$25.50". Whole dollars lose the trailing zeros. */
