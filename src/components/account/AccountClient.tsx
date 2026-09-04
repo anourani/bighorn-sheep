@@ -10,6 +10,7 @@ import { AdminControlCenterCard } from "@/components/account/AdminControlCenterC
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { JoinByCode } from "@/components/account/JoinByCode";
 import { AdminSettingsDrawer } from "@/components/group/AdminSettingsDrawer";
+import { TourCarousel } from "@/components/onboarding/TourCarousel";
 import { AccountSection, CARD, PAGE_TITLE } from "@/components/account/surfaces";
 import { SPEC_BUTTON_DARK } from "@/components/account/spec";
 import { cn } from "@/lib/cn";
@@ -64,6 +65,7 @@ export function AccountClient({
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
 
   const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
   const admin = activeLeague && adminMembers ? { league: activeLeague, members: adminMembers } : null;
@@ -122,6 +124,7 @@ export function AccountClient({
           <MoreSection
             group={activeLeague?.group ?? null}
             onDelete={() => setDeleteOpen(true)}
+            onReplayTour={() => setTourOpen(true)}
             now={now}
           />
         </div>
@@ -137,6 +140,22 @@ export function AccountClient({
         currentPhone={account.phone}
       />
       <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+
+      {/* The replay path, and it deliberately does NOT write `tour_completed_at`
+          — only `FirstRunTour` completes the tour. Someone who opened this on
+          purpose has already made that decision, and re-stamping it here would
+          mean a player could never tell the two states apart.
+
+          `showSkip={false}` for the same reason: there is nothing to skip when
+          you asked for it. The X, Escape and the scrim all still close it, so
+          this removes a redundant control rather than an escape route. The CTA
+          says where the last card leads, which from here is back to this page. */}
+      <TourCarousel
+        open={tourOpen}
+        ctaLabel="Back to Account"
+        showSkip={false}
+        onDone={() => setTourOpen(false)}
+      />
 
       {/* `admin ? … : null` rather than `settingsOpen && …`: the drawer holds the
           active tab in its own state and `Drawer` unmounts only its subtree when

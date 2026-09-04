@@ -23,6 +23,7 @@
 --   supabase/migrations/0014_pick_consistency.sql (folded into the picks
 --     insert/update policies below — the game-consistency conjuncts)
 --   supabase/migrations/0015_pick_and_buy_in_reminders.sql
+--   supabase/migrations/0016_profile_tour.sql
 -- Edit those, not this file. Run once on a fresh project.
 --
 -- KNOWN BROKEN, and not by 0015 — annotated rather than silently fixed, the way
@@ -2113,3 +2114,18 @@ $$;
 
 revoke all on function public.record_reminder_send(uuid, uuid, uuid, text, integer, text, integer, text, text, text) from public;
 grant execute on function public.record_reminder_send(uuid, uuid, uuid, text, integer, text, integer, text, text, text) to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0016 — the first-run tour's one column.
+--
+-- Verbatim from supabase/migrations/0016_profile_tour.sql, minus that file's
+-- grandfathering backfill. The backfill exists there to spare an EXISTING
+-- league a tour they do not need; a fresh project has no members to spare, and
+-- stamping the column on a database whose first player has not signed up yet
+-- would retire the tour before anyone saw it.
+--
+-- No policy and no grant: 0001's "profiles update own" already covers the
+-- write, and a new column inherits the table's existing grants.
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.profiles
+  add column if not exists tour_completed_at timestamptz;

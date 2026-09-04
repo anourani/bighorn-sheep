@@ -30,7 +30,9 @@ Don't assume anyone infers it from the diff.
 
 To find out what production actually has, run the read-only query in README.md
 (`#### Deploying`). Present state should be everything PRESENT *except*
-`profiles.display_name`, which 0004 drops.
+`profiles.display_name`, which 0004 drops — and, until 0016 is applied by hand,
+`profiles.tour_completed_at`, whose absence is what keeps the first-run tour
+inert rather than broken.
 
 Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0003_group_create_and_pick_flags` → `0004_profile_names_avatars` →
@@ -39,7 +41,7 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0009_public_standings` → `0010_account_closure_and_league_buy_in` →
 `0011_admin_settings` → `0012_create_group_entry_deadline` →
 `0013_lock_membership_writes` → `0014_pick_consistency` →
-`0015_pick_and_buy_in_reminders`.
+`0015_pick_and_buy_in_reminders` → `0016_profile_tour`.
 
 **0013 and 0014 close two direct-write holes reachable with the anon key**, and
 both are pure RLS changes — idempotent, no backfill, hand-applied. 0013 drops
@@ -582,6 +584,76 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **There is a seven-step first-run tour, and it is the only place the app
+  explains the rules in-product.** `src/components/onboarding/` — a bottom sheet
+  on a phone and a centred 480px card from `sm`, over a scrim, naming the three
+  tabs and then the four rules that eliminate people. It fires once on `/app`
+  for a member who has not seen it, and has a permanent "App Tour → Replay" row
+  in the account page's Additional Settings. `0016_profile_tour` is the
+  migration, and **it must be applied to production by hand.** Design:
+  `Onboarding Flows.dc.html` flow 2A and its `TourCarousel.dc.html`. Nine things:
+  - **It fails INERT, and that is the opposite of every other migration here.**
+    `viewerTourCompleted()` returns `true` — "already seen" — on any error, so an
+    unapplied 0016 means the tour never appears. Failing the other way would
+    fire an undismissable carousel at every player on every load, because the
+    dismissal write would be failing for exactly the same reason. So unlike
+    0010/0011, the symptom of the missing migration is silence rather than a
+    broken page, and "the tour never fires" is the first thing to check it
+    against.
+  - **That loader is its own isolated `select("tour_completed_at")`, and
+    widening an existing one would have been the real damage.** Every other
+    `profiles` read in `load.ts` names its columns, and PostgREST answers a
+    missing column with `42703` rather than `undefined` — so adding this to the
+    account loader's select would have taken the picks screen, the standings
+    board and the account page down together in the window before 0016 landed.
+    This is the "never widen a `select()`" rule with a live example; there is a
+    test asserting the existing selects are untouched.
+  - **The backfill is FENCED inside the column-creation guard**, on 0011's
+    pattern. A bare `update ... where tour_completed_at is null` would be right
+    exactly once and would then sweep up every player who joined since —
+    retiring the tour for the people it exists for. The fence is what makes the
+    file replayable rather than merely idempotent-looking. Deleting the
+    `update` (not the block) shows the tour to the current league too.
+  - **It is NOT `Modal`, and the three reasons are all chrome.** `Modal`'s
+    header carries a bottom rule and renders its title at 18px semibold ink
+    (this header is borderless, and its "title" is a 12px uppercase counter);
+    its footer adds a top rule and its own padding where this has neither; and
+    it hard-codes one entrance where this needs two. Bending `Modal` would have
+    changed its five other callers, and `Drawer` — the other primitive — is
+    full-bleed at every width, which is what a 480px desktop modal must not be.
+    It reuses `Modal`'s class strings instead.
+  - **It takes `Drawer`'s focus trap, which `Modal` does not have, and the
+    reason is this surface's alone.** The page behind it is the pick grid: a
+    keyboard user tabbing out of an untrapped dialog lands on a team card, and
+    activating one spends that team for the season. Every other dialog sits over
+    a roster or a settings list where the same escape costs nothing.
+    `FOCUSABLE_SELECTOR` / `nextFocusIndex` are imported from `ui/drawer.ts`
+    rather than rewritten.
+  - **It must not render inside `.stagger`, and it does not portal.**
+    `MyPicksClient`'s root is a `.stagger`, whose `reveal-up ... both` leaves a
+    transform applied for the life of the page — which makes it a containing
+    block for `fixed` descendants. So the tour mounts in `app/app/page.tsx`
+    beside `MyPicksClient`, and on the account page beside the two modals. Both
+    are the slots those files already use for exactly this, and there is a test
+    asserting `MyPicksClient` never imports it.
+  - **The 180px art frame and the 72px body are FIXED, and that is the PRD's own
+    acceptance criterion** — the sheet must not change height between steps.
+    The title is `truncate`d for the same reason: step 7's is the longest and
+    would otherwise wrap to a second line. Neither may become content-driven.
+  - **In the footer the dots yield and the buttons do not.** On the last card
+    the row carries seven dots, "Not now", "Back" and the CTA, which at the
+    design's own 393px frame lands within a few pixels of the content width —
+    close enough that a font metric decides it. The dots are `min-w-0 flex-1
+    overflow-hidden` and the controls `shrink-0`, so the failure is a clipped
+    decorative dot rather than a wrapped button, which would break the fixed
+    height above. The header's counter states the position in words anyway.
+  - **Replaying does not complete the tour.** Only `FirstRunTour` writes; the
+    account page's replay just opens the carousel, with `showSkip={false}`
+    (there is nothing to skip when you asked for it) and a "Back to Account"
+    CTA. Both exits from the first-run path — finished and skipped — write,
+    because skipping is a decision rather than a deferral, and the replay row is
+    what makes that safe.
 
 - **The admin drawer can email the league, and its tabs are Members / League
   Settings / Data Feed / Emails.** Rules and Name merged — Name only ever existed

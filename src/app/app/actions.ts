@@ -509,6 +509,47 @@ export async function updateFavoriteAnimal(animal: string | null): Promise<Actio
   });
 }
 
+/**
+ * Mark the first-run tour as seen. Idempotent — it stamps `now()` over whatever
+ * was there, and the only caller writes once per viewing.
+ *
+ * A direct column write rather than an RPC, unlike most of this file: 0001's
+ * `"profiles update own"` policy already covers it, and RLS cannot restrict
+ * which columns an update touches, so there is nothing for a definer function to
+ * add. That also means the unapplied-0016 symptom here is a `42703` on the
+ * column rather than the `PGRST202` that {@link rpcErrorCode} exists to
+ * translate — hence no `migration_missing` branch. The read side
+ * (`viewerTourCompleted`) fails open, so an unapplied migration leaves the tour
+ * inert and this action is never reached.
+ *
+ * The revalidate is narrow on purpose. Unlike `updateFavoriteAnimal`, which
+ * changes how a player appears to everyone and refreshes the standings with it,
+ * this is invisible to every other member — the two routes that read the flag
+ * are the only two that can change.
+ */
+export async function completeTour(): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ tour_completed_at: new Date().toISOString() })
+      .eq("id", user.id);
+    if (error) {
+      console.error("[completeTour] update failed", error);
+      return { ok: false, error: "unexpected_error" };
+    }
+
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    return { ok: true };
+  });
+}
+
 /** Join a league by invite code (idempotent, via join_by_invite). */
 export async function joinGroup(
   code: string,
