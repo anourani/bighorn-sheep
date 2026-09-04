@@ -94,7 +94,7 @@ export const TOUR_STEPS: NonEmpty<TourStep> = [
     art: "tabs",
     tab: 0,
     title: "The Picks Page",
-    body: "This is where you pick your team each week. Tap the week you want, then tap a team — that's it.",
+    body: "This is where you pick your team each week. Tap the week you want, then tap a team. That's it.",
   },
   {
     art: "strip",

@@ -81,7 +81,7 @@ describe("the deck", () => {
       "The Account Page",
     ]);
     expect(TOUR_STEPS.map((s) => bodyText(s.body))).toEqual([
-      "This is where you pick your team each week. Tap the week you want, then tap a team \u2014 that's it.",
+      "This is where you pick your team each week. Tap the week you want, then tap a team. That's it.",
       "Weeks act like tabs. Tap one and that week's teams appear below. Weeks you've already picked show their team.",
       "Select the team you know think is going to win. Remember, you can't pick the same team twice so choose wisely!",
       "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
@@ -140,6 +140,22 @@ describe("the deck", () => {
    * the landing page's pitch describes. This deck is shown to every league, so
    * it must not state the rule either way.
    */
+  /**
+   * No em dashes in anything a player reads.
+   *
+   * The prototype used them freely and they are all over this repo's prose, but
+   * the tour is product copy: at 15px in a 72px box an em dash reads as a pause
+   * the reader has to parse, where a full stop just ends the sentence. Titles
+   * never had one; step 1's body did, and this is what stops the next edit
+   * reintroducing it. En and figure dashes are caught too, since they are the
+   * characters a well-meaning find-and-replace reaches for next.
+   */
+  it("keeps typographic dashes out of the copy", () => {
+    for (const step of TOUR_STEPS) {
+      expect(`${step.title} ${bodyText(step.body)}`).not.toMatch(/[\u2012-\u2015]/);
+    }
+  });
+
   it("promises nothing the app does not actually do", () => {
     const copy = TOUR_STEPS.map((s) => `${s.title} ${bodyText(s.body)}`)
       .join(" ")
