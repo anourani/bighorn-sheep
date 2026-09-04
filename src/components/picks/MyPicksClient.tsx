@@ -10,10 +10,8 @@ import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { GRID_LAYOUTS } from "@/components/picks/team-grid";
 import { IDLE_QUEUE, settlePick, tapPick, type PickQueue } from "@/components/picks/pick-queue";
 import { buildChipPicks } from "@/components/picks/week-strip";
-import { Label } from "@/components/ui/Label";
 import { Toast } from "@/components/ui/Toast";
 import { raiseToast, releaseMessage, type ToastMessage } from "@/components/ui/toast";
-import { LocalTime } from "@/components/ui/LocalTime";
 import { InfoIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import { isKickedOff } from "@/lib/nfl/types";
@@ -64,10 +62,9 @@ const PICK_ERROR: Record<string, string> = {
 };
 
 export function MyPicksClient({ data }: { data: LeagueData }) {
-  const { group, currentWeek, finalWeek, nowIso, phase, practice } = data;
+  const { group, currentWeek, finalWeek, nowIso, practice } = data;
   const practiceMe = practice?.members[data.viewer.id];
   const now = useMemo(() => new Date(nowIso), [nowIso]);
-  const isPreseason = phase === "preseason";
 
   // Two indexes over two disjoint slices of the schedule. Deliberately NOT one
   // index over both: buildGameIndex keys on week number alone, so preseason week 2
@@ -456,20 +453,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           setPickError(null);
         }}
       />
-
-      {isPreseason ? (
-        /* `my-4`, not `mt-4`: this sits between the week strip and the module,
-           so a top-only margin would collapse the banner onto the module and move
-           a second seam. */
-        <div className="my-4 rounded-card border border-brand/30 bg-brand-wash px-4 py-3">
-          <Label className="text-accent-ink">Pre-season</Label>
-          <p className="mt-1 text-sm leading-relaxed text-ink">
-            The season kicks off{" "}
-            <LocalTime iso={group.entryClosesAt} mode="full" className="font-semibold" />. Make your Week 1
-            pick now — it locks when your team plays, and you can change it anytime until then.
-          </p>
-        </div>
-      ) : null}
 
       <PickHero
         ref={setHeroEl}
