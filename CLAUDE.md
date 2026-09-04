@@ -1796,9 +1796,11 @@ reading, but only the first kind is the lesson.
   `space-y-*` compiles to `> * + *`, which outranks a child's own `mt-*` on
   specificity, so no single child can opt out. Every other block therefore carries an
   explicit `mt-4` — the same trade `StandingsClient` already made, for the same
-  reason. The preseason banner carries `my-4` rather than `mt-4`, because it sits
-  *between* the strip and the module and a top-only margin would collapse the second
-  seam while fixing the first.
+  reason. There WAS a preseason banner between the strip and the module, carrying
+  `my-4` rather than `mt-4` so a top-only margin could not collapse the second
+  seam while fixing the first; it is gone, and with it the page's only other
+  child needing that treatment. The strip now butts straight onto `PickHero` in
+  every phase, which is what the mock-up draws.
 
 - **There are two ways to make a pick, and the matchup list is the default.**
   `TeamGrid` draws all 32 teams as square cards, one tap to pick; `WeekSchedule`
