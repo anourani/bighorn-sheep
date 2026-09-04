@@ -50,6 +50,6 @@ export function FirstRunTour({ completed }: { completed: boolean }) {
   }
 
   return (
-    <TourCarousel open={open} ctaLabel="Make my pick" onDone={finish} />
+    <TourCarousel open={open} onDone={finish} />
   );
 }

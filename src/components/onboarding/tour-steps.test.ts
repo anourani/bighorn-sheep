@@ -9,7 +9,7 @@ import {
   type TourArtKind,
 } from "./tour-steps";
 
-const CTA = "Make my pick";
+const CTA = "I'm Ready";
 
 describe("the deck", () => {
   it("is seven steps", () => {
@@ -198,16 +198,17 @@ describe("tourView", () => {
   });
 
   /**
-   * The handoff is the whole point of the last card, and the label is the
-   * caller's — the tour says "Make my pick", the account page's replay says
-   * "Back to Account". Getting this wrong sends someone to the wrong place.
+   * The last card swaps Next for the caller's CTA, and that swap is the whole
+   * point of it. Both exits pass the same label today, so this asserts the
+   * mechanism with an arbitrary second string rather than a real one — the
+   * function must return what it was handed, not a constant of its own.
    */
   it("reads Next until the last step, then the caller's CTA", () => {
     for (let i = 0; i < 6; i += 1) {
       expect(tourView(i, CTA).nextLabel).toBe("Next");
     }
     expect(tourView(6, CTA).nextLabel).toBe(CTA);
-    expect(tourView(6, "Back to Account").nextLabel).toBe("Back to Account");
+    expect(tourView(6, "Anything Else").nextLabel).toBe("Anything Else");
   });
 
   it("softens Skip to 'Not now' only on the last step", () => {

@@ -676,8 +676,14 @@ reading, but only the first kind is the lesson.
     height above. The header's counter states the position in words anyway.
   - **Replaying does not complete the tour.** Only `FirstRunTour` writes; the
     account page's replay just opens the carousel, with `showSkip={false}`
-    (there is nothing to skip when you asked for it) and a "Back to Account"
-    CTA. Both exits from the first-run path — finished and skipped — write,
+    (there is nothing to skip when you asked for it). Both exits share one CTA,
+    "I'm Ready" — the per-caller `ctaLabel` prop is retired, because the label
+    no longer names a destination and two call sites owning the same string is
+    how it drifts. **Where you land is the MOUNT POINT's doing, not the
+    dialog's**: neither component navigates, so finishing the first run reveals
+    My Picks (mounted in `app/app/page.tsx`) and finishing a replay reveals the
+    account page (mounted in `AccountClient`). There is a test forbidding
+    `useRouter` / `redirect` in both. Both exits from the first-run path — finished and skipped — write,
     because skipping is a decision rather than a deferral, and the replay row is
     what makes that safe.
 

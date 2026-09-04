@@ -148,14 +148,12 @@ export function AccountClient({
 
           `showSkip={false}` for the same reason: there is nothing to skip when
           you asked for it. The X, Escape and the scrim all still close it, so
-          this removes a redundant control rather than an escape route. The CTA
-          says where the last card leads, which from here is back to this page. */}
-      <TourCarousel
-        open={tourOpen}
-        ctaLabel="Back to Account"
-        showSkip={false}
-        onDone={() => setTourOpen(false)}
-      />
+          this removes a redundant control rather than an escape route.
+
+          Closing is all that happens — nothing navigates. Because this is
+          mounted on the account page, finishing the tour leaves the reader
+          exactly where they started, which is the requirement. */}
+      <TourCarousel open={tourOpen} showSkip={false} onDone={() => setTourOpen(false)} />
 
       {/* `admin ? … : null` rather than `settingsOpen && …`: the drawer holds the
           active tab in its own state and `Drawer` unmounts only its subtree when

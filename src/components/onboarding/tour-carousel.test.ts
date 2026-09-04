@@ -202,6 +202,38 @@ describe("where the tour mounts", () => {
     expect(picks).not.toContain("TourCarousel");
   });
 
+  /**
+   * Where a player lands is decided by the MOUNT POINT and nothing else.
+   *
+   * The requirement is that finishing from the account page leaves you on the
+   * account page, and finishing after signup leaves you on My Picks. Both hold
+   * because each dialog simply closes and reveals the page it was rendered
+   * over — the first run in `app/app/page.tsx`, the replay in `AccountClient`.
+   *
+   * So neither component may navigate. A `router.push` would be invisible on
+   * the happy path (it would push the route already showing) and would send
+   * the reader somewhere wrong the moment either call site moved, which is
+   * exactly the kind of change nobody would think to re-test.
+   */
+  it("never navigates — the mount point decides where you land", async () => {
+    for (const url of [CAROUSEL, FIRST_RUN]) {
+      const src = await code(url);
+      expect(src).not.toContain("useRouter");
+      expect(src).not.toContain("router.push");
+      expect(src).not.toContain("redirect(");
+      expect(src).not.toContain("next/navigation");
+    }
+  });
+
+  /** One label for both exits; the per-caller prop that carried it is retired. */
+  it("names one CTA, in one place", async () => {
+    const src = await code(CAROUSEL);
+    expect(src).toContain(`const CTA_LABEL = "I'm Ready"`);
+    for (const url of [FIRST_RUN, ACCOUNT]) {
+      expect(await code(url)).not.toContain("ctaLabel");
+    }
+  });
+
   /** Beside the modals, outside the account page's own `.stagger`, same reason. */
   it("renders the replay outside the account page's staggered root", async () => {
     const src = await code(ACCOUNT);
