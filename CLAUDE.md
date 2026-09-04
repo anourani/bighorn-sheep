@@ -587,8 +587,7 @@ reading, but only the first kind is the lesson.
 
 - **There is a seven-step first-run tour, and it is the only place the app
   explains the rules in-product.** `src/components/onboarding/` — a bottom sheet
-  on a phone and a centred 480px card from `sm`, over a scrim, naming the three
-  tabs and then the four rules that eliminate people. It fires once on `/app`
+  on a phone and a centred 480px card from `sm`, over a scrim. It fires once on `/app`
   for a member who has not seen it, and has a permanent "App Tour → Replay" row
   in the account page's Additional Settings. `0016_profile_tour` is the
   migration, and **it must be applied to production by hand.** Design:
@@ -637,10 +636,37 @@ reading, but only the first kind is the lesson.
     beside `MyPicksClient`, and on the account page beside the two modals. Both
     are the slots those files already use for exactly this, and there is a test
     asserting `MyPicksClient` never imports it.
+  - **The order is PAGE-THEN-DETAIL, not the design's.** The prototype ran the
+    three nav cards first and the four rule cards after, which left "Hidden
+    Picks" — an illustration of the standings board — five cards away from the
+    card introducing that board. Each nav card now introduces a page and the
+    cards under it teach that page: Picks → week selector → matchup card → lock
+    timer, then Standings → hidden picks, then Account. The three nav-pill
+    illustrations read as section dividers rather than three near-identical
+    cards in a row, and there is a test asserting every detail card still sits
+    under the tab most recently lit.
+  - **The copy is not the prototype's either.** Its version described each
+    screen — "Standings — the board / Fills in as picks reveal" — which names
+    what you are looking at and tells you nothing you can act on. Every card now
+    says what the thing IS and then how to USE it. Two accuracy notes, both
+    checked against the schema rather than the mock-ups: the account card does
+    not promise a TIMEZONE setting (the design's account screen had one, this
+    app never has), and no card says a tie eliminates you (`tie_rule` defaults
+    to `push`, so a tie SURVIVES — only a league that opted into `loss` behaves
+    the way the landing page's pitch describes). There is a test for both.
+  - **One body is segmented, for one joke.** "Select the team you ~~know~~ think
+    is going to win" needs a strikethrough, so `body` is
+    `string | readonly BodySegment[]` and every other card stays a plain string.
+    The struck word is `aria-hidden` as well as `<s>`: read aloud, "the team you
+    know think is going to win" is not a joke but a broken sentence.
+    `spokenBodyText` collapses whitespace, because dropping a segment that sat
+    between two spaces otherwise leaves a double gap.
   - **The 180px art frame and the 72px body are FIXED, and that is the PRD's own
     acceptance criterion** — the sheet must not change height between steps.
-    The title is `truncate`d for the same reason: step 7's is the longest and
-    would otherwise wrap to a second line. Neither may become content-driven.
+    The title is `truncate`d as a belt-and-braces guard; no current title is
+    close to wrapping (the longest is 18 characters), but a longer one must
+    clip rather than take the panel's height with it. Neither box may become
+    content-driven.
   - **In the footer the dots yield and the buttons do not.** On the last card
     the row carries seven dots, "Not now", "Back" and the CTA, which at the
     design's own 393px frame lands within a few pixels of the content width —

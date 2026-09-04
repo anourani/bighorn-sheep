@@ -13,14 +13,54 @@
  * throws under test (`team-grid.ts` and `week-strip.ts` spell theirs
  * `../../lib/...` for this). Having none at all sidesteps the question.
  *
- * The copy is the design's WARM set, transcribed verbatim. The prototype also
- * carried a `dry` set behind a `tone` prop; only one tone is shipped, so the
- * other is not carried here — `git log` and the handoff bundle are where it
- * lives if it is ever wanted.
+ * THE ORDER IS PAGE-THEN-DETAIL, and that is the whole shape of the deck: a nav
+ * card introduces a page, and the cards after it teach that page before the next
+ * one arrives. The design's own order ran the three pages first and the four
+ * rules after, which put "Hidden Picks" — an illustration of the standings
+ * board — five cards away from the card explaining the standings board. Here
+ * they are adjacent, and the three nav-pill illustrations read as section
+ * dividers rather than three near-identical cards in a row.
+ *
+ * THE COPY IS NOT THE PROTOTYPE'S. Its version described each screen —
+ * "Standings — the board / Fills in as picks reveal" — which names what you are
+ * looking at and tells you nothing you can act on. Every step now says what the
+ * thing IS and then how to USE it.
+ *
+ * Two things it must stay honest about, both checked against the schema rather
+ * than the mock-ups. The account step does not promise a TIMEZONE setting — the
+ * design's account screen had one and this app has never had one. And no step
+ * says a tie eliminates you: `tie_rule` defaults to `push` (0001), so a tie
+ * SURVIVES, and only a league that has opted into `loss` behaves the way the
+ * landing page's pitch describes. There is a test for both.
+ *
+ * The prototype also carried a `dry` tone behind a prop; only one tone is
+ * shipped, so the other is not carried here — `git log` and the handoff bundle
+ * are where it lives if it is ever wanted.
  */
 
 /** Which illustration a step draws. See `TourArt`. */
 export type TourArtKind = "tabs" | "card" | "strip" | "lock" | "board";
+
+/**
+ * A run of body text, optionally struck through.
+ *
+ * Exists for exactly one joke — "the team you ~~know~~ think is going to win" —
+ * and the shape is deliberately the smallest thing that serves it. Every other
+ * step's body is a plain string, and a step that needs no strike should stay
+ * one rather than becoming a single-element array for symmetry.
+ */
+export type BodySegment = {
+  readonly text: string;
+  /**
+   * Drawn with a line through it AND hidden from the accessibility tree.
+   *
+   * Both halves matter. The gag is visual — read aloud, "the team you know
+   * think is going to win" is nonsense — so the struck word is removed from
+   * what a screen reader announces rather than merely styled. `bodyText` and
+   * `spokenBodyText` below are the two readings, and they differ only here.
+   */
+  readonly strike?: boolean;
+};
 
 export type TourStep = {
   readonly art: TourArtKind;
@@ -34,7 +74,7 @@ export type TourStep = {
    */
   readonly tab?: 0 | 1 | 2;
   readonly title: string;
-  readonly body: string;
+  readonly body: string | readonly BodySegment[];
 };
 
 /**
@@ -48,54 +88,84 @@ export type TourStep = {
  */
 type NonEmpty<T> = readonly [T, ...T[]];
 
-/**
- * Seven steps: the three tabs, then the four rules that actually cost people
- * their season. The order is the design's and is not arbitrary — the tabs
- * orient you before any rule is stated, and the rules then run in the order you
- * meet them (pick a team, spend it, watch it lock, wait for the reveal).
- */
+/** Seven steps: each page, then the details of that page. */
 export const TOUR_STEPS: NonEmpty<TourStep> = [
   {
     art: "tabs",
     tab: 0,
-    title: "Picks — this screen",
-    body: "Make your pick here each week. That's the whole job.",
+    title: "The Picks Page",
+    body: "This is where you pick your team each week. Tap the week you want, then tap a team — that's it.",
+  },
+  {
+    art: "strip",
+    title: "The Week Selector",
+    body: "Weeks act like tabs. Tap one and that week's teams appear below. Weeks you've already picked show their team.",
+  },
+  {
+    art: "card",
+    title: "Making Your Pick",
+    // The one segmented body in the deck. The spaces live in the unstruck runs,
+    // so the struck word can be dropped from the spoken reading without the
+    // words either side of it running together.
+    body: [
+      { text: "Select the team you " },
+      { text: "know", strike: true },
+      {
+        text: " think is going to win. Remember, you can't pick the same team twice so choose wisely!",
+      },
+    ],
+  },
+  {
+    art: "lock",
+    title: "The Lock Timer",
+    body: "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
   },
   {
     art: "tabs",
     tab: 1,
-    title: "Standings — the board",
-    body: "Fills in as picks reveal. Track who's still alive.",
+    title: "The Standings Page",
+    body: "This is the league scoreboard. See what teams everyone else picked, who's in and who's out.",
+  },
+  {
+    art: "board",
+    title: "Hidden Picks",
+    body: 'Everybody\'s pick on the Standings page will read as "Hidden" until that team is locked in.',
   },
   {
     art: "tabs",
     tab: 2,
-    title: "Account — your league",
-    body: "League, timezone, and this tour if you need it again.",
-  },
-  {
-    art: "card",
-    title: "Tap a team to pick it",
-    body: "One team a week. They win, you survive to the next one.",
-  },
-  {
-    art: "strip",
-    title: "One team, once a season",
-    body: "The team you pick shows right on its week in the week selector, so you can always see what you've used.",
-  },
-  {
-    art: "lock",
-    title: "Locks at its own kickoff",
-    body: "A Thursday team locks Thursday. Change your pick freely until then.",
-  },
-  {
-    art: "board",
-    title: "Picks are hidden until kickoff",
-    body: "You can't see anyone else's team until its game starts.",
+    title: "The Account Page",
+    body: "This is where you go for all things account related. Update your account info and pay your buy-in dues!",
   },
 ];
 
 export const TOUR_STEP_COUNT = TOUR_STEPS.length;
+
+/** Every segment joined — what the card DRAWS. */
+export function bodyText(body: TourStep["body"]): string {
+  return typeof body === "string" ? body : body.map((s) => s.text).join("");
+}
+
+/**
+ * What a screen reader ANNOUNCES: the same, minus anything struck through.
+ *
+ * Whitespace is collapsed, and that is the whole subtlety. A struck word sits
+ * between two runs that each carry a space so the DRAWN sentence reads "you
+ * know think"; remove the middle one and those two spaces meet, leaving "you
+ * think" with a double gap. Some screen readers pause on that. Normalising here
+ * rather than shuffling the spaces into the struck segment means the fix holds
+ * however a future body is split, instead of depending on whoever writes it
+ * remembering which side the space belongs on.
+ */
+export function spokenBodyText(body: TourStep["body"]): string {
+  if (typeof body === "string") return body;
+  return body
+    .filter((s) => !s.strike)
+    .map((s) => s.text)
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /** Everything the carousel draws for one step. */
 export type TourView = {

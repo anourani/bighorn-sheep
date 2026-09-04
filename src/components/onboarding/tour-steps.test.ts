@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  bodyText,
   clampStep,
+  spokenBodyText,
   TOUR_STEP_COUNT,
   TOUR_STEPS,
   tourView,
@@ -15,28 +17,52 @@ describe("the deck", () => {
     expect(TOUR_STEPS).toHaveLength(7);
   });
 
-  it("runs the three tabs first, then the four rules", () => {
+  /**
+   * Page, then that page's details, then the next page. The prototype ran all
+   * three nav cards first and all four detail cards after, which left "Hidden
+   * Picks" — an illustration of the standings board — five cards away from the
+   * card introducing the standings board.
+   */
+  it("introduces a page, then teaches it, before moving on", () => {
     expect(TOUR_STEPS.map((s) => s.art)).toEqual<TourArtKind[]>([
       "tabs",
-      "tabs",
-      "tabs",
-      "card",
       "strip",
+      "card",
       "lock",
+      "tabs",
       "board",
+      "tabs",
     ]);
   });
 
   it("lights each nav tab exactly once, in order, and only on the tabs steps", () => {
     expect(TOUR_STEPS.map((s) => s.tab)).toEqual([
       0,
+      undefined,
+      undefined,
+      undefined,
       1,
+      undefined,
       2,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
     ]);
+  });
+
+  /**
+   * Each detail card must sit under the nav card for the page it belongs to,
+   * which is the whole premise of the order above. Asserted as "every non-tabs
+   * step names the tab most recently lit", so a reshuffle that separates a
+   * detail from its page fails rather than merely looking odd.
+   */
+  it("keeps every detail card under the page it belongs to", () => {
+    const owner: Array<0 | 1 | 2> = [];
+    let current: 0 | 1 | 2 = 0;
+    for (const step of TOUR_STEPS) {
+      if (step.art === "tabs") current = step.tab ?? 0;
+      else owner.push(current);
+    }
+    // Week selector, matchup card and lock timer all live on Picks; the hidden
+    // pill lives on Standings. Nothing hangs off Account.
+    expect(owner).toEqual([0, 0, 0, 1]);
   });
 
   /**
@@ -44,38 +70,84 @@ describe("the deck", () => {
    * place the app ever explains the rules that eliminate people. A silent edit
    * to any of it should fail.
    */
-  it("carries the design's warm copy verbatim", () => {
+  it("carries the shipped copy verbatim", () => {
     expect(TOUR_STEPS.map((s) => s.title)).toEqual([
-      "Picks — this screen",
-      "Standings — the board",
-      "Account — your league",
-      "Tap a team to pick it",
-      "One team, once a season",
-      "Locks at its own kickoff",
-      "Picks are hidden until kickoff",
+      "The Picks Page",
+      "The Week Selector",
+      "Making Your Pick",
+      "The Lock Timer",
+      "The Standings Page",
+      "Hidden Picks",
+      "The Account Page",
     ]);
-    expect(TOUR_STEPS.map((s) => s.body)).toEqual([
-      "Make your pick here each week. That's the whole job.",
-      "Fills in as picks reveal. Track who's still alive.",
-      "League, timezone, and this tour if you need it again.",
-      "One team a week. They win, you survive to the next one.",
-      "The team you pick shows right on its week in the week selector, so you can always see what you've used.",
-      "A Thursday team locks Thursday. Change your pick freely until then.",
-      "You can't see anyone else's team until its game starts.",
+    expect(TOUR_STEPS.map((s) => bodyText(s.body))).toEqual([
+      "This is where you pick your team each week. Tap the week you want, then tap a team \u2014 that's it.",
+      "Weeks act like tabs. Tap one and that week's teams appear below. Weeks you've already picked show their team.",
+      "Select the team you know think is going to win. Remember, you can't pick the same team twice so choose wisely!",
+      "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
+      "This is the league scoreboard. See what teams everyone else picked, who's in and who's out.",
+      'Everybody\'s pick on the Standings page will read as "Hidden" until that team is locked in.',
+      "This is where you go for all things account related. Update your account info and pay your buy-in dues!",
     ]);
   });
 
   /**
-   * The PRD's step-7 acceptance criterion, pinned: the title is exactly this,
-   * and it says nothing about who wins the season.
+   * The PRD's acceptance criterion for the hidden-picks card: it explains the
+   * reveal and says nothing about who wins the season. It is no longer the LAST
+   * card — the reorder moved it under Standings, where it belongs — so this
+   * finds it by its art rather than by position.
    */
-  it("titles the last step without promising an outcome", () => {
-    // Through `tourView` rather than `TOUR_STEPS[6]`: `noUncheckedIndexedAccess`
-    // makes a literal index into the tuple `TourStep | undefined` past element
-    // 0, and the accessor is the thing worth testing anyway.
-    const last = tourView(TOUR_STEP_COUNT - 1, CTA).step;
-    expect(last.title).toBe("Picks are hidden until kickoff");
-    expect(last.title).not.toMatch(/win|won|champion/i);
+  it("explains the reveal without promising an outcome", () => {
+    const hidden = TOUR_STEPS.find((s) => s.art === "board");
+    expect(hidden?.title).toBe("Hidden Picks");
+    expect(bodyText(hidden?.body ?? "")).not.toMatch(/win|won|champion/i);
+  });
+
+  /**
+   * The one segmented body in the deck, and both of its readings.
+   *
+   * The joke is visual: struck through, "the team you know think is going to
+   * win" reads as a correction. Read aloud it is simply a broken sentence, so
+   * the drawn text keeps "know" and the spoken text drops it. This pins the
+   * pair — a segment that lost its `strike` flag would still render plausibly
+   * while quietly making the sentence ungrammatical for anyone using a screen
+   * reader, which is exactly the kind of thing nobody notices.
+   */
+  it("strikes one word visually and drops it from the spoken reading", () => {
+    const pick = TOUR_STEPS.find((s) => s.title === "Making Your Pick");
+    expect(Array.isArray(pick?.body)).toBe(true);
+    expect(bodyText(pick?.body ?? "")).toContain("you know think is going to win");
+    expect(spokenBodyText(pick?.body ?? "")).toContain("you think is going to win");
+    expect(spokenBodyText(pick?.body ?? "")).not.toContain("know");
+  });
+
+  /** Every other body stays a plain string — no single-element arrays for symmetry. */
+  it("leaves every unstruck body a plain string", () => {
+    expect(TOUR_STEPS.filter((s) => typeof s.body !== "string")).toHaveLength(1);
+  });
+
+  /**
+   * Two claims the copy must not make, both of which the design's prototype
+   * made and neither of which is true of this app.
+   *
+   * The mock-up's account screen listed a TIMEZONE setting, and the prototype's
+   * step 3 promised one. There has never been a timezone control anywhere in
+   * `components/account/` — the tour would have sent a new player hunting for a
+   * row that does not exist.
+   *
+   * And a TIE does not eliminate you: `tie_rule` defaults to `push` in 0001, so
+   * a tie survives, and only a league that has opted into `loss` behaves the way
+   * the landing page's pitch describes. This deck is shown to every league, so
+   * it must not state the rule either way.
+   */
+  it("promises nothing the app does not actually do", () => {
+    const copy = TOUR_STEPS.map((s) => `${s.title} ${bodyText(s.body)}`)
+      .join(" ")
+      .toLowerCase();
+    expect(copy).not.toContain("timezone");
+    expect(copy).not.toContain("time zone");
+    // Word-bounded: a bare substring would fire on "entities" or "properties".
+    expect(copy).not.toMatch(/\bties?\b/);
   });
 });
 

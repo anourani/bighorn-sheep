@@ -7,7 +7,7 @@ import { FOCUSABLE_SELECTOR, nextFocusIndex } from "@/components/ui/drawer";
 import { H4 } from "@/lib/type-scale";
 import { cn } from "@/lib/cn";
 import { TourArt } from "./TourArt";
-import { clampStep, TOUR_STEP_COUNT, tourView } from "./tour-steps";
+import { clampStep, TOUR_STEP_COUNT, tourView, type TourStep } from "./tour-steps";
 
 export type TourExit = "finished" | "skipped";
 
@@ -219,7 +219,7 @@ export function TourCarousel({
               acceptance criterion, and the bodies run from 52 to 103
               characters. Do not let this become content-driven. */}
           <p className="mt-2 h-[72px] overflow-hidden text-[15px] leading-[1.55] text-ink-soft [text-wrap:pretty]">
-            {view.step.body}
+            <Body body={view.step.body} />
           </p>
         </div>
 
@@ -282,5 +282,31 @@ export function TourCarousel({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A step's body, which is usually a plain string and once is a run of segments.
+ *
+ * The struck segment is `aria-hidden`, so the sentence a screen reader hears is
+ * the one without it — "Select the team you think is going to win". Struck text
+ * is a visual joke, and read aloud it is simply a wrong sentence. `<s>` rather
+ * than a `line-through` class because the element already carries that meaning,
+ * and the class would leave the markup saying nothing.
+ */
+function Body({ body }: { body: TourStep["body"] }) {
+  if (typeof body === "string") return <>{body}</>;
+  return (
+    <>
+      {body.map((segment, i) =>
+        segment.strike ? (
+          <s key={i} aria-hidden="true">
+            {segment.text}
+          </s>
+        ) : (
+          <span key={i}>{segment.text}</span>
+        ),
+      )}
+    </>
   );
 }
