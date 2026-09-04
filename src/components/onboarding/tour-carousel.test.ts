@@ -51,9 +51,10 @@ describe("the sheet's height contract", () => {
   });
 
   /**
-   * Step 7's title is the longest of the seven and is what this guards. Without
-   * it a long title wraps to a second line and takes the panel's height with it
-   * — the same failure as above, reached from the other end.
+   * Belt and braces rather than a live constraint: after the copy rewrite the
+   * longest title is 18 characters, nowhere near wrapping. It stays because a
+   * future title that DID wrap would take the panel's height with it — the same
+   * failure as above, reached from the other end.
    */
   it("keeps the title on one line", async () => {
     const src = await code(CAROUSEL);
@@ -99,6 +100,17 @@ describe("the dialog surface", () => {
     expect(src).toContain("FOCUSABLE_SELECTOR");
     expect(src).toContain("nextFocusIndex");
     expect(src).toContain("isConnected");
+  });
+
+  /**
+   * The struck word must be BOTH struck and hidden. `<s>` alone leaves a screen
+   * reader announcing "the team you know think is going to win", which is not a
+   * joke, just a broken sentence — and nothing about the rendered page would
+   * look wrong to whoever removed the attribute.
+   */
+  it("hides the struck word from the accessibility tree", async () => {
+    const src = await code(CAROUSEL);
+    expect(src).toMatch(/<s key=\{i\} aria-hidden="true">/);
   });
 });
 
