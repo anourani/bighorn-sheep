@@ -117,7 +117,7 @@ export const TOUR_STEPS: NonEmpty<TourStep> = [
   },
   {
     art: "lock",
-    title: "The Lock Timer",
+    title: "Your Pick Gets Locked In",
     body: "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
   },
   {

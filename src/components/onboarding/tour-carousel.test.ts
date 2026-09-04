@@ -51,8 +51,8 @@ describe("the sheet's height contract", () => {
   });
 
   /**
-   * Belt and braces rather than a live constraint: after the copy rewrite the
-   * longest title is 18 characters, nowhere near wrapping. It stays because a
+   * Belt and braces rather than a live constraint: the longest title is 24
+   * characters, still well short of wrapping. It stays because a
    * future title that DID wrap would take the panel's height with it — the same
    * failure as above, reached from the other end.
    */

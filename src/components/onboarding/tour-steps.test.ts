@@ -75,7 +75,7 @@ describe("the deck", () => {
       "The Picks Page",
       "The Week Selector",
       "Making Your Pick",
-      "The Lock Timer",
+      "Your Pick Gets Locked In",
       "The Standings Page",
       "Hidden Picks",
       "The Account Page",

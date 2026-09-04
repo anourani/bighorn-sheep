@@ -664,7 +664,7 @@ reading, but only the first kind is the lesson.
   - **The 180px art frame and the 72px body are FIXED, and that is the PRD's own
     acceptance criterion** — the sheet must not change height between steps.
     The title is `truncate`d as a belt-and-braces guard; no current title is
-    close to wrapping (the longest is 18 characters), but a longer one must
+    close to wrapping (the longest is 24 characters), but a longer one must
     clip rather than take the panel's height with it. Neither box may become
     content-driven.
   - **In the footer the dots yield and the buttons do not.** On the last card
