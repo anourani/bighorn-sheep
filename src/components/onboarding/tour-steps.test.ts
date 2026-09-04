@@ -9,7 +9,7 @@ import {
   type TourArtKind,
 } from "./tour-steps";
 
-const CTA = "Make my pick";
+const CTA = "I'm Ready";
 
 describe("the deck", () => {
   it("is seven steps", () => {
@@ -75,13 +75,13 @@ describe("the deck", () => {
       "The Picks Page",
       "The Week Selector",
       "Making Your Pick",
-      "The Lock Timer",
+      "Your Pick Gets Locked In",
       "The Standings Page",
       "Hidden Picks",
       "The Account Page",
     ]);
     expect(TOUR_STEPS.map((s) => bodyText(s.body))).toEqual([
-      "This is where you pick your team each week. Tap the week you want, then tap a team \u2014 that's it.",
+      "This is where you pick your team each week. Tap the week you want, then tap a team. That's it.",
       "Weeks act like tabs. Tap one and that week's teams appear below. Weeks you've already picked show their team.",
       "Select the team you know think is going to win. Remember, you can't pick the same team twice so choose wisely!",
       "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
@@ -140,6 +140,22 @@ describe("the deck", () => {
    * the landing page's pitch describes. This deck is shown to every league, so
    * it must not state the rule either way.
    */
+  /**
+   * No em dashes in anything a player reads.
+   *
+   * The prototype used them freely and they are all over this repo's prose, but
+   * the tour is product copy: at 15px in a 72px box an em dash reads as a pause
+   * the reader has to parse, where a full stop just ends the sentence. Titles
+   * never had one; step 1's body did, and this is what stops the next edit
+   * reintroducing it. En and figure dashes are caught too, since they are the
+   * characters a well-meaning find-and-replace reaches for next.
+   */
+  it("keeps typographic dashes out of the copy", () => {
+    for (const step of TOUR_STEPS) {
+      expect(`${step.title} ${bodyText(step.body)}`).not.toMatch(/[\u2012-\u2015]/);
+    }
+  });
+
   it("promises nothing the app does not actually do", () => {
     const copy = TOUR_STEPS.map((s) => `${s.title} ${bodyText(s.body)}`)
       .join(" ")
@@ -182,16 +198,17 @@ describe("tourView", () => {
   });
 
   /**
-   * The handoff is the whole point of the last card, and the label is the
-   * caller's — the tour says "Make my pick", the account page's replay says
-   * "Back to Account". Getting this wrong sends someone to the wrong place.
+   * The last card swaps Next for the caller's CTA, and that swap is the whole
+   * point of it. Both exits pass the same label today, so this asserts the
+   * mechanism with an arbitrary second string rather than a real one — the
+   * function must return what it was handed, not a constant of its own.
    */
   it("reads Next until the last step, then the caller's CTA", () => {
     for (let i = 0; i < 6; i += 1) {
       expect(tourView(i, CTA).nextLabel).toBe("Next");
     }
     expect(tourView(6, CTA).nextLabel).toBe(CTA);
-    expect(tourView(6, "Back to Account").nextLabel).toBe("Back to Account");
+    expect(tourView(6, "Anything Else").nextLabel).toBe("Anything Else");
   });
 
   it("softens Skip to 'Not now' only on the last step", () => {

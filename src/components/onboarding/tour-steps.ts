@@ -94,7 +94,7 @@ export const TOUR_STEPS: NonEmpty<TourStep> = [
     art: "tabs",
     tab: 0,
     title: "The Picks Page",
-    body: "This is where you pick your team each week. Tap the week you want, then tap a team — that's it.",
+    body: "This is where you pick your team each week. Tap the week you want, then tap a team. That's it.",
   },
   {
     art: "strip",
@@ -117,7 +117,7 @@ export const TOUR_STEPS: NonEmpty<TourStep> = [
   },
   {
     art: "lock",
-    title: "The Lock Timer",
+    title: "Your Pick Gets Locked In",
     body: "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
   },
   {
@@ -201,10 +201,11 @@ function pad(n: number): string {
 /**
  * Derive the whole of one step's chrome.
  *
- * `ctaLabel` is the caller's, not this module's: the tour hands off to the pick
- * screen ("Make my pick") and the account page's replay hands back to where it
- * started ("Back to Account"). One component, two exits — which is the reason
- * the label is a parameter rather than an eighth step.
+ * `ctaLabel` is a parameter rather than an eighth step because this module is
+ * pure and the label is the component's to choose. Both exits say the same
+ * thing now ("I'm Ready"), so `TourCarousel` holds the single literal and
+ * passes it here; the parameter stays because baking a caller's string into a
+ * pure function is how it stops being one.
  */
 export function tourView(index: number, ctaLabel: string): TourView {
   const i = clampStep(index);

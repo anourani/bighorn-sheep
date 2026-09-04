@@ -54,18 +54,27 @@ export type TourExit = "finished" | "skipped";
  * from the bottom of the screen. They land in different tailwind-merge groups
  * (`animate-*` and `sm:animate-*`), so both survive `cn()`.
  */
+/**
+ * The last card's primary button.
+ *
+ * One label for both exits, and the prop that used to carry it is gone. It read
+ * "Make my pick" from the first run and "Back to Account" from the replay —
+ * each naming its own destination — which meant two call sites owning a string
+ * that had to stay in step with where the dialog happened to be mounted. The
+ * label says nothing about destination now, so there is nothing left for a
+ * caller to decide, and a prop both callers set identically is the kind of
+ * thing that drifts.
+ *
+ * Neither exit navigates: see the note on `onDone` below.
+ */
+const CTA_LABEL = "I'm Ready";
+
 export function TourCarousel({
   open,
-  ctaLabel,
   showSkip = true,
   onDone,
 }: {
   open: boolean;
-  /**
-   * The last card's primary button. The tour hands off to the pick screen
-   * ("Make my pick"); the account page's replay hands back ("Back to Account").
-   */
-  ctaLabel: string;
   showSkip?: boolean;
   /**
    * Called once, on the way out. `"finished"` means they reached the end and
@@ -73,6 +82,14 @@ export function TourCarousel({
    * scrim. Both callers treat the two the same — seeing the tour and declining
    * it are equally a decision — but the reason is passed so that stops being an
    * assumption baked into this component.
+   *
+   * **It must not navigate, and neither must this component.** Where a player
+   * lands is decided by where the dialog was MOUNTED, not by anything it does
+   * on the way out: the first run renders over `/app`, so finishing reveals My
+   * Picks; the replay renders over `/app/account`, so finishing reveals the
+   * account page. Both requirements are satisfied by closing and nothing else.
+   * A `router.push` here would be a no-op on the happy path and a wrong
+   * destination the moment either call site moved.
    */
   onDone: (reason: TourExit) => void;
 }) {
@@ -146,7 +163,7 @@ export function TourCarousel({
 
   if (!open) return null;
 
-  const view = tourView(index, ctaLabel);
+  const view = tourView(index, CTA_LABEL);
 
   const next = () => {
     if (view.isLast) onDone("finished");
