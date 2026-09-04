@@ -18,7 +18,7 @@ import { TourCarousel, type TourExit } from "./TourCarousel";
  * Writing on BOTH exits — finished and skipped — is deliberate. Skipping is a
  * decision about the tour, not a deferral of it, and the design says so twice:
  * the last card's Skip reads "Not now", and the account page carries a permanent
- * "Replay the Tour" row precisely so that dismissing this costs nothing. A tour
+ * "Show Me Around" row precisely so that dismissing this costs nothing. A tour
  * that came back until you sat through it would be the version of this feature
  * people disable.
  *
