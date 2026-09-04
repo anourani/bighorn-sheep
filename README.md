@@ -99,7 +99,8 @@ select 'column: ' || c as object,
        case when exists (select 1 from information_schema.columns
          where table_schema='public' and table_name='profiles' and column_name=c)
        then 'PRESENT' else 'MISSING' end as status
-from unnest(array['first_name','last_name','avatar_url','display_name']) c
+from unnest(array['first_name','last_name','avatar_url','display_name',
+                  'tour_completed_at']) c
 union all
 select 'function: ' || f,
        case when exists (select 1 from information_schema.routines

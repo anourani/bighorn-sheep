@@ -1,7 +1,8 @@
-import { loadLeague } from "@/lib/league/load";
+import { loadLeague, viewerTourCompleted } from "@/lib/league/load";
 import { MyPicksClient } from "@/components/picks/MyPicksClient";
 import { NoLeagueState } from "@/components/app/NoLeagueState";
 import { JoinOutcome } from "@/components/app/JoinOutcome";
+import { FirstRunTour } from "@/components/onboarding/FirstRunTour";
 import { normalizeInviteCode } from "@/lib/league/join";
 
 /**
@@ -34,14 +35,37 @@ export default async function MyPicksPage({
 
   const load = await loadLeague();
 
+  // Only for someone who is actually in a league — see the tour's placement
+  // below. Read unconditionally so the two awaits are not serialised behind a
+  // branch; it is one indexed read and `cache()`d.
+  const tourCompleted = await viewerTourCompleted();
+
   // The banner sits OUTSIDE the page root, never inside it: both roots below
   // carry `.stagger`, whose `> *` rule applies a reveal animation and an
   // :nth-child delay to every direct child — a banner in there would fade in
   // late, and would shift every sibling's delay by one.
+  //
+  // The tour is here for a harder version of the same reason. It is a
+  // `position: fixed` dialog that does not portal, and `.stagger`'s reveal
+  // leaves a transform applied for the life of the page — which makes that root
+  // a containing block for fixed descendants, so a tour rendered anywhere
+  // inside `MyPicksClient` would be pinned to a page block rather than the
+  // viewport. `PickStickyBar` carries the long version of this note.
+  //
+  // It is inside the league branch rather than beside it: a player with no
+  // league has nothing to be toured around, and the first card would be
+  // pointing at tabs they cannot use.
   return (
     <>
       <JoinOutcome invite={invite} notice={notice} />
-      {load.kind !== "ok" ? <NoLeagueState /> : <MyPicksClient data={load.data} />}
+      {load.kind !== "ok" ? (
+        <NoLeagueState />
+      ) : (
+        <>
+          <MyPicksClient data={load.data} />
+          <FirstRunTour completed={tourCompleted} />
+        </>
+      )}
     </>
   );
 }

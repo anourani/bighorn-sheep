@@ -15,6 +15,19 @@ export interface Database {
           avatar_url: string | null;
           /** One of src/lib/profile/animals.ts — validated in the action, not by a constraint. */
           favorite_animal: string | null;
+          /**
+           * When the viewer finished or dismissed the first-run tour (0016).
+           * Null means they have not seen it, which is the whole fire-once rule.
+           *
+           * Exactly ONE query in the app names this column — `viewerTourCompleted`
+           * in `lib/league/load.ts` — and that is a rule rather than an accident.
+           * PostgREST raises 42703 on an unknown column instead of returning
+           * undefined, so naming it in `loadLeague`'s or `loadAccount`'s profile
+           * select would fail those queries WHOLE in the window between this
+           * merging and 0016 being applied by hand. Confined to its own read,
+           * the blast radius of an unapplied migration is one boolean.
+           */
+          tour_completed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -23,6 +36,7 @@ export interface Database {
           last_name?: string;
           avatar_url?: string | null;
           favorite_animal?: string | null;
+          tour_completed_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -31,6 +45,7 @@ export interface Database {
           last_name?: string;
           avatar_url?: string | null;
           favorite_animal?: string | null;
+          tour_completed_at?: string | null;
           created_at?: string;
         };
         Relationships: [];

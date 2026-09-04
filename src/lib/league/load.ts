@@ -523,6 +523,56 @@ export const accountClosed = cache(async (): Promise<boolean> => {
 });
 
 /**
+ * Whether the viewer has already seen the first-run tour.
+ *
+ * **Its own isolated `select`, and that is the load-bearing part.** Every other
+ * read of `profiles` in this file names its columns explicitly (the account
+ * loader, the member fold, the standings join), and PostgREST answers an
+ * unknown column with `42703` rather than `undefined` — so adding
+ * `tour_completed_at` to any one of them would have taken the picks screen, the
+ * standings board and the account page down together in the window between this
+ * merging and 0016 being applied by hand. One extra indexed read of a single
+ * column is the price of that not being possible.
+ *
+ * **Fails OPEN**: any error resolves to "already seen". The asymmetry is the
+ * whole reason to state it — failing the other way would mean an unapplied 0016
+ * fires the tour at every player on every load, with the dismissal write
+ * failing for exactly the same reason, so nobody could put it away. Inert is
+ * recoverable by running one migration; undismissable is not recoverable at all
+ * without a deploy. Same shape as {@link accountClosed}'s reasoning, applied to
+ * a much smaller stake.
+ */
+export const viewerTourCompleted = cache(async (): Promise<boolean> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return true;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("tour_completed_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "[viewerTourCompleted] lookup failed — suppressing the tour. If this is " +
+        "a 42703 on tour_completed_at, migration 0016 has not been applied.",
+      error,
+    );
+    return true;
+  }
+
+  // A missing profile row is not a new player to teach — `handle_new_user`
+  // creates one on signup, so its absence means something is wrong rather than
+  // that someone is early. Suppress, consistent with the error branch.
+  if (!data) return true;
+
+  return data.tour_completed_at !== null;
+});
+
+/**
  * Whether the viewer owes their active league's buy-in — the header's red dot.
  *
  * Its own loader rather than a field on `loadAccount()`, because the header

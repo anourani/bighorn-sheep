@@ -37,11 +37,13 @@ function MoreRow({ label, children }: { label: string; children: React.ReactNode
 export function MoreSection({
   group,
   onDelete,
+  onReplayTour,
   now,
 }: {
   /** Null when the viewer belongs to no league — then there is no code to share. */
   group: Group | null;
   onDelete: () => void;
+  onReplayTour: () => void;
   /**
    * Resolved by the server component, not `new Date()` here: a clock read during
    * render is a hydration mismatch waiting for someone to load the page across
@@ -105,6 +107,26 @@ export function MoreSection({
           >
             Feedback
           </a>
+        </MoreRow>
+
+        {/* The tour's permanent home, and the reason skipping it costs nothing.
+            Never hidden, unlike the invite row above: the invite becomes a dead
+            end once `join_by_invite` starts refusing the code, whereas the rules
+            this explains are worth re-reading in week twelve.
+
+            The design draws this as a full-width button with a chevron under a
+            "How to play" heading of its own. It is a `MoreRow` with a right-hand
+            control here, matching the two rows beside it — that heading belongs
+            to a redesign of this page that is a separate piece of work. */}
+        <MoreRow label="App Tour">
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(SPEC_BUTTON_LIGHT, "min-w-[100px]")}
+            onClick={onReplayTour}
+          >
+            Replay
+          </Button>
         </MoreRow>
 
         <MoreRow label="Danger Zone!!">
