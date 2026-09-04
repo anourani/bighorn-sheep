@@ -118,7 +118,7 @@ export function MoreSection({
             "How to play" heading of its own. It is a `MoreRow` with a right-hand
             control here, matching the two rows beside it — that heading belongs
             to a redesign of this page that is a separate piece of work. */}
-        <MoreRow label="App Tour">
+        <MoreRow label="Show Me Around">
           <Button
             variant="outline"
             size="sm"

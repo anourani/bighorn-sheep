@@ -589,7 +589,7 @@ reading, but only the first kind is the lesson.
   explains the rules in-product.** `src/components/onboarding/` — a bottom sheet
   on a phone and a centred 480px card from `sm`, over a scrim, naming the three
   tabs and then the four rules that eliminate people. It fires once on `/app`
-  for a member who has not seen it, and has a permanent "App Tour → Replay" row
+  for a member who has not seen it, and has a permanent "Show Me Around → Replay" row
   in the account page's Additional Settings. `0016_profile_tour` is the
   migration, and **it must be applied to production by hand.** Design:
   `Onboarding Flows.dc.html` flow 2A and its `TourCarousel.dc.html`. Nine things:
