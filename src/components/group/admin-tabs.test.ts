@@ -110,3 +110,66 @@ describe("the drawer's one-scroller rule", () => {
     expect(src).not.toMatch(/\boverflow-(y|x)?-?(auto|scroll)\b/);
   });
 });
+
+describe("the Members roster's grid", () => {
+  /**
+   * The column headers and the rows are TWO ELEMENTS, not a `<table>`, so
+   * nothing structural keeps their tracks in step. Add a track to one and not
+   * the other and every header label sits over the wrong control — with no
+   * error, no failing type and nothing visibly broken below `lg`, where the
+   * header is `hidden` and the row stacks. Both strings must stay identical.
+   */
+  it("declares the same six tracks on the header and on the row", async () => {
+    const src = await code(DRAWER);
+    const templates = src.match(/lg:grid-cols-\[[^\]]+\]/g) ?? [];
+    const roster = templates.filter((t) => t.includes("72px"));
+    expect(roster).toHaveLength(2);
+    expect(roster[0]).toBe(roster[1]);
+    // Number · member · status pill · Paid · Preseason · Remove.
+    expect(roster[0]).toBe("lg:grid-cols-[32px_minmax(0,1fr)_72px_168px_200px_88px]");
+  });
+
+  /**
+   * Six tracks need six cells. The header spaces the number, the status pill
+   * and the Remove column with bare `<span />`s, so a dropped one shifts every
+   * label after it one column left.
+   */
+  it("gives the header a cell for all six", async () => {
+    const src = await code(DRAWER);
+    const header = src.slice(src.indexOf('lg:grid-cols-[32px'), src.indexOf("</ul>"));
+    const cells = header.slice(0, header.indexOf("</div>"));
+    expect(cells.match(/<span \/>/g) ?? []).toHaveLength(3);
+    for (const label of ["Member", "Paid", "Preseason"]) {
+      expect(cells).toContain(`>${label}<`);
+    }
+  });
+
+  /**
+   * The roster is sorted for display and the row number is its index, so the
+   * two have to come off the same array — numbering an unsorted list, or
+   * numbering `members` while rendering `roster`, both produce a list whose
+   * numerals do not run 1..N in order.
+   */
+  it("numbers the sorted array rather than the raw prop", async () => {
+    const src = await code(DRAWER);
+    expect(src).toContain("const roster = useMemo(() => sortRosterByName(members), [members])");
+    expect(src).toContain("{roster.map((m, i) => {");
+    expect(src).not.toContain("{members.map(");
+  });
+
+  /**
+   * The one screen that administers real people shows the whole name. The two
+   * switches and the Remove button label themselves with the SAME string, so
+   * the accessible name never disagrees with the visible one.
+   */
+  it("renders the full name and labels the whole row with it", async () => {
+    const src = await code(DRAWER);
+    expect(src).toContain("const fullName = formatFullName(m.firstName, m.lastName)");
+    expect(src).toContain("{fullName}</span>");
+    expect(src).toContain("a11y={`Buy-in paid — ${fullName}`}");
+    expect(src).toContain("a11y={`Show preseason weeks — ${fullName}`}");
+    // RemoveControl takes the row's name rather than re-deriving an
+    // abbreviation, which is how the two would drift apart.
+    expect(src).not.toContain("member.name");
+  });
+});
