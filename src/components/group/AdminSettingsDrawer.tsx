@@ -42,7 +42,7 @@ import {
   type ReminderKind,
   type ReminderSnapshot,
 } from "@/lib/league/reminders";
-import { formatDisplayName } from "@/lib/league/name";
+import { formatDisplayName, formatFullName, sortRosterByName } from "@/lib/league/name";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { SeasonPhase } from "@/lib/game/season";
 import type { EliminationType, Group, Member, TieRule } from "@/lib/league/types";
@@ -657,6 +657,23 @@ function MembersSection({
     setPaidOverrides((o) => pruneAgreed(o, members, (m) => m.buyInPaid));
     setPreseasonOverrides((o) => pruneAgreed(o, members, (m) => m.showPreseason));
   }, [members]);
+
+  /*
+   * Alphabetical, and a NEW array so the prop above is never mutated.
+   *
+   * The membership query behind this list (`loadLeague`, load.ts) has no
+   * `.order(...)` at all, so what arrives is heap order — which Postgres is free
+   * to change after any UPDATE. Flipping a Paid switch could therefore reshuffle
+   * the roster under the admin who flipped it. Sorting here rather than adding
+   * an `.order(...)` to the query is not a preference: the names live in a
+   * separate `profiles` fetch that is joined client-side, so SQL cannot order on
+   * them.
+   *
+   * `paidCount` and the prune effect deliberately keep reading `members`. Both
+   * are order-independent, and the effect's dependency on the PROP's identity is
+   * what makes it fire on every server refresh.
+   */
+  const roster = useMemo(() => sortRosterByName(members), [members]);
   const paidCount = members.filter(paidFor).length;
   // Matches set_member_preseason's own condition, so the UI and the database
   // close the window at the same moment.
@@ -758,17 +775,21 @@ function MembersSection({
           preseason" each wrapped to two lines under their switch, which set the
           height of every row in the roster. Only the MEMBER track is `1fr`, so
           widening these takes the space out of a name column that had ~900px
-          for "Jane D." and gives it to the two sub-lines that were short of it.
+          for one name and gives it to the two sub-lines that were short of it.
+          The row-number track takes another 48 (32 plus the gap), which leaves
+          the member column measured at 304px in a 1280px window — room for a
+          full name, and `truncate` for the one that outgrows it.
 
           aria-hidden below, and that is not an oversight. Every Switch below already
           carries its member's name in its own accessible label ("Buy-in paid —
-          Jane D."), so these four words are decoration for sighted readers; left
+          Jane Doe"), so these four words are decoration for sighted readers; left
           exposed, a screen reader would announce four orphan headings before
           every roster. Hidden below `lg`, where each row still labels itself. */}
       <div
         aria-hidden
-        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_168px_200px_88px]"
+        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[32px_minmax(0,1fr)_72px_168px_200px_88px]"
       >
+        <span />
         <Label className="text-ink-mute">Member</Label>
         <span />
         <Label className="text-ink-mute">Paid</Label>
@@ -777,7 +798,7 @@ function MembersSection({
       </div>
 
       <ul className="divide-y divide-line rounded-control border border-line">
-        {members.map((m) => {
+        {roster.map((m, i) => {
           const paid = paidFor(m);
           const preseason = preseasonFor(m);
           // With the time, not just the date: an admin correcting a mistake
@@ -786,15 +807,40 @@ function MembersSection({
           // `LocalTime` because the drawer never renders on the server, so there
           // is no hydration mismatch to design around.
           const paidStamp = m.buyInPaidAt ? formatMonthDayClock(m.buyInPaidAt) : "";
+          // The unabbreviated name, for the visible cell AND for every
+          // accessible label on the row, so the two can never disagree. This is
+          // the one screen that administers real people rather than displaying
+          // them to the league, so "Alex N." is the wrong form here.
+          const fullName = formatFullName(m.firstName, m.lastName);
           return (
             <li
               key={m.id}
-              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[minmax(0,1fr)_72px_168px_200px_88px] lg:items-center lg:gap-x-4 lg:space-y-0"
+              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[32px_minmax(0,1fr)_72px_168px_200px_88px] lg:items-center lg:gap-x-4 lg:space-y-0"
             >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
+                {/*
+                  INSIDE the `lg:contents` wrapper, as its first child, so one
+                  element does both jobs: below `lg` it sits immediately left of
+                  the name in the stacked flex row, and from `lg` the wrapper
+                  goes `display: contents` and this becomes the grid item filling
+                  the new leading track. A sibling placed before the wrapper
+                  would be orphaned at the top of the mobile stack instead.
+
+                  `aria-hidden` for the same reason the column header above is:
+                  the <ul>/<li> structure already announces "item 1 of 30", so an
+                  exposed numeral would prefix every single row with a duplicate
+                  of it. `tabular-nums` is what keeps the numerals aligned with
+                  each other down the list rather than drifting with digit width.
+                */}
+                <span
+                  aria-hidden
+                  className="shrink-0 tabular-nums text-xs text-ink-mute lg:justify-self-start"
+                >
+                  {i + 1}.
+                </span>
                 <span className="min-w-0 flex-1 lg:min-w-0">
                   <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                    <span className="truncate text-sm font-medium text-ink">{fullName}</span>
                     {m.role === "admin" ? (
                       <Label className="rounded bg-[#EEF1F6] px-1 text-ink-mute">Admin</Label>
                     ) : null}
@@ -834,7 +880,7 @@ function MembersSection({
                 checked={paid}
                 disabled={pending.has(`${m.id}:paid`)}
                 onChange={(next) => toggle(m, "paid", next)}
-                a11y={`Buy-in paid — ${m.name}`}
+                a11y={`Buy-in paid — ${fullName}`}
               />
               <MemberToggle
                 label="Show preseason weeks"
@@ -850,10 +896,11 @@ function MembersSection({
                 checked={preseasonOpen && preseason}
                 disabled={!preseasonOpen || pending.has(`${m.id}:preseason`)}
                 onChange={(next) => toggle(m, "preseason", next)}
-                a11y={`Show preseason weeks — ${m.name}`}
+                a11y={`Show preseason weeks — ${fullName}`}
               />
               <RemoveControl
                 member={m}
+                name={fullName}
                 open={removalOpen}
                 confirming={confirmingId === m.id}
                 pending={pending.has(`${m.id}:remove`)}
@@ -892,6 +939,7 @@ function MembersSection({
  */
 function RemoveControl({
   member,
+  name,
   open,
   confirming,
   pending,
@@ -900,6 +948,8 @@ function RemoveControl({
   onConfirm,
 }: {
   member: Member;
+  /** The row's full name, passed in so one source of truth labels the whole row. */
+  name: string;
   open: boolean;
   confirming: boolean;
   pending: boolean;
@@ -917,7 +967,7 @@ function RemoveControl({
           size="sm"
           disabled={pending}
           onClick={onConfirm}
-          aria-label={`Confirm removing ${member.name} from the league`}
+          aria-label={`Confirm removing ${name} from the league`}
         >
           {pending ? "…" : "Remove"}
         </Button>
@@ -936,7 +986,7 @@ function RemoveControl({
         disabled={!open}
         onClick={onArm}
         className={open ? "text-[#8A2C2C]" : undefined}
-        aria-label={`Remove ${member.name} from the league`}
+        aria-label={`Remove ${name} from the league`}
       >
         Remove
       </Button>
