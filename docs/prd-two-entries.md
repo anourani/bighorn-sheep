@@ -329,10 +329,36 @@ the default is `${singular}s`, and "entrys" is the one word this app's helper ge
 wrong. `view.test.ts` has pinned `countNoun(2, "entry", "entries")` since before
 anything called it that way.
 
-**Account.** League Dues renders one card per entry, each with its own paid badge and
-stamp — an admin ticks them off independently, so a player can genuinely be paid for
-one and not the other — plus a total still owed. The header's red dot lights when
-**any** entry is unpaid (`.some`, not `.find`). Delete Account says it closes both.
+**Account — League Dues** is its own redesign (Figma `3934:62955`, ten variants:
+three states x two viewports x one or two entries). ONE card with a **row per
+entry** — Entry Name / League Buy In / Status, three columns from `lg` and stacked
+below it — over a shared deadline line, and a footer that is the module's whole
+per-state behaviour.
+
+**`partial` is the state two entries made possible**, and it is why the footer keys
+off a fold rather than a boolean: one entry settled and one not still owes, so
+`unpaid` and `partial` both get How to Pay and only `paid` gets the thank-you.
+
+Two deliberate deviations from the frame, both recorded in
+`league-dues-module.test.ts`:
+
+- **The stamp keeps its clock.** The frame reads "Updated 10/21"; the clock exists
+  because an admin toggled paid off and on in one afternoon and watched a date that
+  never moved — `formatMonthDay` was deleted for it. Transcribing the frame would
+  reintroduce that bug exactly. The stamp is `whitespace-nowrap` inside a
+  `flex-wrap` row, so it drops to its own line intact rather than breaking between
+  the date and the time.
+- **The value is the TOTAL owed**, under the frame's "League Buy In" label. The two
+  agree whenever the site fee is zero — the row the frame draws — and where a fee
+  exists the breakdown sits underneath. This module's job is to say what you owe,
+  and under-reporting is the harmful direction.
+
+**The "Add 2nd Entry" button lives here**, below the card on the one-entry variants.
+It had two invented placements (the picks page, a row in Additional Settings) while
+this design was outstanding; both are gone.
+
+The header's red dot lights when **any** entry is unpaid (`.some`, not `.find`).
+Delete Account says it closes both.
 
 **Admin drawer.** One roster row per entry, name plus badge, with "(Entry 2)"
 suffixed onto the switch and Remove labels so three controls carrying the same name
@@ -389,6 +415,17 @@ second entry (would mean `entry_no` is not reaching `toMember`).
       exposed rather than `aria-hidden` when it carries tabs.
 - [x] The badge appears on entry 2 only, with `sr-only` text.
 - [x] Counts read "entries"; `InviteCta` uses the explicit plural.
+- [x] League Dues is one card with a row per entry, states `paid` / `unpaid` /
+      `partial`, and carries the Add 2nd Entry button on the one-entry variants.
+      Measured in Chromium at 1280 and 393: 12px section gap, 4px header gap,
+      20/-0.8px title, 16px `#757575` subtitle, card `#F3F3F3` at 8px radius with
+      20/16 padding and a 16px gap, three equal 178.7px columns at a 20px gap on
+      desktop and full-width stacked at a 16px gap on mobile, 6px label-to-value,
+      1px `#D9D9D9` dividers, `#0C6F28` paid badge at 4px radius, 18px/-0.18px
+      values, and no horizontal scroll at either width.
+- [x] An admin can mark one entry paid and leave the other unpaid — verified
+      against PostgreSQL 16 through `set_member_buy_in(..., p_entry_no)`, including
+      that a three-argument call still means entry 1.
 - [x] `npm test` (849) and `npm run build` pass; `npm run typecheck` is at its
       pre-existing baseline of 8 errors in `card-reveal.test.ts`, unrelated to this
       change.

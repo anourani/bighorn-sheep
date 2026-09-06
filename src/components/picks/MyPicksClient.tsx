@@ -38,7 +38,6 @@ import { recordsThroughWeek } from "@/lib/league/records";
 import type { LeagueData, ViewerEntry } from "@/lib/league/load";
 import type { EntryNo } from "@/lib/league/types";
 import { EntryTabs } from "./EntryTabs";
-import { AddEntryCta } from "@/components/app/AddEntryCta";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import { PICKS_ENTRY_KEY, PICKS_LAYOUT_KEY } from "@/lib/prefs";
@@ -543,21 +542,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
 
           `pb-6` is the design's own 24px down to the week strip; the strip has
           no top margin of its own, so this owns the seam. */}
-      {/* Where the switcher WILL be. Shown only while a second entry is still
-          possible, so the row disappears the moment it is taken (the switcher
-          replaces it) and once entry closes for the league — `add_entry` refuses
-          after `entry_closes_at`, and an affordance that is going to be refused
-          is worse than none. `data.phase === "preseason"` IS "entry is open";
-          `seasonPhase` derives both from the same timestamp. */}
-      {entries.length < 2 && data.phase === "preseason" ? (
-        <AddEntryCta
-          groupId={group.id}
-          buyInCents={group.buyInCents}
-          siteFeeCents={group.siteFeeCents}
-          className="mb-6"
-        />
-      ) : null}
-
       <EntryTabs
         tabs={entries.map((e) => ({
           entryNo: e.entryNo,

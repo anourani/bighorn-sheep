@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buyInView } from "./league-dues";
+import { buyInView, duesState } from "./league-dues";
 
 function view(over: Partial<Parameters<typeof buyInView>[0]> = {}) {
   return buyInView({
@@ -50,5 +50,39 @@ describe("buyInView", () => {
     const v = view({ buyInPaid: false, buyInPaidAt: "2026-10-21T16:00:00Z" });
     expect(v.badge).toBe("Unpaid");
     expect(v.updatedIso).toBe("2026-10-21T16:00:00Z");
+  });
+});
+
+describe("duesState", () => {
+  const e = (buyInPaid: boolean) => ({ buyInPaid });
+
+  it("is paid only when every entry is settled", () => {
+    expect(duesState([e(true)])).toBe("paid");
+    expect(duesState([e(true), e(true)])).toBe("paid");
+  });
+
+  it("is unpaid when none are", () => {
+    expect(duesState([e(false)])).toBe("unpaid");
+    expect(duesState([e(false), e(false)])).toBe("unpaid");
+  });
+
+  /*
+   * The state two entries made possible, and the one the design gives its own
+   * variant. It is the interesting case: the module still has to print How to
+   * Pay, because a player who has settled one entry still owes for the other.
+   */
+  it("is partial when one of two is settled, either way round", () => {
+    expect(duesState([e(true), e(false)])).toBe("partial");
+    expect(duesState([e(false), e(true)])).toBe("partial");
+  });
+
+  /*
+   * "No entries" is not evidence anything has been settled. Answering `paid`
+   * would print a thank-you to somebody who owes nothing to nobody — and the
+   * card would then be the one surface claiming a league membership the rest of
+   * the page says does not exist.
+   */
+  it("does not thank anyone for an empty list", () => {
+    expect(duesState([])).toBe("unpaid");
   });
 });

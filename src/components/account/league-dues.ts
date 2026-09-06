@@ -57,3 +57,27 @@ export function buyInView(input: {
     updatedIso: input.buyInPaidAt,
   };
 }
+
+/**
+ * How the module as a whole reads: every entry settled, none of them, or some.
+ *
+ * `partial` is a state the card could not previously have — it needs two entries
+ * (0017) and it is the reason this is a fold rather than a boolean. The design
+ * gives it its own variant precisely because it is the interesting one: one
+ * entry paid and one not is exactly when a player needs to see both rows and
+ * still be told how to pay.
+ *
+ * An empty list answers `unpaid`. It cannot happen from the account page (a
+ * viewer with no membership gets the join card instead of this one), but "no
+ * entries" is not evidence that anything has been settled, and the alternative
+ * default would print a thank-you to somebody who owes nothing to nobody.
+ */
+export type DuesState = "paid" | "unpaid" | "partial";
+
+export function duesState(entries: readonly { buyInPaid: boolean }[]): DuesState {
+  if (entries.length === 0) return "unpaid";
+  const paid = entries.filter((e) => e.buyInPaid).length;
+  if (paid === entries.length) return "paid";
+  if (paid === 0) return "unpaid";
+  return "partial";
+}

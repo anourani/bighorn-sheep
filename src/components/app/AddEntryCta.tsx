@@ -31,17 +31,21 @@ const ERROR_COPY: Record<string, string> = {
 /**
  * "Add a second entry" — the button and its confirmation.
  *
- * NO MOCKUP EXISTS for this. The Figma set covers the switcher and the
- * standings badge but not how a second entry is created, so the placement here
- * is a decision rather than a transcription: a plain row where the switcher will
- * appear once it is taken, and the same row again in the account page's
- * Additional Settings. Both are where someone already goes to think about their
- * entries. Revisit when the design catches up.
+ * PLACEMENT IS THE LEAGUE DUES MODULE'S, and this component is only the
+ * control. Figma `3934:62955` puts an "Add 2nd Entry" button below the dues card
+ * on both one-entry variants, which is why this renders a bare button rather
+ * than the labelled row it began as: it had two invented placements (the picks
+ * page, and a row in Additional Settings) while that design was outstanding, and
+ * both are gone now that there is a designed home for it.
  *
- * In `components/app/` because it renders on two unrelated screens — the same
- * reason `NoLeagueState` lives there. `picks/` and `account/` are each one
- * screen's vocabulary, and importing across them is how a component quietly
- * becomes shared without anyone saying so.
+ * The button is the design's `size=Small, style=Secondary` — 36px, `min-w-100`,
+ * 8px radius, white on a hairline — which is `Button variant="outline"
+ * size="sm"` with the minimum width added.
+ *
+ * It stays in `components/app/` rather than moving into `account/`: it owns a
+ * server action and a confirmation dialog, and `account/` is documented as the
+ * account PAGE's vocabulary. One caller today is not an argument for burying it
+ * in the file that calls it.
  *
  * THE CONFIRMATION IS NOT CEREMONY. A second entry is a second buy-in — real
  * money owed to whoever runs the league — and, unlike almost everything else in
@@ -55,9 +59,13 @@ export function AddEntryCta({
   className,
 }: {
   groupId: string;
-  /** The league's buy-in, so the dialog can name what a second entry costs. */
-  buyInCents: number;
-  siteFeeCents: number;
+  /**
+   * The league's buy-in, so the dialog can name what a second entry costs.
+   * Optional because the amount is a nicety in the copy, not the point of it —
+   * a league that has not set a price still gets the "settle up" sentence.
+   */
+  buyInCents?: number;
+  siteFeeCents?: number;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -84,24 +92,18 @@ export function AddEntryCta({
     });
   }
 
+  const owed = (buyInCents ?? 0) + (siteFeeCents ?? 0);
+
   return (
     <>
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3 rounded-control bg-fill-soft p-4",
-          className,
-        )}
+      <Button
+        variant="outline"
+        size="sm"
+        className={cn("min-w-[100px] self-start", className)}
+        onClick={() => setOpen(true)}
       >
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-shell-ink">Play a second entry</p>
-          <p className="text-xs text-shell-mute">
-            A separate set of picks, with its own dues.
-          </p>
-        </div>
-        <Button variant="outline" className="shrink-0" onClick={() => setOpen(true)}>
-          Add Entry
-        </Button>
-      </div>
+        Add 2nd Entry
+      </Button>
 
       <Modal
         open={open}
@@ -128,8 +130,8 @@ export function AddEntryCta({
           </p>
           <p>
             <b className="font-semibold text-ink">It costs another buy-in.</b>{" "}
-            {buyInCents > 0
-              ? `That's ${formatMoney(buyInCents + siteFeeCents)} more owed to your league.`
+            {owed > 0
+              ? `That's ${formatMoney(owed)} more owed to your league.`
               : "Settle up with whoever runs your league."}
           </p>
           <p>

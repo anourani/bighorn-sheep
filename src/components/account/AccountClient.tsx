@@ -14,6 +14,7 @@ import { TourCarousel } from "@/components/onboarding/TourCarousel";
 import { AccountSection, CARD, PAGE_TITLE } from "@/components/account/surfaces";
 import { SPEC_BUTTON_DARK } from "@/components/account/spec";
 import { cn } from "@/lib/cn";
+import { isEntryOpen } from "@/lib/game/season";
 import type { AccountData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
@@ -112,7 +113,16 @@ export function AccountClient({
             `/app/standings` offer the same `JoinByCode` through `NoLeagueState`,
             and three entry points is intentional. */}
         {activeLeague ? (
-          <LeagueDues leagues={activeEntries} />
+          <LeagueDues
+            leagues={activeEntries}
+            viewerName={viewer.name}
+            // Exactly one entry, and the league's window still open — the same
+            // two conditions `add_entry` itself enforces.
+            canAddEntry={
+              activeEntries.length === 1 &&
+              isEntryOpen(new Date(activeLeague.group.entryClosesAt), new Date(now))
+            }
+          />
         ) : (
           <AccountSection title="Join an Existing League">
             <div className={CARD}>
@@ -137,9 +147,6 @@ export function AccountClient({
             onDelete={() => setDeleteOpen(true)}
             onReplayTour={() => setTourOpen(true)}
             now={now}
-            // Exactly one entry, and a league to add a second to. The window
-            // check is MoreSection's own, off the same `now` its invite row uses.
-            canAddEntry={activeEntries.length === 1}
           />
         </div>
       </div>

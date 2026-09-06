@@ -1,10 +1,11 @@
+import { Fragment } from "react";
 import { LocalTime } from "@/components/ui/LocalTime";
+import { Label } from "@/components/ui/Label";
+import { AddEntryCta } from "@/components/app/AddEntryCta";
 import { VENMO_HANDLE, VENMO_URL } from "@/lib/app";
 import { cn } from "@/lib/cn";
-import { formatMoney } from "@/lib/money";
-import { H3 } from "@/lib/type-scale";
-import { AccountSection, BODY, CARD } from "./surfaces";
-import { buyInView } from "./league-dues";
+import { AccountSection, BODY, CARD, VALUE } from "./surfaces";
+import { buyInView, duesState } from "./league-dues";
 import type { LeagueSummary } from "@/lib/league/load";
 
 /**
@@ -30,173 +31,219 @@ function BuyInBadge({ paid, children }: { paid: boolean; children: React.ReactNo
   );
 }
 
-/**
- * "League Dues" — what you owe and whether the commissioner has ticked you off.
- *
- * One card, full width in the account page's 656px column. It was the page's
- * right-hand column under the title "For the Common Good", and it carried a
- * second "Say Something Nice" card that has since moved to Additional Settings
- * as a row with a Feedback button — hence the rename of this file, the module
- * beside it and its test.
- *
- * The card turns over at `lg`, which is where the whole app changes shape: a
- * stack on a phone, and a row on a desktop with the figure on the left, the
- * payment state on the right and a full-height rule between them. That rule is
- * the one fragile part — it reaches full height off the flex default
- * `align-items: stretch`, so **nothing in the card's class list may become
- * `items-start`**, and its `lg:h-auto` is what releases the base `h-px`.
- *
- * No state and no handlers of its own: the paid flag is admin-controlled and
- * read-only to the member (migration 0007), the amount is admin-controlled
- * (0010), and the Venmo link is an ordinary anchor. This docblock used to claim
- * that made it a server component, which was never true in this position —
- * `AccountClient` is `"use client"` and imports it directly, so it crosses into
- * the client bundle with everything else that file names, and `LocalTime` below
- * is itself a client component. A statement about the component, not the bundle.
- */
-/**
- * One entry's dues card.
- *
- * `showEntry` draws the entry number as a badge beside "League Buy In" — only
- * when there is more than one card on screen, because a solitary card labelled
- * "Entry 1" invites the question of where entry 2 is.
- */
-function DuesCard({ league, showEntry }: { league: LeagueSummary; showEntry: boolean }) {
-  const view = buyInView({
-    buyInCents: league.group.buyInCents,
-    siteFeeCents: league.group.siteFeeCents,
-    buyInPaid: league.buyInPaid,
-    buyInPaidAt: league.buyInPaidAt,
-  });
 
+/** One field in an entry's row — its label over its value. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-      <div
-        className={cn(
-          CARD,
-          "flex flex-col gap-3 lg:flex-row lg:gap-5",
-          // Unpaid wears a 5px red cap and squares off its top corners against
-          // it; paid has no cap and is a plain card. Both are in the mock-ups,
-          // and the cap is the only thing that distinguishes the two states at a
-          // glance from across the page.
-          !view.paid && "rounded-t-none border-t-[5px] border-badge-due-line",
-        )}
-      >
-        <div className="flex flex-col gap-[5px] lg:w-[200px] lg:shrink-0">
-          {/* Not the `Label` primitive: this one is 12px/1.0 uppercase like
-              Label, but the design tracks it at 0 where Label is set wide, and
-              the difference shows at this size directly above a 32px number. */}
-          <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase leading-none text-shell-mute">
-            League Buy In
-            {showEntry ? (
-              // The same badge the standings board and the admin roster draw,
-              // and here it is on BOTH cards rather than on the second alone:
-              // this list is two of one thing, where those are one row among
-              // many, so an unlabelled card would be the ambiguous one.
-              <span className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute">
-                Entry {league.entryNo}
-              </span>
-            ) : null}
-          </p>
-          <div className="flex flex-col justify-center">
-            {/* H3 — 32px/1.2/−4%, composed rather than retyped. That constant
-                exists so the one size the design library calls H3 lives in one
-                place, and it carries no colour precisely so callers can paint
-                it. It went 24px → 32px in the restack. */}
-            <p className={cn(H3, "text-shell-ink tabular-nums")}>{view.total}</p>
-            {view.breakdown ? (
-              <p className="text-[14px] font-medium leading-[1.35] tracking-[-0.14px] text-shell-mute tabular-nums">
-                {view.breakdown}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        <span aria-hidden className="h-px w-full bg-shell-line lg:h-auto lg:w-px" />
-
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-1 lg:gap-2">
-          <div className="flex items-center gap-2">
-            <BuyInBadge paid={view.paid}>{view.badge}</BuyInBadge>
-            {/* Dropped entirely when the column is null rather than rendered as
-                "Updated —". See `BuyInView.updatedIso`: a membership nobody has
-                toggled since 0010 legitimately has no date. */}
-            {view.updatedIso ? (
-              <span className="text-[12px] font-medium leading-[1.4] tracking-[-0.12px] text-shell-mute">
-                Updated{" "}
-                <LocalTime iso={view.updatedIso} mode="monthdayclock" />
-              </span>
-            ) : null}
-          </div>
-
-          {view.paid ? (
-            <p className={cn(BODY, "font-semibold text-shell-ink")}>
-              Your league dues were paid. Thank you.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <p className={cn(BODY, "font-medium text-shell-ink")}>
-                Please venmo{" "}
-                <a
-                  href={VENMO_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-link underline decoration-solid [text-underline-position:from-font]"
-                >
-                  {VENMO_HANDLE}
-                </a>{" "}
-                {view.total} to officially join the league.
-              </p>
-              {/* The deadline is the league's own entry cut-off, not a second
-                  date somebody has to remember to keep in sync: it is already
-                  the moment `join_by_invite` starts refusing codes, so "removed
-                  from the league" and "entry closed" are the same boundary. */}
-              <p className={cn(BODY, "font-normal text-shell-mute")}>
-                Anyone who doesn&apos;t pay by{" "}
-                <LocalTime iso={league.group.entryClosesAt} mode="weekdaydate" /> will be
-                removed from the league.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col gap-1.5 lg:min-w-px lg:flex-1">
+      <Label>{label}</Label>
+      {children}
+    </div>
   );
 }
 
+/** A 1px rule between rows, and between the last row and the footer. */
+function Divider() {
+  return <span aria-hidden className="h-px w-full shrink-0 bg-shell-line" />;
+}
+
 /**
- * League Dues — one card per ENTRY (0017).
+ * "League Dues" — what each of your entries costs and whether the commissioner
+ * has ticked it off.
  *
- * `leagues` is every summary for the active league, which is one for almost
- * everybody and two for a player who has taken a second entry. Each carries its
- * own `buyInPaid` and its own stamp, because an admin ticks them off
- * independently — so a player can genuinely be paid for one and not the other,
- * and a single card would have to pick one of those to report.
+ * Figma `3934:62955` lays out all ten variants: three states (Paid, Unpaid,
+ * **Partial**) x two viewports x one or two entries — Partial having no
+ * one-entry form, since a single entry cannot be half-settled.
  *
- * The total is drawn only when there is more than one card, and it is the sum of
- * what is still OWED rather than of the league's price: with one entry paid and
- * one not, the useful number is what is left.
+ * ONE CARD, ONE ROW PER ENTRY, and that is the shape change. This was one card
+ * per entry for about an hour (the first pass at 0017, before this design
+ * existed), which stacked two headed cards and repeated the deadline, the
+ * how-to-pay and the thank-you inside each. The design puts the entries in a
+ * single card as rows and states the shared things once — which is right,
+ * because the deadline and the payment instructions are facts about the LEAGUE,
+ * not about an entry.
+ *
+ * The footer is therefore the module's whole per-state behaviour: `paid` gets
+ * the thank-you, and `unpaid` and `partial` both get How to Pay, because a
+ * player with one entry settled still owes for the other and still needs the
+ * handle.
+ *
+ * **The "Add 2nd Entry" button belongs here**, below the card, on the one-entry
+ * variants. It sat on the picks page and in Additional Settings while this
+ * design was outstanding — both invented placements, and both now removed. This
+ * is where a player is already thinking about what an entry costs, which is the
+ * fact the confirmation dialog leads with.
  */
-export function LeagueDues({ leagues }: { leagues: LeagueSummary[] }) {
+export function LeagueDues({
+  leagues,
+  viewerName,
+  canAddEntry,
+}: {
+  /**
+   * Every summary for the active league — one per ENTRY, so this is one element
+   * for almost everybody and two for a player who has taken a second.
+   */
+  leagues: LeagueSummary[];
+  /** The viewer's own "First L.", which is what the design's ENTRY NAME shows. */
+  viewerName: string;
+  /** Exactly one entry, and the league's entry window still open. */
+  canAddEntry: boolean;
+}) {
   const first = leagues[0];
   if (!first) return null;
-  const multi = leagues.length > 1;
-  const owedCents = leagues
-    .filter((l) => !l.buyInPaid)
-    .reduce((sum, l) => sum + l.group.buyInCents + l.group.siteFeeCents, 0);
+  const state = duesState(leagues);
 
   return (
-    <AccountSection title="League Dues">
-      <div className="flex flex-col gap-3">
-        {leagues.map((l) => (
-          // Keyed on the membership id, which is the one id that differs between
-          // two entries of the same league.
-          <DuesCard key={l.memberId} league={l} showEntry={multi} />
-        ))}
-        {multi && owedCents > 0 ? (
-          <p className={cn(BODY, "font-medium text-shell-ink")}>
-            Still owed across your entries:{" "}
-            <span className="font-semibold tabular-nums">{formatMoney(owedCents)}</span>
+    <AccountSection
+      title="League Dues"
+      description={
+        <>
+          Any entry still unpaid through{" "}
+          <LocalTime iso={first.group.entryClosesAt} mode="weekdaydate" /> will be removed
+          from the league.
+        </>
+      }
+    >
+      {/* The deadline is the league's own entry cut-off, not a second date to
+          keep in sync: it is already the moment `join_by_invite` starts refusing
+          codes, so "removed from the league" and "entry closed" are the same
+          boundary. It is stated once, above the card, for every state — the
+          design keeps it on the Paid variants too, where it is a reassurance
+          rather than a warning. */}
+      <div className={cn(CARD, "flex flex-col gap-4")}>
+        {leagues.map((league, i) => {
+          const view = buyInView({
+            buyInCents: league.group.buyInCents,
+            siteFeeCents: league.group.siteFeeCents,
+            buyInPaid: league.buyInPaid,
+            buyInPaidAt: league.buyInPaidAt,
+          });
+          return (
+            // Keyed on the membership id — the one id that differs between two
+            // entries of the same league.
+            <Fragment key={league.memberId}>
+              {i > 0 ? <Divider /> : null}
+              {/* Stacked on a phone, three columns from `lg`. The account
+                  column turns over at `lg` like the rest of the app — see
+                  Personal Details' two-across grid directly above it. */}
+              <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start lg:gap-5">
+                <Field label="Entry Name">
+                  <div className="flex items-center gap-[5px]">
+                    <p className={cn(VALUE, "truncate")}>{viewerName}</p>
+                    {/* The same badge the standings board and the admin roster
+                        draw, on the same rule: second entries only. Here it is
+                        the only thing distinguishing two rows that otherwise
+                        carry an identical name, so it is not decorative — hence
+                        the sr-only text beside the aria-hidden digit, rather
+                        than an aria-label that would fail WCAG 2.5.3's
+                        substring rule against the visible "2". */}
+                    {league.entryNo === 2 ? (
+                      <>
+                        <span
+                          aria-hidden
+                          className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute"
+                        >
+                          2
+                        </span>
+                        <span className="sr-only">Entry 2</span>
+                      </>
+                    ) : null}
+                  </div>
+                </Field>
+
+                <Field label="League Buy In">
+                  <div className="flex flex-col">
+                    {/*
+                      The TOTAL, where the design's mock reads "$20" against a
+                      label that says League Buy In.
+
+                      The two agree whenever the site fee is zero, which is the
+                      row the design draws. Where a fee exists they do not, and
+                      this module's job is to tell you what you owe — a player
+                      who reads "$20", sends $20 and is short by the fee has been
+                      misled by the screen. So the total is the number, and the
+                      breakdown underneath says where it came from rather than
+                      leaving the label looking wrong.
+                    */}
+                    <p className={VALUE}>{view.total}</p>
+                    {view.breakdown ? (
+                      <p className="text-[12px] font-medium leading-[1.4] tracking-[-0.12px] text-shell-mute tabular-nums">
+                        {view.breakdown}
+                      </p>
+                    ) : null}
+                  </div>
+                </Field>
+
+                <Field label="Status">
+                  {/* `flex-wrap` plus a non-breaking stamp, which the design's
+                      170px inline row does not need and this one does — see the
+                      clock note below. Inline while it fits (a null stamp, a
+                      wider column), and the whole stamp drops to its own line
+                      when it does not, rather than breaking between "10/21," and
+                      "6:47 PM" and leaving two rows different heights. */}
+                  <div className="flex flex-wrap items-center gap-1">
+                    <BuyInBadge paid={view.paid}>{view.badge}</BuyInBadge>
+                    {/* Dropped entirely when the column is null rather than
+                        rendered as "Updated —": a membership nobody has toggled
+                        since 0010 legitimately has no date.
+
+                        WITH THE CLOCK, where the design's mock reads "Updated
+                        10/21". That is not a transcription slip to fix: the
+                        clock was added deliberately because an admin toggling
+                        paid off and on the same afternoon watched a date that
+                        never moved, and a stamp that cannot show a same-day
+                        change is not a stamp. `formatMonthDay` was deleted for
+                        it. The design's shorter string would reintroduce the
+                        bug exactly. */}
+                    {view.updatedIso ? (
+                      <span className="whitespace-nowrap text-[12px] font-medium leading-[1.4] tracking-[-0.12px] text-shell-mute">
+                        Updated <LocalTime iso={view.updatedIso} mode="monthdayclock" />
+                      </span>
+                    ) : null}
+                  </div>
+                </Field>
+              </div>
+            </Fragment>
+          );
+        })}
+
+        <Divider />
+
+        {state === "paid" ? (
+          <p className={cn(BODY, "font-semibold text-shell-ink")}>
+            {/* An emoji, as drawn, and aria-hidden: read aloud, "white heavy
+                check mark your league dues were paid" is not the sentence. */}
+            <span aria-hidden>✅</span> Your league dues were paid. Thank you.
           </p>
-        ) : null}
+        ) : (
+          <div className="flex w-full flex-col gap-[5px]">
+            <Label>How to Pay</Label>
+            <p className="text-[14px] font-medium leading-[1.35] tracking-[-0.14px] text-shell-ink">
+              Venmo{" "}
+              <a
+                href={VENMO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-link underline decoration-solid [text-underline-position:from-font]"
+              >
+                {VENMO_HANDLE}
+              </a>{" "}
+              (league commissioner) the league buy in to officially join the league.
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Outside the card, per the design — it is an action on your membership,
+          not a line item in the bill. Hidden at two entries and once entry
+          closes, matching what `add_entry` will actually accept. */}
+      {canAddEntry ? (
+        <AddEntryCta
+          groupId={first.group.id}
+          buyInCents={first.group.buyInCents}
+          siteFeeCents={first.group.siteFeeCents}
+        />
+      ) : null}
     </AccountSection>
   );
 }

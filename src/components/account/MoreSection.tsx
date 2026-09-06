@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { FEEDBACK_URL } from "@/lib/app";
 import { isEntryOpen } from "@/lib/game/season";
-import { AddEntryCta } from "@/components/app/AddEntryCta";
 import { cn } from "@/lib/cn";
 import { SPEC_BUTTON_LIGHT } from "./spec";
 import { AccountSection, VALUE } from "./surfaces";
@@ -40,16 +39,9 @@ export function MoreSection({
   onDelete,
   onReplayTour,
   now,
-  canAddEntry,
 }: {
   /** Null when the viewer belongs to no league — then there is no code to share. */
   group: Group | null;
-  /**
-   * Whether to offer a second entry here (0017): the viewer holds exactly one
-   * and the league's entry window is still open. Resolved by the caller, which
-   * is the only place that knows how many entries the viewer has.
-   */
-  canAddEntry: boolean;
   onDelete: () => void;
   onReplayTour: () => void;
   /**
@@ -82,20 +74,6 @@ export function MoreSection({
   return (
     <AccountSection title="Additional Settings">
       <div className="flex flex-col gap-3">
-        {/* Second of the two places this is offered — the other is the picks
-            page, where the switcher will replace it. Here because the account
-            page is where a player already goes to think about what they owe,
-            and the dialog's headline fact is that a second entry is a second
-            buy-in. Gated the same way `showInvite` is: an affordance the server
-            is going to refuse is worse than none. */}
-        {canAddEntry && showInvite && group ? (
-          <AddEntryCta
-            groupId={group.id}
-            buyInCents={group.buyInCents}
-            siteFeeCents={group.siteFeeCents}
-          />
-        ) : null}
-
         {showInvite ? (
           <MoreRow label="Invite Link">
             <Button

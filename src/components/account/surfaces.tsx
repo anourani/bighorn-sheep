@@ -55,16 +55,36 @@ export const BODY = "text-[16px] leading-[1.35] tracking-[-0.16px]";
  */
 export function AccountSection({
   title,
+  description,
   className,
   children,
 }: {
   title: string;
+  /**
+   * A line of explanation under the heading, 4px below it rather than the 12px
+   * the section puts between the heading and its cards.
+   *
+   * The two gaps are the reason this is a prop and not something a caller can
+   * pass as the first child: the header is one block (title + description at
+   * `gap-1`) and the cards are another, so a description rendered as a child
+   * would sit 12px below the title and 12px above the card, in the wrong
+   * rhythm and looking like a card of its own. League Dues is the only caller
+   * so far; the design gives it a permanent deadline line.
+   */
+  description?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className={cn("flex flex-col gap-3", className)}>
-      <h2 className={HEADING}>{title}</h2>
+      {description ? (
+        <div className="flex flex-col gap-1">
+          <h2 className={HEADING}>{title}</h2>
+          <p className={cn(BODY, "font-normal text-shell-mute")}>{description}</p>
+        </div>
+      ) : (
+        <h2 className={HEADING}>{title}</h2>
+      )}
       {children}
     </section>
   );

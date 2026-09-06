@@ -254,7 +254,13 @@ const config: Config = {
          * on different screens, kept apart on purpose.
          */
         badge: {
-          paid: "#0F9900",
+          // Fill and hairline are the SAME dark green, which they were not: the
+          // paid badge filled #0F9900 (brighter, with #0C6F28 only as its line)
+          // until the League Dues redesign drew it solid in Semantic/Success
+          // Green - Dark. Kept as two token names rather than collapsed to one,
+          // so the badge's class list still reads fill-and-line the way the
+          // unpaid branch beside it does — where the two genuinely differ.
+          paid: "#0C6F28",
           "paid-line": "#0C6F28",
           due: "#CD1411",
           "due-line": "#A71930",
