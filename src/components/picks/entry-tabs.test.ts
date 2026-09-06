@@ -91,6 +91,32 @@ describe("the two placements", () => {
     expect(await code(TABS)).toContain("h-[60px]");
   });
 
+  /*
+   * The cards stretch on a phone and are pinned on a desktop, which is the
+   * design rather than an oversight: two `flex-1` halves of the 361px row below
+   * `lg`, a fixed 180px from it — otherwise each card takes ~498px of the 1000px
+   * column and a two-word label sits in the middle of a half-page target.
+   *
+   * `lg:flex-none` is the half of this that is easy to lose. `flex-1` is
+   * `flex: 1 1 0%`, which grows from a zero basis and ignores `width` entirely,
+   * so the width on its own does NOTHING — the card would go on stretching and
+   * the class would read as applied.
+   */
+  it("pins the card to 180px from lg and lets it stretch below", async () => {
+    const src = await code(TABS);
+    expect(src).toContain("lg:w-[180px] lg:flex-none");
+    // The phone behaviour it must not disturb.
+    expect(src).toContain("flex-1");
+    expect(src).toContain("min-w-[100px]");
+  });
+
+  it("leaves the sticky bar out of the width change", async () => {
+    // The bar is `lg:hidden`, so it only ever renders below the width where the
+    // card stops stretching — which is why one component can carry a breakpoint
+    // and still be "the same size in both placements".
+    expect(await code(BAR)).toContain("lg:hidden");
+  });
+
   it("gives each placement its own panel key", async () => {
     /*
      * Both tablists are in the document at once — the sticky one is merely
