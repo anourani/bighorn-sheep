@@ -64,8 +64,39 @@ export interface CurrentPick {
   gameId: string;
 }
 
+/**
+ * Which of a player's runs at the season this is (migration 0017). One person
+ * may hold up to two, and they are wholly independent: separate picks, separate
+ * strikes, separate elimination, separate dues.
+ */
+export type EntryNo = 1 | 2;
+
 export interface Member {
+  /**
+   * The MEMBERSHIP id — `group_members.id`, not the user id.
+   *
+   * This changed with 0017 and it is the hinge the whole two-entry feature
+   * turns on. `toMember` used to set `id: row.user_id` and drop the membership
+   * id on the floor, which was harmless while a person was a row; with two
+   * entries per person it would make the two indistinguishable to every
+   * consumer — one React key for two rows, one bucket in `rankMembers`, one
+   * cell in the practice table.
+   *
+   * So: `id` identifies the ENTRY and is unique across the league, and
+   * {@link userId} identifies the PERSON and is not. Anything asking "is this
+   * me?" wants `userId`; anything keying, sorting or addressing a row wants
+   * `id`. `src/lib/game/score.ts` already wrote by `group_members.id` and so
+   * needed no change at all.
+   */
   id: string;
+  /**
+   * The person behind the entry — `group_members.user_id`. Shared by both of a
+   * player's entries, so it is never a key; it is how a row recognises its
+   * viewer and how the account page groups dues.
+   */
+  userId: string;
+  /** 1 or 2. Reads `row.entry_no ?? 1`, so a pre-0017 database says 1. */
+  entryNo: EntryNo;
   /** Pre-formatted "First L." for display and sorting. */
   name: string;
   firstName: string;

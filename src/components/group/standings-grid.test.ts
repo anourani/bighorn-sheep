@@ -36,6 +36,8 @@ const gameForTeam = (week: number, teamId: TeamId): Game | undefined =>
 function member(over: Partial<Member> = {}): Member {
   return {
     id: "m1",
+    userId: "u1",
+    entryNo: 1,
     name: "Ali B.",
     firstName: "Ali",
     lastName: "B",

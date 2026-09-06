@@ -112,6 +112,10 @@ describe("survivorCounts", () => {
   function member(id: string, status: Member["status"]): Member {
     return {
       id,
+      // One entry per person, so the membership id and the person coincide —
+      // what every pre-0017 league looks like.
+      userId: id,
+      entryNo: 1,
       name: id,
       firstName: id,
       lastName: "",
@@ -160,6 +164,11 @@ describe("rankMembers", () => {
   function member(id: string, over: Partial<Member> = {}): Member {
     return {
       id,
+      // Defaults to one entry per person. A two-entry fixture overrides
+      // `userId` so two ids share a person, which is the whole shape 0017
+      // introduced and the thing the ranking has to stay total across.
+      userId: id,
+      entryNo: 1,
       name: id,
       firstName: id,
       lastName: "",

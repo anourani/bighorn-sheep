@@ -75,6 +75,19 @@ export function StandingsGrid({
   hiddenPickUserIds = [],
 }: {
   ranked: RankedMember[];
+  /**
+   * The viewer's USER id, matched against `member.userId` — never against
+   * `member.id`, which is the membership id and differs per entry.
+   *
+   * Both of a two-entry player's rows are theirs, so both take the highlight;
+   * that is the intended reading of "your row" and the reason this compares the
+   * person rather than the entry.
+   *
+   * `PublicStandings` passes "" for a signed-out stranger, and the public
+   * payload has no user ids at all (`userId` is "" for every row), so the
+   * comparison below guards against the empty string rather than lighting up
+   * the entire landing board.
+   */
   viewerId: string;
   currentWeek: number;
   finalWeek: number;
@@ -89,9 +102,13 @@ export function StandingsGrid({
   now: Date;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
   /**
-   * user_ids with a locked-but-hidden pick this week. Under RLS a rival's hidden
-   * pick returns no row at all, so this (team-less) flag is what lets the grid
-   * still show a padlock rather than a bare "no pick" slot.
+   * MEMBERSHIP ids (`member.id`) with a locked-but-hidden pick this week. Under
+   * RLS a rival's hidden pick returns no row at all, so this (team-less) flag is
+   * what lets the grid still show a padlock rather than a bare "no pick" slot.
+   *
+   * Membership ids rather than user ids since 0017: a player with two entries
+   * may have picked with one and not the other, and a padlock on the person
+   * would light both rows.
    */
   hiddenPickUserIds?: string[];
 }) {
@@ -202,7 +219,7 @@ export function StandingsGrid({
             </thead>
             <tbody>
               {ranked.map(({ member, rank }, i) => {
-                const isYou = member.id === viewerId;
+                const isYou = viewerId !== "" && member.userId === viewerId;
                 const eliminated = member.status === "eliminated";
                 /*
                  * Zebra stripes replace the row rules the table used to draw.

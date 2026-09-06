@@ -11,6 +11,7 @@ import { isKickedOff, type SeasonType } from "@/lib/nfl/types";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
 import { isFavoriteAnimal } from "@/lib/profile/animals";
+import type { EntryNo } from "@/lib/league/types";
 import {
   FEED_MANUAL_COOLDOWN_MS,
   feedCheckedRecently,
@@ -123,6 +124,23 @@ function rpcErrorCode(
  * comes back in `releasedWeek` so the caller can say so. A release is only
  * possible while that game has not kicked off — after that the team is genuinely
  * spent and this returns `team_already_used`, which is also what RLS would say.
+ *
+ * `entryNo` names WHICH of the caller's entries is picking (0017). Everything
+ * below — the membership row, the pick history, the used-team set, the release
+ * and the write — is scoped to it, because two entries are two independent runs
+ * at the season and may legitimately hold the same team in the same week.
+ *
+ * The entry plumbing is written to be INERT before 0017 is applied by hand, and
+ * that constraint shapes three things you would otherwise write differently:
+ *
+ *   1. Nothing filters on `entry_no` in a PostgREST query. A `.eq()` against a
+ *      column that does not exist raises 42703 exactly as a `select()` naming it
+ *      would, and on this path that would turn every pick in the app into a
+ *      failure. The rows are fetched with `select("*")` and filtered in JS.
+ *   2. The insert payload carries `entry_no` only when the membership row
+ *      actually has the column — `"entry_no" in membership`, feature-detected
+ *      from a row already in hand rather than from a version probe.
+ *   3. There is no `onConflict` any more. See the write below.
  */
 export async function submitPick(input: {
   groupId: string;
@@ -130,11 +148,20 @@ export async function submitPick(input: {
   seasonType?: SeasonType;
   /** Omit for the live week — a tab from before picking ahead shipped. */
   week?: number;
+  /** Omit for entry 1 — which is every player who has not taken a second. */
+  entryNo?: EntryNo;
 }): Promise<ActionResult<{ releasedWeek: number | null }>> {
   return attempt(async () => {
     const seasonType: SeasonType = input.seasonType ?? "regular";
     if (seasonType !== "regular" && seasonType !== "pre") {
       return { ok: false, error: "bad_season_type" };
+    }
+    // Shape before substance, like the week check below it: a hand-rolled POST
+    // naming entry 7 should not reach the database, and the CHECK constraint
+    // would answer it with a 23514 nobody has copy for.
+    const entryNo: EntryNo = input.entryNo ?? 1;
+    if (entryNo !== 1 && entryNo !== 2) {
+      return { ok: false, error: "bad_entry" };
     }
     // Shape before substance, and before `createClient()`: a hand-rolled POST
     // carrying `week: 1e9` should not cost a database round trip. The phase's
@@ -168,18 +195,33 @@ export async function submitPick(input: {
      * latency with the grid live under the player's finger, so round trips
      * that need not be sequential must not be.
      */
-    const [{ data: group }, { data: membership }] = await Promise.all([
+    const [{ data: group }, { data: membershipRows }] = await Promise.all([
       supabase.from("groups").select("*").eq("id", input.groupId).single(),
       supabase
         .from("group_members")
         .select("*")
         .eq("group_id", input.groupId)
-        .eq("user_id", user.id)
-        .maybeSingle(),
+        .eq("user_id", user.id),
     ]);
     // `group` first, so a bogus groupId still reads group_not_found rather than
     // not_a_member — the order the sequential reads answered in.
     if (!group) return { ok: false, error: "group_not_found" };
+
+    /*
+     * `.maybeSingle()` is gone, and its absence is load-bearing rather than
+     * tidying. It raises PGRST116 the moment a query matches more than one row,
+     * which is precisely what a two-entry player's membership lookup now does —
+     * so leaving it would have broken picking for exactly the people this
+     * feature is for, with an error nothing maps to copy.
+     *
+     * The entry is then selected in JS rather than with `.eq("entry_no", …)`,
+     * for the 42703 reason in the docblock. `?? 1` on the row's side means a
+     * pre-0017 database matches entry 1 and behaves exactly as it always has.
+     */
+    const membership = (membershipRows ?? []).find((m) => (m.entry_no ?? 1) === entryNo);
+    // A request naming entry 2 from someone who holds only entry 1 lands here
+    // and is refused. RLS refuses it a second time at the write (0017 §4) —
+    // this is the readable half of that pair, not a substitute for it.
     if (!membership) return { ok: false, error: "not_a_member" };
 
     const now = new Date();
@@ -213,7 +255,7 @@ export async function submitPick(input: {
     // kickoff decide the regular season's live week, and would match a team to
     // the wrong game entirely. Independent of the pick history beside it, so
     // the pair goes out together — same trade as the identity reads above.
-    const [{ data: gameRows }, { data: myPicks }] = await Promise.all([
+    const [{ data: gameRows }, { data: allMyPicks }] = await Promise.all([
       supabase
         .from("games")
         .select("*")
@@ -221,12 +263,21 @@ export async function submitPick(input: {
         .eq("season_type", seasonType),
       supabase
         .from("picks")
-        .select("team_id, week, game_id")
+        // `select("*")` where this named three columns, and again for 42703:
+        // the rows have to carry `entry_no` (to be filtered) and `id` (the
+        // release deletes by primary key), and naming either before 0017 lands
+        // would fail the read. A star select cannot.
+        .select("*")
         .eq("group_id", input.groupId)
         .eq("user_id", user.id)
         .eq("season_type", seasonType),
     ]);
     const games = (gameRows ?? []).map(rowToGame);
+    // THIS entry's picks. Filtered in JS rather than in the query, per the
+    // docblock — and this is also the line that makes two entries independent:
+    // everything downstream (the used-team set, the release, the write) reads
+    // `myPicks`, so scoping it once scopes all of them.
+    const myPicks = (allMyPicks ?? []).filter((p) => (p.entry_no ?? 1) === entryNo);
 
     // Which week is live, whether this member may pick at all, and which teams
     // they have already spent — all three answered per phase.
@@ -241,15 +292,19 @@ export async function submitPick(input: {
     let usedHistory: { teamId: string }[];
 
     if (seasonType === "pre") {
+      // Keyed on the MEMBERSHIP id, matching `load.ts` since 0017. This
+      // derivation only ever covers one member, so any consistent key would
+      // work — but using the same one as the loader is what stops the two
+      // drifting the next time somebody reads across them.
       const practice = derivePractice({
         games,
-        picks: (myPicks ?? []).map((p) => ({
-          userId: user.id,
+        picks: myPicks.map((p) => ({
+          userId: membership.id,
           week: p.week,
           teamId: p.team_id,
           gameId: p.game_id,
         })),
-        memberIds: [user.id],
+        memberIds: [membership.id],
         rules: { eliminationType: group.elimination_type, tieRule: group.tie_rule },
         now,
       });
@@ -264,7 +319,7 @@ export async function submitPick(input: {
       });
       if (!resolved.ok) return { ok: false, error: resolved.error };
       week = resolved.week;
-      const me = practice.members[user.id];
+      const me = practice.members[membership.id];
       // NOTHING ELIMINATES IN PRACTICE, so the guard's status test is satisfied
       // outright — same shape as the `entryOpen: true` below it, and for the same
       // kind of reason: the condition is answered by the round's rules rather than
@@ -287,7 +342,7 @@ export async function submitPick(input: {
       week = resolved.week;
       // Teams spent in OTHER weeks count as used; the TARGET week's own pick may
       // be freely replaced, so exclude it from the used set.
-      usedHistory = (myPicks ?? [])
+      usedHistory = myPicks
         .filter((p) => p.week !== week)
         .map((p) => ({ teamId: p.team_id }));
     }
@@ -308,7 +363,7 @@ export async function submitPick(input: {
      * started would be refused by RLS anyway and we would be reporting a success
      * the database declined.
      */
-    const booked = (myPicks ?? []).find((p) => p.team_id === input.teamId && p.week !== week);
+    const booked = myPicks.find((p) => p.team_id === input.teamId && p.week !== week);
     const bookedGame = booked ? games.find((g) => g.id === booked.game_id) : undefined;
     const releasable =
       booked !== undefined &&
@@ -348,38 +403,75 @@ export async function submitPick(input: {
      * it duplicates canPick into SQL and adds a round trip at the kickoff spike.
      */
     if (releasable && booked) {
-      const { error: releaseError } = await supabase
-        .from("picks")
-        .delete()
-        .eq("group_id", input.groupId)
-        .eq("user_id", user.id)
-        .eq("season_type", seasonType)
-        .eq("week", booked.week);
+      // BY PRIMARY KEY, where this used to name (group, user, season_type, week).
+      // That tuple stopped identifying one row when entries arrived — it would
+      // have deleted the OTHER entry's pick for the same week alongside this
+      // one — and `.eq("entry_no", …)` is not available to fix it, for the 42703
+      // reason in the docblock. `booked` is a row we already hold, so its `id`
+      // is the precise and migration-agnostic answer.
+      const { error: releaseError } = await supabase.from("picks").delete().eq("id", booked.id);
       if (releaseError) {
         console.error("[submitPick] release failed", { week: booked.week, error: releaseError });
         return { ok: false, error: "team_already_used" };
       }
     }
 
-    const { error } = await supabase.from("picks").upsert(
-      {
-        group_id: input.groupId,
-        user_id: user.id,
-        season_type: seasonType,
-        week,
-        team_id: input.teamId,
-        game_id: game!.id,
-        result: "pending",
-        updated_at: now.toISOString(),
-      },
-      { onConflict: "group_id,user_id,season_type,week" },
-    );
+    /*
+     * The write, and the reason it is no longer an upsert.
+     *
+     * `onConflict: "group_id,user_id,season_type,week"` named `picks_one_per_week`
+     * by its columns, and 0017 re-keys that constraint to include `entry_no` —
+     * so the old string names a constraint that no longer exists (PostgREST
+     * answers 42P10), and the new one names a column that does not exist until
+     * the migration is applied. There is no spelling of `onConflict` that is
+     * correct on both sides of a hand-applied migration.
+     *
+     * So: branch on the row we already have. `myPicks` was fetched above and is
+     * scoped to this entry, so "is there already a pick for this week?" is a
+     * lookup rather than a round trip, and the update targets the primary key.
+     *
+     * The two-tab race this gives up on — both tabs seeing no row and both
+     * inserting — is the one the 23505 handler below already existed for.
+     */
+    const existing = myPicks.find((p) => p.week === week);
+
+    const { error } = existing
+      ? await supabase
+          .from("picks")
+          .update({
+            team_id: input.teamId,
+            game_id: game!.id,
+            result: "pending",
+            updated_at: now.toISOString(),
+          })
+          .eq("id", existing.id)
+      : await supabase.from("picks").insert({
+          group_id: input.groupId,
+          user_id: user.id,
+          season_type: seasonType,
+          week,
+          team_id: input.teamId,
+          game_id: game!.id,
+          result: "pending",
+          updated_at: now.toISOString(),
+          // Only when the column exists. Feature-detected off the membership row
+          // rather than off a version flag, because that row is already in hand
+          // and cannot lie: if `group_members` has `entry_no`, so does `picks` —
+          // 0017 adds both in one statement pair. Before that, the key is absent
+          // from the payload entirely and the insert is byte-for-byte what it
+          // was, which is what makes the whole feature inert pre-migration.
+          //
+          // `"entry_no" in membership` rather than `!== undefined`: the Row type
+          // declares the column as present (see supabase/types.ts), so the
+          // comparison would be a type error where the `in` check is not.
+          ...("entry_no" in membership ? { entry_no: entryNo } : {}),
+        });
     if (error) {
       // A release already went through, so the member is now short a pick with
       // nothing to show for it. Say that, rather than letting them read
       // "something went wrong" and assume nothing changed.
       if (releasable) {
-        console.error("[submitPick] upsert failed after release", {
+        console.error("[submitPick] write failed after release", {
           released: booked?.week,
           week,
           error,
@@ -389,14 +481,19 @@ export async function submitPick(input: {
       // 23505 = unique_violation. Key off the SQLSTATE code rather than the message
       // text: 0006 renamed this constraint to `picks_team_once_per_phase`, and the
       // previous /team_id/ match silently stopped matching — turning "you've already
-      // used that team" into "something went wrong on our end". The only unique
-      // constraint a pick can now trip is the per-phase team one, since the week one
-      // is this upsert's own conflict target.
+      // used that team" into "something went wrong on our end".
+      //
+      // Two constraints can raise it now that this inserts rather than upserts:
+      // the per-phase team one, and `picks_one_per_week` when a second tab
+      // inserted the same week between our read and our write. Both are honestly
+      // described by "that team is already used" from where the player is
+      // sitting — they tapped a team and it did not take — and neither is worth
+      // a second string.
       if (error.code === "23505") return { ok: false, error: "team_already_used" };
       // Anything else is a raw Postgres message — a constraint name is not copy
       // for a player to read, and the callers key off this as a code. Log it and
       // hand back a stable one.
-      console.error("[submitPick] upsert failed", error);
+      console.error("[submitPick] write failed", error);
       return { ok: false, error: "unexpected_error" };
     }
 
@@ -583,6 +680,55 @@ export async function joinGroup(
 }
 
 /**
+ * Take a SECOND entry in a league the viewer already belongs to (0017).
+ *
+ * Goes through the `add_entry` RPC for the reason every membership write here
+ * does: `group_members` has had no INSERT policy since 0013, so a direct insert
+ * from the client is refused by RLS rather than merely discouraged. The function
+ * is SECURITY DEFINER and re-checks membership, the entry window and the
+ * two-entry cap itself, so the affordance being hidden in the UI is presentation
+ * rather than enforcement.
+ *
+ * `join_by_invite` is deliberately NOT this path. Its already-a-member guard
+ * (0002) is what has enforced one entry per person for the app's whole life, and
+ * making a re-clicked invite link create a second entry is exactly the accident
+ * this separate verb avoids.
+ *
+ * The error ladder ends in `rpcErrorCode`, so an unapplied 0017 says
+ * `migration_missing` rather than the catch-all — which for this action is the
+ * single most likely failure, since the RPC does not exist until someone runs
+ * the migration by hand.
+ */
+export async function addEntry(input: { groupId: string }): Promise<ActionResult> {
+  return attempt(async () => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { error } = await supabase.rpc("add_entry", { p_group_id: input.groupId });
+    if (error) {
+      return {
+        ok: false,
+        error: rpcErrorCode(
+          error,
+          ["not_a_member", "entry_closed", "entry_limit", "group_not_found"],
+          "add_entry_failed",
+        ),
+      };
+    }
+
+    // Every surface that counts entries or lists them: the pick screen gains a
+    // tab, the standings board gains a row, the account page gains a dues line.
+    revalidatePath("/app");
+    revalidatePath("/app/account");
+    revalidatePath("/app/standings");
+    return { ok: true, data: undefined };
+  });
+}
+
+/**
  * Mark a member's league buy-in paid or unpaid. Admin only.
  *
  * Goes through the set_member_buy_in RPC rather than a plain `.update()`:
@@ -595,6 +741,8 @@ export async function setMemberBuyIn(input: {
   groupId: string;
   userId: string;
   paid: boolean;
+  /** Which entry to mark. Omit for entry 1. */
+  entryNo?: EntryNo;
 }): Promise<ActionResult> {
   return attempt(async () => {
     const supabase = await createClient();
@@ -603,10 +751,25 @@ export async function setMemberBuyIn(input: {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
 
+    /*
+     * `p_entry_no` is sent only for entry 2, and that omission is deliberate.
+     *
+     * 0017 replaces the three-argument function with a four-argument one whose
+     * last parameter is DEFAULTED, so a three-argument call keeps working and
+     * keeps meaning entry 1. Sending `p_entry_no: 1` unconditionally would
+     * instead pin this action to the post-migration signature: before 0017 is
+     * applied by hand, PostgREST would answer PGRST202 for a function whose
+     * argument list does not match, and every admin toggle in the drawer would
+     * break for a parameter that changes nothing.
+     *
+     * Entry 2 cannot exist before 0017 has run, so the branch that names it can
+     * only be taken against a database that has the four-argument function.
+     */
     const { error } = await supabase.rpc("set_member_buy_in", {
       p_group_id: input.groupId,
       p_user_id: input.userId,
       p_paid: input.paid,
+      ...(input.entryNo && input.entryNo !== 1 ? { p_entry_no: input.entryNo } : {}),
     });
     if (error) {
       const reason = rpcErrorCode(
@@ -807,6 +970,8 @@ export async function setMemberPreseason(input: {
   groupId: string;
   userId: string;
   show: boolean;
+  /** Which entry to switch. Omit for entry 1. */
+  entryNo?: EntryNo;
 }): Promise<ActionResult> {
   return attempt(async () => {
     const supabase = await createClient();
@@ -815,10 +980,12 @@ export async function setMemberPreseason(input: {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
 
+    // See setMemberBuyIn for why this is conditional.
     const { error } = await supabase.rpc("set_member_preseason", {
       p_group_id: input.groupId,
       p_user_id: input.userId,
       p_show: input.show,
+      ...(input.entryNo && input.entryNo !== 1 ? { p_entry_no: input.entryNo } : {}),
     });
     if (error) {
       const reason = rpcErrorCode(
@@ -853,6 +1020,12 @@ export async function setMemberPreseason(input: {
 export async function removeMember(input: {
   groupId: string;
   userId: string;
+  /**
+   * Which entry to remove — the membership row AND its picks. Omit for entry 1.
+   * Removing one entry deliberately leaves the other standing; there is no
+   * "remove the person" verb, and adding one would need a design.
+   */
+  entryNo?: EntryNo;
 }): Promise<ActionResult> {
   return attempt(async () => {
     const supabase = await createClient();
@@ -861,9 +1034,11 @@ export async function removeMember(input: {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
 
+    // See setMemberBuyIn for why this is conditional.
     const { error } = await supabase.rpc("remove_member", {
       p_group_id: input.groupId,
       p_user_id: input.userId,
+      ...(input.entryNo && input.entryNo !== 1 ? { p_entry_no: input.entryNo } : {}),
     });
     if (error) {
       const reason = rpcErrorCode(

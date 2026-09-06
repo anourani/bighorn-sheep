@@ -19,7 +19,7 @@ import {
   toLeagueOptions,
   type LeagueOption,
 } from "./active";
-import type { Group, GroupRules, HistoryPick, Member } from "./types";
+import type { EntryNo, Group, GroupRules, HistoryPick, Member } from "./types";
 
 export { FINAL_WEEK };
 export type { LeagueOption };
@@ -96,13 +96,41 @@ export interface LeagueData {
    * spends its team.
    */
   viewerPicks: { week: number; teamId: TeamId }[];
+  /**
+   * The viewer's entries in this league — one element for almost everybody, two
+   * for a player who has taken a second (0017). Ordered by `entryNo`, so
+   * `viewerEntries[0]` is always entry 1.
+   *
+   * This is what {@link viewerPicks} could not become. That field is one flat
+   * list keyed on nothing, which is correct while a person is a row and
+   * ambiguous the moment they are two; rather than change its meaning under its
+   * existing readers, entry-aware callers read here and `viewerPicks` stays the
+   * ENTRY 1 list it has always been. A pre-0017 database produces exactly one
+   * element whose picks are the same array, so nothing about the one-entry app
+   * moves.
+   *
+   * `memberId` is the `group_members.id` the standings board keys on, which is
+   * how the picks page and the board agree about which row is being played.
+   */
+  viewerEntries: ViewerEntry[];
   /** Regular-season games only (`season_type = 'regular'`). */
   games: Game[];
   nowIso: string;
   currentWeek: number;
   finalWeek: number;
   phase: SeasonPhase;
-  /** user_ids with a locked-but-still-hidden pick this week (padlock, no team). */
+  /**
+   * MEMBERSHIP ids with a locked-but-still-hidden pick this week (padlock, no
+   * team). The name is kept — it is threaded through four components and a
+   * public payload — but 0017 changed what fills it: `hidden_pick_member_ids`
+   * returns `group_members.id`, because with two entries per person a padlock
+   * has to land on the entry that picked rather than on both of them.
+   *
+   * Empty until 0017 is applied by hand: the RPC 404s, `data` is not an array,
+   * and every row draws a hollow "No pick" circle instead of a padlock. That is
+   * the one accepted cosmetic regression of the pre-migration window — see the
+   * call site.
+   */
   hiddenPickUserIds: string[];
   /**
    * The preseason practice round, derived (never stored) and present only while
@@ -119,6 +147,23 @@ export interface LeagueData {
    * hasn't turned practice on for you" or "no preseason schedule is loaded yet",
    * and a screen that says neither is just a hole in the page.
    */
+  practiceEnabled: boolean;
+}
+
+/**
+ * One of the viewer's entries, with everything the pick screen needs to play it.
+ *
+ * `practiceEnabled` is per entry because `show_preseason` is per membership row
+ * (0011) — an admin can switch practice on for someone's first entry and leave
+ * their second off, and `add_entry` deliberately creates entry 2 with the
+ * column's `false` default rather than inheriting entry 1's.
+ */
+export interface ViewerEntry {
+  /** `group_members.id` — the same id the standings board uses as its row key. */
+  memberId: string;
+  entryNo: EntryNo;
+  /** Every regular-season pick this entry holds, including future weeks. */
+  picks: { week: number; teamId: TeamId }[];
   practiceEnabled: boolean;
 }
 
@@ -180,7 +225,16 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
   const firstName = profile?.firstName ?? "";
   const lastName = profile?.lastName ?? "";
   return {
-    id: row.user_id,
+    // `group_members.id`, NOT `row.user_id` — see Member.id. This one line is
+    // what lets two entries of one person be two of everything downstream: two
+    // React keys, two rows in `rankMembers`, two cells in the practice table.
+    id: row.id,
+    userId: row.user_id,
+    // `?? 1` for the reason showPreseason does it below: 0017 is applied by
+    // hand, and a row read before it lands has no such column. Answering 1 is
+    // both the safe default and the literally correct one — every row in a
+    // pre-0017 database IS entry 1.
+    entryNo: row.entry_no ?? 1,
     name: formatDisplayName(firstName, lastName),
     firstName,
     lastName,
@@ -295,7 +349,11 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   const currentWeek = resolveCurrentWeek({ phase, now, games, finalWeek: FINAL_WEEK });
 
   // Member identities (profiles are world-readable to authenticated users).
-  const memberIds = (memberRows ?? []).map((m) => m.user_id);
+  //
+  // DEDUPED, which it never had to be before 0017: a two-entry player is two
+  // membership rows naming one profile, and without the Set the `.in()` below
+  // would ask for that profile twice.
+  const memberIds = [...new Set((memberRows ?? []).map((m) => m.user_id))];
   const profileById = new Map<string, ProfileName>();
   if (memberIds.length > 0) {
     // profile_private comes back RLS-filtered, not erroring: the viewer receives
@@ -318,29 +376,67 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       });
   }
 
-  const picksByUser = new Map<string, PickRow[]>();
+  /*
+   * Picks grouped by ENTRY, not by person.
+   *
+   * `picks` carries (group_id, user_id, entry_no) rather than a membership id —
+   * see the note on picks.entry_no in supabase/types.ts for why it was left
+   * that way — so the grouping key has to be the pair. Keyed on user_id alone,
+   * as this was before 0017, a two-entry player's rows would be handed to BOTH
+   * of their memberships and each entry would show the other's picks.
+   *
+   * `?? 1` on both sides, so a pre-0017 database groups every row under
+   * `user|1` and every membership asks for `user|1`. Identical behaviour to
+   * before, by construction rather than by luck.
+   */
+  const entryKey = (userId: string, entryNo: number) => `${userId}|${entryNo}`;
+  const picksByEntry = new Map<string, PickRow[]>();
   for (const p of pickRows ?? []) {
-    const arr = picksByUser.get(p.user_id) ?? [];
+    const k = entryKey(p.user_id, p.entry_no ?? 1);
+    const arr = picksByEntry.get(k) ?? [];
     arr.push(p);
-    picksByUser.set(p.user_id, arr);
+    picksByEntry.set(k, arr);
   }
 
   const members: Member[] = (memberRows ?? []).map((row) =>
     toMember(
       row,
       profileById.get(row.user_id),
-      picksByUser.get(row.user_id) ?? [],
+      picksByEntry.get(entryKey(row.user_id, row.entry_no ?? 1)) ?? [],
       currentWeek,
       group.rules,
       idx.gameById,
     ),
   );
 
-  // Off the rows already fetched above — no extra query. Sorted for
-  // determinism only; `picks_one_per_week` forbids two rows for one week.
-  const viewerPicks = (picksByUser.get(viewer.id) ?? [])
-    .map((p) => ({ week: p.week, teamId: p.team_id as TeamId }))
-    .sort((a, b) => a.week - b.week);
+  /*
+   * The viewer's own entries, off the rows already fetched — no extra query.
+   *
+   * Sorted by week for determinism only; `picks_one_per_week` forbids two rows
+   * for one week WITHIN an entry, which is exactly the guarantee this relies on
+   * and exactly the one 0017 preserved when it re-keyed the constraint.
+   *
+   * Note this is built from `memberRows`, not from the picks: an entry with no
+   * picks at all still has to appear, or a brand-new second entry would have no
+   * tab to select.
+   */
+  const viewerEntries: ViewerEntry[] = (memberRows ?? [])
+    .filter((m) => m.user_id === viewer.id)
+    .map((m) => ({
+      memberId: m.id,
+      entryNo: (m.entry_no ?? 1) as EntryNo,
+      picks: (picksByEntry.get(entryKey(m.user_id, m.entry_no ?? 1)) ?? [])
+        .map((p) => ({ week: p.week, teamId: p.team_id as TeamId }))
+        .sort((a, b) => a.week - b.week),
+      // Fails OPEN, exactly as `toMember` and `practiceEnabled` below do: an
+      // unapplied 0011 must not take practice away from the whole league.
+      practiceEnabled: m.show_preseason ?? true,
+    }))
+    .sort((a, b) => a.entryNo - b.entryNo);
+
+  // Entry 1's picks, under the name every existing reader already uses. See the
+  // field's docblock: its meaning is deliberately unchanged.
+  const viewerPicks = viewerEntries[0]?.picks ?? [];
 
   // Preserve the Standings padlock: which rivals have locked a hidden pick.
   // Uses the season-typed RPC (0006) rather than 0003's week-only one, so a
@@ -360,8 +456,20 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   // `public_league_snapshot` (0009) has always computed the same flag in every
   // phase, which is why the signed-out landing board already showed those
   // padlocks while the signed-in table did not.
+  //
+  // 0017 moved this from `hidden_picks_for_week` to `hidden_pick_member_ids`,
+  // which answers with `group_members.id` instead of `user_id`. With two
+  // entries per person the old answer is genuinely unusable: one padlock would
+  // light both of a player's rows, including the entry that has not picked.
+  //
+  // The Array.isArray guard was already the shape of this call and now carries
+  // real weight — before 0017 is applied by hand the RPC does not exist,
+  // PostgREST answers PGRST202, `hidden` is null, and this stays empty. That
+  // costs the padlocks and nothing else; the alternative (keying on user_id
+  // until the migration lands) would be silently WRONG afterwards rather than
+  // merely incomplete before.
   let hiddenPickUserIds: string[] = [];
-  const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
+  const { data: hidden } = await supabase.rpc("hidden_pick_member_ids", {
     p_group_id: group.id,
     p_season_type: "regular",
     p_week: currentWeek,
@@ -376,8 +484,11 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
    * the entire league because one migration is late is far worse than showing it
    * to someone an admin meant to exclude.
    */
-  const practiceEnabled =
-    (memberRows ?? []).find((m) => m.user_id === user.id)?.show_preseason ?? true;
+  // ANY of the viewer's entries, not the first: with practice switched on for
+  // one entry and off for the other, the round exists for this viewer and the
+  // per-entry flag on `viewerEntries` is what decides which tab may play it.
+  // `.some` rather than `.find`, for the same reason `viewerBuyInUnpaid` uses it.
+  const practiceEnabled = viewerEntries.some((e) => e.practiceEnabled);
 
   /*
    * The practice round, built only while entry is still open AND only for a
@@ -396,22 +507,36 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
    * their line on an admin's practice table. The flag gates your access to the
    * round, not your existence in it.
    */
+  //
+  // Practice is keyed by MEMBERSHIP id throughout, so `practice.members[m.id]`
+  // lines up with the `Member.id` the standings table and the pick screen use.
+  // Before 0017 that key was the user id and the two happened to be the same
+  // string; they are not any more, and a practice table keyed on the person
+  // would show one entry's practice record on both of their rows.
+  //
+  // The pick rows carry (user_id, entry_no) rather than a membership id — see
+  // picks.entry_no in supabase/types.ts — so they are translated here through
+  // the same map, and a pick whose membership has since been removed is dropped
+  // rather than bucketed under a key nothing renders.
+  const membershipIdByEntry = new Map(
+    (memberRows ?? []).map((m) => [entryKey(m.user_id, m.entry_no ?? 1), m.id] as const),
+  );
   let practice: PracticeData | null = null;
   if (phase === "preseason" && practiceEnabled) {
     const derived = derivePractice({
       games: (preGameRows ?? []).map(rowToGame),
-      picks: (prePickRows ?? []).map((p) => ({
-        userId: p.user_id,
-        week: p.week,
-        teamId: p.team_id,
-        gameId: p.game_id,
-      })),
-      memberIds,
+      picks: (prePickRows ?? []).flatMap((p) => {
+        const memberId = membershipIdByEntry.get(entryKey(p.user_id, p.entry_no ?? 1));
+        return memberId
+          ? [{ userId: memberId, week: p.week, teamId: p.team_id, gameId: p.game_id }]
+          : [];
+      }),
+      memberIds: (memberRows ?? []).map((m) => m.id),
       rules: group.rules,
       now,
     });
     if (derived) {
-      const { data: hidden } = await supabase.rpc("hidden_picks_for_week", {
+      const { data: hidden } = await supabase.rpc("hidden_pick_member_ids", {
         p_group_id: group.id,
         p_season_type: "pre",
         p_week: derived.currentWeek,
@@ -431,6 +556,7 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
       leagues,
       members,
       viewerPicks,
+      viewerEntries,
       games,
       nowIso: now.toISOString(),
       currentWeek,
@@ -446,6 +572,15 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
 // ── Account: the viewer's full league list (all memberships, not just active) ──
 export interface LeagueSummary {
   group: Group;
+  /**
+   * `group_members.id` — this summary is ONE ENTRY, not one league.
+   *
+   * A two-entry player produces two summaries for the same `group.id`, which is
+   * why the account page groups by group rather than doing `.find()` on it. The
+   * dues card renders a row per entry off exactly this.
+   */
+  memberId: string;
+  entryNo: EntryNo;
   role: Member["role"];
   status: Member["status"];
   strikes: number;
@@ -617,7 +752,11 @@ export const viewerBuyInUnpaid = cache(async (): Promise<boolean> => {
   );
   if (!activeGroupId) return false;
 
-  return rows.find((r) => r.group_id === activeGroupId)?.buy_in_paid === false;
+  // `.some`, not `.find`. A two-entry player has two rows in the active league,
+  // and the dot means "you owe this league something" — so ANY unpaid entry
+  // lights it. `.find` would answer for whichever row came back first and go
+  // dark while the second entry's dues were still outstanding.
+  return rows.some((r) => r.group_id === activeGroupId && r.buy_in_paid === false);
 });
 
 export const loadAccount = cache(async (): Promise<AccountData | null> => {
@@ -649,14 +788,28 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
     favoriteAnimal: profile?.favorite_animal ?? null,
   };
 
+  /*
+   * `select("*")`, where this named its seven columns until 0017.
+   *
+   * The rule CLAUDE.md states for `submitPick` applies here identically:
+   * PostgREST raises 42703 on an unknown column rather than returning
+   * undefined, and 0017 is applied to production BY HAND. Naming `entry_no`
+   * before the migration lands would make this query error, `loadAccount`
+   * return null, and the whole account page go blank — for a column that only
+   * matters to players who do not exist yet.
+   *
+   * A star select cannot 42703, and `m.entry_no ?? 1` below is correct on both
+   * sides of the migration.
+   */
   const { data: myMemberships } = await supabase
     .from("group_members")
-    .select("group_id, role, status, strikes, buy_in_paid, buy_in_paid_at, joined_at")
+    .select("*")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
 
   const memberships = myMemberships ?? [];
-  const groupIds = memberships.map((m) => m.group_id);
+  // Deduped: two entries in one league are two membership rows naming one group.
+  const groupIds = [...new Set(memberships.map((m) => m.group_id))];
 
   // Two queries for the whole list, not two per league. RLS already restricts
   // both to groups the viewer belongs to, so `.in()` cannot widen the result.
@@ -685,6 +838,8 @@ export const loadAccount = cache(async (): Promise<AccountData | null> => {
     const group = rowToGroup(groupRow);
     leagues.push({
       group,
+      memberId: m.id,
+      entryNo: (m.entry_no ?? 1) as EntryNo,
       role: m.role,
       status: m.status,
       strikes: m.strikes,

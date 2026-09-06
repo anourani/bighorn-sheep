@@ -111,7 +111,8 @@ from unnest(array['account_exists','create_group','join_by_invite',
                   'public_league_snapshot','set_member_buy_in','set_group_buy_in',
                   'close_own_account','set_group_name','set_group_rules',
                   'set_member_preseason','record_feed_sync','feed_status_for_admin',
-                  'reminder_due','reminder_status_for_admin','record_reminder_send']) f
+                  'reminder_due','reminder_status_for_admin','record_reminder_send',
+                  'add_entry','hidden_pick_member_ids']) f
 union all
 select 'table: ' || t,
        case when exists (select 1 from information_schema.tables
@@ -137,6 +138,31 @@ select 'column: group_members.show_preseason',
          where table_schema='public' and table_name='group_members'
            and column_name='show_preseason')
        then 'PRESENT' else 'MISSING' end
+union all
+select 'column: group_members.entry_no',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='group_members'
+           and column_name='entry_no')
+       then 'PRESENT' else 'MISSING' end
+union all
+select 'column: picks.entry_no',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='picks'
+           and column_name='entry_no')
+       then 'PRESENT' else 'MISSING' end
+union all
+-- The only CONSTRAINT check here, and it is the one 0017 turns on. The three
+-- uniques below are what "one person, one run at the season" was spelled as, and
+-- 0017 re-keys all three to include entry_no. A database that has the columns
+-- above but not these is the dangerous half-applied state: the app writes
+-- entry_no happily and the old uniques go on refusing every second entry.
+select 'constraint: ' || c,
+       case when exists (select 1 from pg_constraint
+         where conname = c and contype = 'u'
+           and pg_get_constraintdef(oid) like '%entry_no%')
+       then 'PRESENT' else 'MISSING' end
+from unnest(array['group_members_entry_key','picks_one_per_week',
+                  'picks_team_once_per_phase']) c
 union all
 select 'bucket: avatars',
        case when exists (select 1 from storage.buckets where id='avatars')
