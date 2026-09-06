@@ -585,6 +585,40 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **`ui/Modal.tsx` PORTALS to `document.body`, and it slides up on phones.** Both
+  are one-line changes and both retire long-standing rules, so the old ones are
+  corrected in place rather than left to mislead — the LandingHeader entry below
+  is the main one. Four things:
+  - **The bug it fixes had already been worked around three times.** `.stagger >
+    *` carries `reveal-up … both`, whose `to` state is `transform:
+    translateY(0)`; fill-mode `both` leaves that transform applied for the life
+    of the page, and any non-`none` transform is a containing block for
+    `position: fixed` descendants. So a `Modal` rendered inline inside a
+    `.stagger` child drew its `fixed inset-0` scrim over THAT CHILD — a grey
+    rectangle over one section with the panel centred in it, and nothing
+    anywhere reporting an error. `AccountClient` and `StandingsClient` both
+    mount their dialogs outside `.stagger` to dodge it and say so in comments;
+    `TourCarousel` documents the rule at length. The fourth encounter was the
+    add-a-second-entry dialog, which sits inside `LeagueDues`.
+  - **It also fixes a second, quieter bug at the same call sites.** A `.stagger`
+    child inherits an `:nth-child` entrance delay, so a dialog mounted there sat
+    invisible for up to 385ms before playing its own animation —
+    `AccountClient`'s comment cites that one rather than the containing block.
+    They are distinct failures and a non-portalling dialog inside `.stagger` hit
+    both.
+  - **`animate-drawer-up sm:animate-reveal-up`**, so the animation turns over
+    with the shape: the panel is already `items-end … sm:items-center` and
+    `rounded-t-card sm:rounded-card`, and `max-w-app` is 480px — so on a phone
+    it IS full-bleed and should rise like a drawer rather than nudge like a
+    card. Both classes survive `cn()` because `animate-*` and `sm:animate-*` are
+    different tailwind-merge groups; `TourCarousel` worked that out first and
+    this is the same swap.
+  - **`src/components/ui/modal.test.ts` exists now**, which it did not through
+    any of the four encounters above. It pins the portal, the `typeof document`
+    guard and the entrance pair. `Modal` still has NO focus trap and no focus
+    restore — that is `Drawer`'s, and `TourCarousel` borrows it from
+    `ui/drawer.ts`; nothing here changed that.
+
 - **There is a seven-step first-run tour, and it is the only place the app
   explains the rules in-product.** `src/components/onboarding/` — a bottom sheet
   on a phone and a centred 480px card from `sm`, over a scrim. It fires once on `/app`
@@ -997,25 +1031,25 @@ reading, but only the first kind is the lesson.
   used to argue at length that the mirror with `AppHeader` was broken on
   purpose and not to restore it "without a signed-out frame asking for it" —
   the frames asked. Ten things:
-  - **`Modal` does NOT portal, and three separate rules follow from that.**
-    `LogInButton` / `InviteCodeButton` each return a fragment of a `<button>`
-    and a `Modal`, and `Modal` renders a bare full-viewport fixed div inline —
-    unlike `Drawer` and `Toast`, which both portal to `document.body`. So the
-    dialog is a DOM descendant of the pill:
-    - **The shadow must stay `box-shadow`.** Figma draws `drop-shadow`, and a
-      `filter` makes its element a containing block for `fixed` descendants —
-      which would pin the login dialog inside the 58px pill. `HeaderNav` refuses
-      the same filter for the *weaker* reason (it has no fixed descendant); here
-      it is a real bug, and `landing-header.test.ts` pins it.
-    - **`pointer-events` reaches the dialog by INHERITANCE.** The header takes
-      `none`, the pill `auto`, and the dialog inherits `auto` *from the pill*.
-      Hoisting the modals up to the header to tidy the tree would leave them
-      inheriting `none` — a full-screen dialog nobody can click, with nothing in
-      the console. Measured: `getComputedStyle(dialog).pointerEvents === "auto"`.
-    - Sticky plus `z-30` makes the header a stacking context, so the dialog's
-      `z-50` now resolves INSIDE it. Harmless today — nothing else on `/` goes
-      above `z-20` (`StandingsGrid`'s sticky first column) and the landing
-      wrapper is unpositioned — and a trap the day something there wants `z-40`.
+  - **`Modal` PORTALS now, and that RETIRED three rules this entry used to
+    carry.** It rendered a bare full-viewport fixed div inline — so the dialog
+    was a DOM descendant of the pill — and it now goes to `document.body` beside
+    `Drawer` and `Toast`. Read the three as history; each was true and is not:
+    - **The shadow must stay `box-shadow`** — still true, on a weaker reason.
+      The old one was that Figma's `drop-shadow` filter is a containing block
+      for `fixed` descendants and would pin the login dialog inside the 58px
+      pill. There is no fixed descendant to pin any more, so what is left is
+      `HeaderNav`'s argument: indistinguishable on an opaque rounded rectangle,
+      and a filter buys a stacking context for nothing.
+      `landing-header.test.ts` still pins it.
+    - **`pointer-events` no longer reaches the dialog by inheritance.** It used
+      to inherit `auto` from the pill, which made "hoist the modals to tidy the
+      tree" a real bug (they would have inherited the header's `none`). The
+      pair is still load-bearing for the dead band; the dialog inherits from
+      `body` and is clickable wherever it is mounted.
+    - Sticky plus `z-30` still makes the header a stacking context, but the
+      dialog is outside it and compares in the root context. The trap this
+      bullet warned about — something on `/` wanting `z-40` — is gone.
   - **It is sticky, where it sat in flow for its whole life.** The old argument
     was "the page is short"; it isn't — it carries the status band and the whole
     standings table — and a floating pill only reads as floating if something

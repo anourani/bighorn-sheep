@@ -19,8 +19,11 @@ export interface EntryTab {
  * The entry switcher — two cards saying which of your entries you are picking
  * for, and what each has already taken this week.
  *
- * Figma `4234:67832` (desktop) / `4234:68190` (mobile); the card atom is 361px
- * wide over two `flex-1` children at a 4px gap, 60px tall, `rounded-control`.
+ * Figma `4234:67832` (desktop) / `4234:68190` (mobile). 60px tall,
+ * `rounded-control`, 4px gap. The cards SIZE DIFFERENTLY by width and that is the
+ * design: on a phone they are two `flex-1` halves of the 361px row, and from `lg`
+ * each is a fixed 180px sitting at the left of the 1000px column rather than
+ * stretching to ~498px apiece.
  *
  * WHY THIS IS A CARD AND NOT A SEGMENTED CONTROL. The cost of getting it wrong
  * is a team spent for the season on the wrong entry, so the control does not
@@ -36,6 +39,10 @@ export interface EntryTab {
  * the pick module has scrolled away. The design draws identical 60px cards in
  * both, so there is no compact variant and no `size` prop — a second geometry
  * is how the two would drift.
+ *
+ * The `lg:` width above does not break that promise, because the sticky bar is
+ * itself `lg:hidden` — it only ever renders below the width where the card stops
+ * stretching. The two placements still cannot disagree at any single viewport.
  *
  * A REAL TABLIST, with roving tabindex through `nextTabIndex` (wrapping, per
  * WAI-ARIA) rather than `Tabs.tsx`. That component is the right ARIA and the
@@ -108,6 +115,18 @@ export function EntryTabs({
             onClick={() => onChange(tab.entryNo)}
             className={cn(
               "flex h-[60px] min-w-[100px] flex-1 flex-col items-center gap-0.5 rounded-control border-2 px-2 pt-1.5",
+              // Fixed 180px from `lg`, left-aligned by the row's default
+              // `justify-start`. `lg:flex-none` is NOT redundant beside the
+              // width: `flex-1` is `flex: 1 1 0%`, which grows from a zero basis
+              // and ignores `width` outright — so the width alone would change
+              // nothing. `flex: none` is what makes the item size to it.
+              //
+              // Both survive `cn()` because `flex-1` and `lg:flex-none` are the
+              // same utility group at different variants, the pairing
+              // `animate-drawer-up sm:animate-reveal-up` relies on elsewhere.
+              //
+              // 180 is the BORDER-box width, so the 2px border is inside it.
+              "lg:w-[180px] lg:flex-none",
               // Unselected fill is `fill-soft` #F3F3F3 where the frame draws
               // #F2F2F2 — one unit, and the token is worth more than the match.
               selected

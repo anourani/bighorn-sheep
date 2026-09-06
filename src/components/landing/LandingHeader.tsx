@@ -36,29 +36,27 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  * whole standings table — and the design draws a floating pill, which only
  * reads as floating if something passes behind it.
  *
- * **`Modal` does not portal, and three things below follow from that.** Both
- * button components return a fragment of a `<button>` and a `Modal`, and
- * `Modal` renders a bare full-viewport `position: fixed` div — so the dialog is a DOM
- * descendant of the pill rather than of `document.body`, the way `Drawer` and
- * `Toast` are:
+ * **`Modal` PORTALS to `document.body` now, and that retired three rules this
+ * docblock used to carry.** Both button components still return a fragment of a
+ * `<button>` and a `Modal`, but the dialog is no longer a DOM descendant of the
+ * pill — it renders beside `Drawer` and `Toast` at the end of `body`. What that
+ * changed, kept here because each one reads like a live constraint otherwise:
  *
- *   - **The shadow must stay a `box-shadow`.** Figma draws it as a
- *     shadow with a CSS filter, and on an opaque rounded rectangle the two are
- *     indistinguishable — but a `filter` makes its element a containing block
- *     for `fixed` descendants, which would pin the login dialog inside this
- *     58px pill. `HeaderNav` refuses the filter for the weaker version of this
- *     reason (it has no fixed descendant); here it is a real bug, and there is
- *     a test for it.
- *   - **`pointer-events` reaches the dialog by INHERITANCE.** The header takes
- *     `none` so clicks fall through the dead band beside the pill; the pill
- *     takes `auto`; the dialog inherits `auto` from the pill. Moving the modals
- *     up to the header to "tidy" the tree would leave them inheriting `none` —
- *     a full-screen dialog nobody can click, with nothing in the console.
- *   - Sticky plus a z-index makes this header a stacking context, so the
- *     dialog now resolves its own stacking level INSIDE it. Harmless today: nothing else on
- *     `/` stacks above level 20 (`StandingsGrid`’s sticky first column), and the
- *     landing wrapper is not positioned, so everything else compares in the
- *     root context. It becomes a trap the day something on `/` wants a higher one.
+ *   - **The shadow stays a `box-shadow` anyway.** The old reason was that a
+ *     `filter` makes its element a containing block for `fixed` descendants and
+ *     would have pinned the login dialog inside this 58px pill. There is no
+ *     fixed descendant to pin any more, so the surviving reason is the plainer
+ *     one `HeaderNav` gives: on an opaque rounded rectangle the two are
+ *     indistinguishable, and a filter buys a stacking context for nothing.
+ *     The test still pins it.
+ *   - **`pointer-events` no longer reaches the dialog by inheritance**, and does
+ *     not need to: portalled, it inherits `auto` from `body`. The pair on this
+ *     header is still load-bearing for the dead band itself (below), just not
+ *     for the dialog — which is strictly more robust, since it used to depend on
+ *     where in the tree the modal happened to sit.
+ *   - Sticky plus a z-index still makes this header a stacking context, but the
+ *     dialog is outside it now and compares in the root context like everything
+ *     else. That removes the trap this bullet used to warn about.
  *
  * The dead band is why the pointer-events pair is load-bearing at all, and it
  * is the same trade `AppHeader` documents: the band spans the full 1000px shell
