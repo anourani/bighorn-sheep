@@ -54,3 +54,20 @@ export const H3 = "text-[32px] font-semibold leading-[1.2] tracking-[-0.04em]";
  * filed as a colour and deleted; see `H3` above.
  */
 export const H4 = "text-[24px] font-semibold leading-[1.2] tracking-[-0.04em]";
+
+/**
+ * H5 — 20px over 120%, semibold, -4%. One step below {@link H4}, same family.
+ *
+ * Added for the entry switcher's second line (the team nickname, or "No Pick"),
+ * which the design draws at exactly this step. That is one call site, and H4's
+ * docblock above already makes the argument for adding a step on the strength of
+ * one: the alternative is a hand-typed
+ * `text-[20px] font-semibold leading-[1.2] tracking-[-0.04em]` sitting in a
+ * component, which is the retyped step this module exists to stop.
+ *
+ * No colour, like its neighbours — and here that is load-bearing rather than
+ * consistent-for-its-own-sake. `EntryTabs` paints this line `shell-mute` on the
+ * unselected card and `shell-ink` on the selected one, so a baked-in colour
+ * would make the constant unusable at the only place that wants it.
+ */
+export const H5 = "text-[20px] font-semibold leading-[1.2] tracking-[-0.04em]";
