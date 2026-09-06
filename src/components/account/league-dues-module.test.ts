@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 const DUES = new URL("./LeagueDues.tsx", import.meta.url);
 const MORE = new URL("./MoreSection.tsx", import.meta.url);
 const PICKS = new URL("../picks/MyPicksClient.tsx", import.meta.url);
+const ACCOUNT = new URL("./AccountClient.tsx", import.meta.url);
 const read = (url: URL) => readFile(url, "utf8");
 
 /** Source with every comment removed — see picks/pick-sticky-bar.test.ts. */
@@ -79,5 +80,30 @@ describe("where the Add 2nd Entry button lives", () => {
   it("is nowhere else", async () => {
     expect(await read(MORE)).not.toContain("AddEntryCta");
     expect(await read(PICKS)).not.toContain("AddEntryCta");
+  });
+
+  /*
+   * THE GATE ITSELF, which lives in a different file from the button.
+   *
+   * `LeagueDues` only knows to render on `canAddEntry`; what that boolean MEANS
+   * is decided by `AccountClient`, so the test above can go on passing while the
+   * rule underneath it rots. A player who already holds two entries must not be
+   * offered a third — `add_entry` would raise `entry_limit` and the button would
+   * be an invitation to an error.
+   *
+   * `=== 1`, deliberately, and not `>= 1` or a truthiness check on
+   * `activeEntries`: `loadAccount` returns one summary per MEMBERSHIP, so the
+   * length IS the entry count and only exactly-one may be offered a second.
+   *
+   * Counted per LEAGUE rather than per person, which is the right reading —
+   * someone holding one entry here and one in another league still gets the
+   * button on this page.
+   */
+  it("is offered only to a player with exactly one entry, while entry is open", async () => {
+    const src = await code(ACCOUNT);
+    expect(src).toContain("activeEntries.length === 1");
+    expect(src).not.toMatch(/activeEntries\.length\s*>=?\s*1/);
+    // ANDed with the window, so the UI mirrors both conditions the RPC enforces.
+    expect(src).toMatch(/activeEntries\.length === 1\s*&&\s*isEntryOpen\(/);
   });
 });
