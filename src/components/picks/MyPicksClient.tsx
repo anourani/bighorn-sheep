@@ -35,13 +35,23 @@ import {
   type PendingPicks,
 } from "@/lib/league/picks";
 import { recordsThroughWeek } from "@/lib/league/records";
-import type { LeagueData } from "@/lib/league/load";
+import type { LeagueData, ViewerEntry } from "@/lib/league/load";
+import type { EntryNo } from "@/lib/league/types";
+import { EntryTabs } from "./EntryTabs";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
-import { PICKS_LAYOUT_KEY } from "@/lib/prefs";
+import { PICKS_ENTRY_KEY, PICKS_LAYOUT_KEY } from "@/lib/prefs";
 import { useStoredChoice } from "@/lib/use-stored-choice";
 
 /** Friendly copy for a rejected pick (mirrors the canPick reason codes). */
+/**
+ * The stored entry choice, as strings because `readStoredChoice` narrows a
+ * `string | null` against a union of strings. Compared back with
+ * `String(e.entryNo)`, which keeps the storage contract in one place rather
+ * than adding a parse that could disagree with it.
+ */
+const ENTRY_CHOICES = ["1", "2"] as const;
+
 const PICK_ERROR: Record<string, string> = {
   team_already_used: "You've already used that team.",
   game_kicked_off: "That game has kicked off — pick locked.",
@@ -63,8 +73,38 @@ const PICK_ERROR: Record<string, string> = {
 
 export function MyPicksClient({ data }: { data: LeagueData }) {
   const { group, currentWeek, finalWeek, nowIso, practice } = data;
-  const practiceMe = practice?.members[data.viewer.id];
   const now = useMemo(() => new Date(nowIso), [nowIso]);
+
+  /*
+   * WHICH ENTRY IS BEING PLAYED (0017).
+   *
+   * Per-device like the layout beside it, and for a stronger reason: switching
+   * tabs writes nothing — the entry rides on each `submitPick` call — so a stale
+   * value in one browser cannot desync anything. `useStoredChoice` seeds with
+   * the fallback and reads storage in an effect, so "1" is the server paint and
+   * anyone who last looked at entry 2 lands back on it after hydration.
+   *
+   * `entries` falls back to a synthetic entry 1 rather than going empty. A
+   * viewer with no membership row does not reach this component (the page
+   * renders `NoLeagueState`), but the array is indexed unconditionally below and
+   * an empty one would mean `activeEntry` was undefined on a path nothing
+   * guards.
+   */
+  const entries: ViewerEntry[] =
+    data.viewerEntries.length > 0
+      ? data.viewerEntries
+      : [{ memberId: data.viewer.id, entryNo: 1, picks: data.viewerPicks, practiceEnabled: true }];
+  const [entryChoice, setEntryChoice] = useStoredChoice(PICKS_ENTRY_KEY, ENTRY_CHOICES, "1");
+  // The STORED choice is a preference; the entries are the fact. Somebody whose
+  // second entry was removed in the SQL editor still has "2" in localStorage,
+  // and must land on the entry they actually hold rather than on nothing.
+  const activeEntry = entries.find((e) => String(e.entryNo) === entryChoice) ?? entries[0]!;
+  const activeEntryNo = activeEntry.entryNo;
+
+  // Practice is keyed by MEMBERSHIP id since 0017, not by user id — so this
+  // reads the practice record of the entry on screen. Keyed on the person, a
+  // two-entry player would have seen entry 1's practice round under both tabs.
+  const practiceMe = practice?.members[activeEntry.memberId];
 
   // Two indexes over two disjoint slices of the schedule. Deliberately NOT one
   // index over both: buildGameIndex keys on week number alone, so preseason week 2
@@ -110,10 +150,13 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const serverPicks = useMemo(
     () =>
       viewerPicksByWeek({
-        regularPicks: data.viewerPicks,
+        // The ACTIVE entry's picks, not `data.viewerPicks` (which is entry 1's).
+        // Everything downstream — the hero, the chips, the used-team set, the
+        // grid — reads this one map, so scoping it here scopes all of them.
+        regularPicks: activeEntry.picks,
         practicePicks: practiceMe?.picks,
       }),
-    [data.viewerPicks, practiceMe],
+    [activeEntry.picks, practiceMe],
   );
   // The optimistic overlay, keyed by week so an in-flight pick can never be
   // painted under a different week's label.
@@ -135,6 +178,43 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // week already ran its own chain, where before only two ever could (the live
   // practice week and regular Week 1 during the preseason).
   const queuesRef = useRef(new Map<string, PickQueue>());
+
+  /*
+   * Submit chains are per ENTRY per week, not per week (0017).
+   *
+   * Two entries may hold picks for the same week at the same time, and each
+   * needs its own single-flight chain — sharing one would let entry 2's tap
+   * settle entry 1's in-flight request and revert to the wrong team. The key is
+   * prefixed rather than the map being nested because everything that touches
+   * it already passes a week key around; one helper keeps that true.
+   */
+  const queueKey = (entryNo: EntryNo, key: string) => `${entryNo}|${key}`;
+
+  // The entry currently on screen, readable from inside an async settle without
+  // capturing a stale value. `activeEntryNo` in a closure would be whatever it
+  // was when the request was launched, which is precisely the value the check
+  // has to compare AGAINST.
+  const activeEntryRef = useRef(activeEntryNo);
+  useEffect(() => {
+    activeEntryRef.current = activeEntryNo;
+  }, [activeEntryNo]);
+
+  /*
+   * The optimistic overlay is dropped when the entry changes.
+   *
+   * It is keyed by week alone, deliberately: it is compared against
+   * `serverPicks` by `pruneAgreedPicks`, and prefixing one side and not the
+   * other would stop every entry ever pruning. Since `serverPicks` is rebuilt
+   * from the newly-active entry, an overlay left over from the previous one
+   * would be painted against the wrong truth — so it goes.
+   *
+   * What is NOT lost is the write: a pick already sent is settled by its own
+   * (entry-prefixed) chain and lands through revalidation. The only cost of
+   * switching tabs mid-flight is that the tick appears a moment later.
+   */
+  useEffect(() => {
+    setPendingPicks(new Map());
+  }, [activeEntryNo]);
 
   // Retire each overlay entry once the server agrees with it, so a pick changed
   // from another tab or device is not shadowed for the life of this one. An
@@ -287,18 +367,20 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       // costs a rejected pick with no explanation.
       return game ? isKickedOff(game, now) : true;
     };
-    const source = viewingPractice ? (practiceMe?.picks ?? []) : data.viewerPicks;
+    const source = viewingPractice ? (practiceMe?.picks ?? []) : activeEntry.picks;
     const entries: [TeamId, UsedPick][] = source
       .filter((p) => spent(p.week, p.teamId))
       .map((p) => [p.teamId, { week: p.week }]);
     return new Map<TeamId, UsedPick>(entries);
-  }, [data.viewerPicks, practiceMe, viewingPractice, viewingPast, viewRef.week, activeIdx, now]);
+  }, [activeEntry.picks, practiceMe, viewingPractice, viewingPast, viewRef.week, activeIdx, now]);
 
   // The viewer's picks for the phase on screen, which is what a release is
   // looked up against — `committedWeek` must never answer with a preseason week
   // while the regular season is being picked, or the toast names a week the
   // strip is not showing.
-  const phasePicks = viewingPractice ? (practiceMe?.picks ?? []) : data.viewerPicks;
+  // The active entry's, so a team spent by entry 1 does not read as spent for
+  // entry 2 — the whole point of the two runs being independent.
+  const phasePicks = viewingPractice ? (practiceMe?.picks ?? []) : activeEntry.picks;
 
   // The VIEWED week's fixture. Resolving it against liveWeek instead found that
   // team's game in a completely different week and rendered its opponent,
@@ -375,6 +457,11 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
    * that team was booked against.
    */
   function launchPick(key: string, teamId: TeamId, releaseKey: string | null = null) {
+    // Captured at launch, not read at settle: switching entries mid-request
+    // must settle the chain this pick belongs to, not whichever one is on
+    // screen when the server answers.
+    const entryNo = activeEntryNo;
+    const qKey = queueKey(entryNo, key);
     // Both derived from the key itself, so neither can disagree with the week
     // the overlay painted under.
     //
@@ -392,7 +479,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       let released: number | null = null;
       let errText = "Couldn't save that pick. Try again.";
       try {
-        const res = await submitPick({ groupId: group.id, teamId, seasonType, week });
+        const res = await submitPick({ groupId: group.id, teamId, seasonType, week, entryNo });
         ok = res.ok;
         if (res.ok) released = res.data?.releasedWeek ?? null;
         else errText = PICK_ERROR[res.error] ?? errText;
@@ -402,9 +489,15 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         // truth, and a queued tap dies with the page it belonged to.
         if (isStaleDeploymentError(err) && reloadOnce()) return;
       }
-      const outcome = settlePick(queuesRef.current.get(key) ?? IDLE_QUEUE, ok);
-      queuesRef.current.set(key, outcome.state);
-      if (outcome.revert) {
+      const outcome = settlePick(queuesRef.current.get(qKey) ?? IDLE_QUEUE, ok);
+      queuesRef.current.set(qKey, outcome.state);
+      // The overlay, the toast and the error banner all describe the entry on
+      // SCREEN. If the player has switched tabs while this was in flight they
+      // belong to a view nobody is looking at, and painting them would put one
+      // entry's result on the other's card. The chain above is still settled,
+      // and the trailing tap below still drains, so nothing is stranded.
+      const stillShowing = activeEntryRef.current === entryNo;
+      if (outcome.revert && stillShowing) {
         const revertTo = outcome.revert.to;
         setPendingPicks((m) => {
           const next = new Map(m).set(key, revertTo);
@@ -417,7 +510,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
       }
       // The server is the only thing that knows a release actually landed, so
       // it is the only thing that raises the sentence saying so.
-      if (released !== null) {
+      if (released !== null && stillShowing) {
         const releasedRef = seasonType === "pre" ? PRE_WEEK(released) : REGULAR_WEEK(released);
         const name = getTeam(teamId)?.name ?? "That team";
         setToast((t) => raiseToast(t, releaseMessage(name, weekLabel(releasedRef, labelOpts))));
@@ -426,7 +519,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         // until the revalidated props landed.
         setPendingPicks((m) => new Map(m).set(weekKey(releasedRef), null));
       }
-      if (outcome.surfaceError) setPickError(errText);
+      if (outcome.surfaceError && stillShowing) setPickError(errText);
       if (outcome.submit !== null) launchPick(key, outcome.submit);
     });
   }
@@ -441,6 +534,37 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
        `> * + *` at a specificity a child's `mt-*` cannot override, so it is
        all-or-nothing rather than something one child can opt out of. */
     <div className="stagger">
+      {/* Renders NOTHING for a one-entry player, which is everyone until
+          somebody takes a second — so the `.stagger` cascade below is unchanged
+          for them, and the 8 `:nth-child` delay rules in globals.css still have
+          room (Toast and PickStickyBar portal out, so this subtree paints four
+          DOM children, or five with the switcher).
+
+          `pb-6` is the design's own 24px down to the week strip; the strip has
+          no top margin of its own, so this owns the seam. */}
+      <EntryTabs
+        tabs={entries.map((e) => ({
+          entryNo: e.entryNo,
+          // The team THIS entry holds for the week on screen, which is what
+          // makes the card a statement of fact rather than a label. The active
+          // entry's card reads through the optimistic overlay so it ticks over
+          // with the tap; the other's is server truth, which is all this tab
+          // knows about it.
+          teamId:
+            e.entryNo === activeEntryNo
+              ? pickTeam
+              : (viewerPicksByWeek({ regularPicks: e.picks }).get(selectedKey) ?? null),
+        }))}
+        value={activeEntryNo}
+        onChange={(entryNo) => {
+          setEntryChoice(String(entryNo) as (typeof ENTRY_CHOICES)[number]);
+          // One entry's refusal must not hang over the other's card.
+          setPickError(null);
+        }}
+        panelKey="picks-entry"
+        className="pb-6"
+      />
+
       {/* `selectedKey`, not raw `viewKey` — a week that has dropped out of the
           options must not stay selected. See the sanitising above. */}
       <WeekStrip
@@ -573,6 +697,25 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         teamId={pickTeam}
         game={pickGame}
         anchor={heroEl}
+        // Only handed the tabs when there are two entries; below that the bar is
+        // exactly what it always was. Same array the in-flow switcher gets, so
+        // the two cannot show different teams for the same entry.
+        entryTabs={
+          entries.length >= 2
+            ? entries.map((e) => ({
+                entryNo: e.entryNo,
+                teamId:
+                  e.entryNo === activeEntryNo
+                    ? pickTeam
+                    : (viewerPicksByWeek({ regularPicks: e.picks }).get(selectedKey) ?? null),
+              }))
+            : undefined
+        }
+        activeEntryNo={activeEntryNo}
+        onEntryChange={(entryNo) => {
+          setEntryChoice(String(entryNo) as (typeof ENTRY_CHOICES)[number]);
+          setPickError(null);
+        }}
       />
     </div>
   );

@@ -35,10 +35,20 @@ export function HeadcountGrid({
   const eliminated = headcount.kind === "season" ? headcount.eliminated : 0;
   const alive = headcount.kind === "season" ? headcount.alive : headcount.joined;
   const total = alive + eliminated;
+  /*
+   * "entries", not "players" (0017). One cube is one ENTRY, because one
+   * group_members row is one entry — so a player holding two occupies two cubes,
+   * has two chances of being among the survivors, and counting them as one
+   * person would make this label disagree with the grid it describes.
+   *
+   * The visible copy beside it ("29 still standing", "29 joined") needs no such
+   * change: neither phrase names what is being counted, which is exactly why
+   * `headcountLine` stopped inflecting a noun at all.
+   */
   const label =
     headcount.kind === "season"
-      ? `${alive} of ${total} players still standing, ${eliminated} eliminated`
-      : `${alive} players joined, none eliminated`;
+      ? `${alive} of ${total} entries still standing, ${eliminated} eliminated`
+      : `${alive} entries joined, none eliminated`;
 
   const ref = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<CubeLayout | null>(null);

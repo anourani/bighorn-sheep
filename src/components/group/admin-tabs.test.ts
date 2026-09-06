@@ -161,15 +161,49 @@ describe("the Members roster's grid", () => {
    * The one screen that administers real people shows the whole name. The two
    * switches and the Remove button label themselves with the SAME string, so
    * the accessible name never disagrees with the visible one.
+   *
+   * Since 0017 that string is `rowName`, which is the full name plus "(Entry 2)"
+   * on a second entry. The roster is one row per ENTRY, so two rows can carry
+   * the same name — and three controls labelled "Buy-in paid — Ali B." with no
+   * way to tell which entry they touch is exactly the ambiguity this test was
+   * written to prevent, one level down.
    */
   it("renders the full name and labels the whole row with it", async () => {
     const src = await code(DRAWER);
     expect(src).toContain("const fullName = formatFullName(m.firstName, m.lastName)");
     expect(src).toContain("{fullName}</span>");
-    expect(src).toContain("a11y={`Buy-in paid — ${fullName}`}");
-    expect(src).toContain("a11y={`Show preseason weeks — ${fullName}`}");
+    expect(src).toContain("a11y={`Buy-in paid — ${rowName}`}");
+    expect(src).toContain("a11y={`Show preseason weeks — ${rowName}`}");
     // RemoveControl takes the row's name rather than re-deriving an
     // abbreviation, which is how the two would drift apart.
     expect(src).not.toContain("member.name");
+  });
+
+  it("distinguishes a second entry in both the label and the badge", async () => {
+    const src = await code(DRAWER);
+    // The suffix is derived once, beside the name, so the three controls cannot
+    // disagree about which entry they administer.
+    expect(src).toMatch(/const rowName = m\.entryNo === 2 \? `\$\{fullName\} \(Entry 2\)` : fullName/);
+    expect(src).toContain("{m.entryNo === 2 ? (");
+  });
+
+  /**
+   * The roster's writes address a row by (group, user, entry) — the arguments
+   * the RPCs take — while its React state keys on the membership id. Passing
+   * `m.id` where a user id belongs would raise `member_not_found` for every
+   * action on the tab, so it is worth a source guard.
+   */
+  it("sends the user id and entry to the member RPCs, never the membership id", async () => {
+    const src = await code(DRAWER);
+    expect(src).not.toMatch(/userId: m\.id/);
+    expect(src).toContain("removeMember({ groupId, userId: m.userId, entryNo: m.entryNo })");
+    expect(src).toContain("setMemberBuyIn({ groupId, userId: m.userId, paid: next, entryNo: m.entryNo })");
+    expect(src).toContain(
+      "setMemberPreseason({ groupId, userId: m.userId, show: next, entryNo: m.entryNo })",
+    );
+    // The optimistic overlays and pending keys stay on the membership id, which
+    // is what makes them per-entry.
+    expect(src).toContain("paidOverrides[m.id]");
+    expect(src).toContain("`${m.id}:remove`");
   });
 });

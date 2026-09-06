@@ -16,9 +16,15 @@ import type { PublicLeagueData } from "@/lib/league/public";
  * functions, no `Date`), and the index is rebuilt here. Exactly what
  * `StandingsClient` does for /app.
  *
- * `viewerId=""` never matches a membership uuid, so no row takes the viewer
- * highlight and every row falls back to the plain zebra stripe — right for a
- * stranger, who is nobody in this league.
+ * `viewerId=""` takes no row's highlight, so every row falls back to the plain
+ * zebra stripe — right for a stranger, who is nobody in this league.
+ *
+ * That used to hold because an empty string could not equal a uuid. It does not
+ * any more: 0017 made the grid compare `member.userId`, and the public payload
+ * carries no user ids at all (0009 deliberately withholds them), so every
+ * mapped row's `userId` is ALSO "". The grid therefore tests the viewer id for
+ * emptiness explicitly rather than relying on a mismatch — without that guard
+ * this board would light up every row as "you".
  */
 export function PublicStandings({ data }: { data: PublicLeagueData }) {
   const now = useMemo(() => new Date(data.nowIso), [data.nowIso]);

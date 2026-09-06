@@ -83,7 +83,16 @@ export function InviteCta({
           Grow the League
         </h2>
         <span className="text-[18px] leading-[1.4] tracking-[-0.18px] text-shell-mute">
-          {countNoun(memberCount, "member")}
+          {/* "entries", not "members" (0017): `memberCount` is a count of
+              group_members rows, and one player may hold two of them.
+
+              THE EXPLICIT PLURAL IS REQUIRED. `countNoun` defaults it to
+              `${singular}s`, which for this word is "entrys" — the one English
+              noun in this app that the default gets wrong, and the reason the
+              helper takes a third argument at all. `view.test.ts` has pinned
+              `countNoun(2, "entry", "entries")` since before anything called it
+              that way. */}
+          {countNoun(memberCount, "entry", "entries")}
         </span>
       </div>
 

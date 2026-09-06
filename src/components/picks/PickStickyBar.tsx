@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { Label } from "@/components/ui/Label";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { TeamLogo } from "@/components/ui/TeamLogo";
+import { EntryTabs, type EntryTab } from "./EntryTabs";
+import type { EntryNo } from "@/lib/league/types";
 import { cn } from "@/lib/cn";
 import type { TeamId } from "@/lib/nfl/teams";
 import type { Game } from "@/lib/nfl/types";
@@ -53,6 +55,9 @@ export function PickStickyBar({
   teamId,
   game,
   anchor,
+  entryTabs,
+  activeEntryNo,
+  onEntryChange,
 }: {
   /** Short week label — "WK6", "HOF", "P2". `weekShortName`, not `weekLabel`. */
   weekName: string;
@@ -60,6 +65,20 @@ export function PickStickyBar({
   game: Game | undefined;
   /** `PickHero`'s root `<section>`. Null until it mounts. */
   anchor: HTMLElement | null;
+  /**
+   * The viewer's entries (0017). Fewer than two and this bar is exactly what it
+   * has always been — the condensed pick row, `aria-hidden`, nothing focusable.
+   *
+   * Two, and the bar becomes the entry switcher instead: Figma `4234:68232`
+   * keeps the 89px height and the eyebrow, drops the pick row entirely, and puts
+   * the same two 60px cards in its place. That is the right trade for the
+   * scrolled state — once the module is off screen the question is no longer
+   * "what did I pick" (each card says so) but "which entry am I about to spend
+   * a team on", and that one must never be more than a glance away.
+   */
+  entryTabs?: EntryTab[];
+  activeEntryNo?: EntryNo;
+  onEntryChange?: (entryNo: EntryNo) => void;
 }) {
   const [visible, setVisible] = useState(false);
 
@@ -107,8 +126,20 @@ export function PickStickyBar({
   // makes before falling through to `NoPickHero`, so the two can never disagree
   // about whether a pick exists.
   const view = resolvePick(teamId, game);
-  if (!view || !teamId || !mounted) return null;
-  const { team, game: pickGame } = view;
+  if (!mounted) return null;
+
+  const multiEntry = (entryTabs?.length ?? 0) >= 2;
+  /*
+   * The no-pick early return applies to the SINGLE-entry bar only.
+   *
+   * That bar has nothing to draw without a pick — it is a restatement of the
+   * hero — so it renders nothing. The multi-entry bar's whole content is the two
+   * cards, and "Entry 1 — No Pick / Entry 2 — Ravens" is not merely still worth
+   * drawing, it is the state the switcher exists for: the moment you are most
+   * likely to spend a team on the wrong entry is the moment one of them is
+   * empty.
+   */
+  if (!multiEntry && (!view || !teamId)) return null;
 
   return createPortal(
     /*
@@ -156,7 +187,24 @@ export function PickStickyBar({
         persistent chrome whose appearance is driven by scrolling, and a live
         region would announce the team on every crossing.
       */
-      aria-hidden
+      /*
+        CONDITIONAL since 0017, where the comment above says "permanently" — and
+        the two halves of that comment's own argument are what decide it. The
+        single-entry bar restates the hero and contains nothing focusable, so it
+        stays hidden. The multi-entry bar contains two real `<button role="tab">`
+        elements, and aria-hidden over a focusable element is a WCAG failure
+        exactly as described: a keyboard user reaches a control no screen reader
+        can name.
+
+        So the multi-entry bar is exposed, and the analysis the comment demanded
+        be reopened has been: it duplicates no heading (the sibling test in
+        pick-sticky-bar.test.ts forbids one here, and that test stops being
+        hypothetical the moment this attribute becomes conditional), its eyebrow
+        is a `Label` span rather than a landmark, and the tablist carries its own
+        `aria-label`. What a screen reader gains is the ability to switch entries
+        without scrolling back up.
+      */
+      aria-hidden={multiEntry ? undefined : true}
       className={cn(
         "fixed inset-x-0 top-0 z-30 border-b border-shell-line bg-bg/80 backdrop-blur-sm lg:hidden",
         // Portalled to `body`, so it inherits nothing from the shell's own
@@ -185,7 +233,7 @@ export function PickStickyBar({
           and the bar's height is also its slide distance. */}
       <div className="mx-auto flex h-[89px] max-w-frame items-center px-4">
         <div className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1">
-          <Label>{eyebrowFor(weekName)}</Label>
+          <Label>{eyebrowFor(weekName, { plural: multiEntry })}</Label>
 
           {/* h-[51px] rather than letting the matchup stack set it: the bar must
               be the same height for every team, or the slide distance changes
@@ -193,21 +241,42 @@ export function PickStickyBar({
               and it is what lets the strips and the rule take `h-full`. The 51
               IS the matchup stack's own height (3 x 12px at 1.4 = 50.4), so the
               two agree — but only one of them is allowed to decide it. */}
+          {/* `!view || !teamId` rides in the condition so TypeScript narrows
+              both for the row below — the early return has already established
+              that they are non-null whenever `multiEntry` is false, but a
+              return two dozen lines up is not something the checker carries
+              into JSX. */}
+          {multiEntry || !view || !teamId ? (
+            /* The same 60px cards as the in-flow switcher, at the same size —
+               the design draws one control, not a compact variant of it, and a
+               second geometry is how the two would drift. They fit: 60 + the
+               eyebrow's 12px line + the row's 4px gap is 76, inside the 89. */
+            <EntryTabs
+              tabs={entryTabs ?? []}
+              value={activeEntryNo ?? 1}
+              onChange={(n) => onEntryChange?.(n)}
+              // A different key from the in-flow switcher's. Both tablists are in
+              // the document at once — this one is merely translated off screen —
+              // and a shared key would emit duplicate ids for every tab and panel.
+              panelKey="picks-entry-sticky"
+              className="w-full"
+            />
+          ) : (
           <div className="flex h-[51px] items-center gap-2">
             {/* 3 × 12 + 2 × 4 = 44 wide, per the frame. `isolate` scopes the
                 logo's z-10 to this group. */}
             <div className="relative isolate flex h-full shrink-0 items-center gap-1">
               <span
                 className="h-full w-3 rounded-sm"
-                style={{ backgroundImage: stripGradient(team.color, "down") }}
+                style={{ backgroundImage: stripGradient(view.team.color, "down") }}
               />
               <span
                 className="h-full w-3 rounded-sm"
-                style={{ backgroundImage: stripGradient(team.color, "up") }}
+                style={{ backgroundImage: stripGradient(view.team.color, "up") }}
               />
               <span
                 className="h-full w-3 rounded-sm"
-                style={{ backgroundImage: stripGradient(team.color, "down") }}
+                style={{ backgroundImage: stripGradient(view.team.color, "down") }}
               />
               {/*
                 `w-max` here is PROPHYLAXIS, and it was measured rather than
@@ -241,12 +310,12 @@ export function PickStickyBar({
 
             <div className="flex h-full min-w-0 items-center gap-2.5">
               <div className="flex flex-col justify-center whitespace-nowrap py-1">
-                <Label>{team.location}</Label>
+                <Label>{view.team.location}</Label>
                 {/* A paragraph, never a heading element: an aria-hidden
                     heading is invisible today, but a duplicate of the hero's
                     level-1 heading would corrupt heading-jump navigation the
                     moment the aria-hidden came off. */}
-                <p className={cn(H4, "text-shell-ink")}>{team.name}</p>
+                <p className={cn(H4, "text-shell-ink")}>{view.team.name}</p>
               </div>
 
               <div className="h-full w-px shrink-0 bg-shell-line" />
@@ -267,12 +336,13 @@ export function PickStickyBar({
                   why this class did NOT have to change when the size did, where
                   a pixel value would have. */}
               <div className="flex h-full flex-col justify-center whitespace-nowrap text-[12px]/[1.4] font-medium tracking-[-0.01em] text-shell-ink">
-                <span>{matchupLine(pickGame, teamId, "long")}</span>
-                <LocalTime iso={pickGame.kickoff} mode="date" />
-                <LocalTime iso={pickGame.kickoff} mode="clockzone" />
+                <span>{matchupLine(view.game, teamId, "long")}</span>
+                <LocalTime iso={view.game.kickoff} mode="date" />
+                <LocalTime iso={view.game.kickoff} mode="clockzone" />
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>,

@@ -238,7 +238,15 @@ export const GROUP: Group = {
 /** Full-name seed rows; first/last/avatar are derived below so this stays terse. */
 type SeedMember = Omit<
   Member,
-  "firstName" | "lastName" | "favoriteAnimal" | "buyInPaid" | "buyInPaidAt" | "showPreseason" | "phone"
+  | "firstName"
+  | "lastName"
+  | "favoriteAnimal"
+  | "buyInPaid"
+  | "buyInPaidAt"
+  | "showPreseason"
+  | "phone"
+  | "userId"
+  | "entryNo"
 >;
 
 const SEED_MEMBERS: SeedMember[] = [
@@ -354,6 +362,12 @@ export const MEMBERS: Member[] = SEED_MEMBERS.map((m) => {
   const lastName = rest.join(" ");
   return {
     ...m,
+    // The demo league is one entry per person, so the membership id and the
+    // person are the same string and every row is entry 1 — which is exactly
+    // what a pre-0017 database looks like, and the reason these seeds needed no
+    // other change. A second-entry fixture belongs in a test, not here.
+    userId: m.id,
+    entryNo: 1 as const,
     firstName,
     lastName,
     favoriteAnimal: SEED_ANIMALS[m.id] ?? null,

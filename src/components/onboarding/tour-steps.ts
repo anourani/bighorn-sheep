@@ -111,7 +111,12 @@ export const TOUR_STEPS: NonEmpty<TourStep> = [
       { text: "Select the team you " },
       { text: "know", strike: true },
       {
-        text: " think is going to win. Remember, you can't pick the same team twice so choose wisely!",
+        // "each entry", not "you", since 0017. A player holding two entries CAN
+        // pick the same team twice — once with each — and this is the only place
+        // in the product that explains the rule, so a sentence that is false for
+        // them is worse than one word of jargon. It reads unchanged for the
+        // single-entry player, who has exactly one entry for it to be about.
+        text: " think is going to win. Remember, each entry can only use a team once so choose wisely!",
       },
     ],
   },

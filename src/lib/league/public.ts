@@ -136,6 +136,23 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
 
     return {
       id: String(m.id ?? ""),
+      /*
+       * NOT a user id, and it never was — this is `group_members.id`, which
+       * 0009 has always emitted as `member_id` precisely so the public payload
+       * carries no auth uuid (that string is also the avatar bucket's folder
+       * name; see 0009's "deliberately absent" note).
+       *
+       * So the landing board needed no change when 0017 made `Member.id` the
+       * membership id everywhere else — it was already right. What it cannot
+       * supply is a real `userId`, because there is deliberately no user id in
+       * the payload at all. The empty string is honest: `isYou` compares
+       * `userId` against the viewer's, a signed-out stranger is nobody, and
+       * `PublicStandings` passes `viewerId=""` for exactly that reason. Two
+       * empty strings must NOT match, which is why StandingsGrid tests the
+       * viewer id for emptiness before comparing.
+       */
+      userId: "",
+      entryNo: m.entry_no === 2 ? 2 : 1,
       // Already abbreviated to "Alex N." in SQL so the full surname never left
       // the database. Do NOT run formatDisplayName over it again.
       name: typeof m.name === "string" ? m.name : "Player",

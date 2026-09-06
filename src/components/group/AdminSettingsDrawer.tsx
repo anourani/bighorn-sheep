@@ -709,7 +709,14 @@ function MembersSection({
     setError(null);
     setPending((p) => new Set(p).add(key));
     startTransition(async () => {
-      const err = await runAction(() => removeMember({ groupId, userId: m.id }));
+      // `m.userId` and `m.entryNo`, NOT `m.id`. Since 0017 `Member.id` is the
+      // membership id, which is the right key for this component's own maps
+      // (below) and the wrong argument for an RPC that locates a row by
+      // (group, user, entry). Passing `m.id` here would have found no row and
+      // raised `member_not_found` for every roster action.
+      const err = await runAction(() =>
+        removeMember({ groupId, userId: m.userId, entryNo: m.entryNo }),
+      );
       // No optimistic override here, unlike the two switches. Those overlay a
       // boolean on a row that stays put; this one removes the row, and a list
       // that drops an entry before the server has agreed has nothing to restore
@@ -739,8 +746,8 @@ function MembersSection({
     startTransition(async () => {
       const err = await runAction(() =>
         field === "paid"
-          ? setMemberBuyIn({ groupId, userId: m.id, paid: next })
-          : setMemberPreseason({ groupId, userId: m.id, show: next }),
+          ? setMemberBuyIn({ groupId, userId: m.userId, paid: next, entryNo: m.entryNo })
+          : setMemberPreseason({ groupId, userId: m.userId, show: next, entryNo: m.entryNo }),
       );
       if (err) {
         setOverride((o) => ({ ...o, [m.id]: !next }));
@@ -758,8 +765,12 @@ function MembersSection({
 
   return (
     <section className="space-y-2">
+      {/* "Entries", because the list below is one row per entry: a two-entry
+          player appears twice, with the badge distinguishing them, and each row
+          has its own paid switch. Counting them as members would make this
+          number disagree with the rows it heads. */}
       <SectionHeading>
-        Members · {members.length} · {paidCount} paid
+        Entries · {members.length} · {paidCount} paid
       </SectionHeading>
       {/*
         NO max-h / overflow here, however long the roster gets. A scroll region
@@ -812,6 +823,10 @@ function MembersSection({
           // the one screen that administers real people rather than displaying
           // them to the league, so "Alex N." is the wrong form here.
           const fullName = formatFullName(m.firstName, m.lastName);
+          // Two rows carry the same name when a player holds two entries, so
+          // every string that has to tell them apart — the switch labels, the
+          // remove confirmation — is suffixed. The badge does it visually.
+          const rowName = m.entryNo === 2 ? `${fullName} (Entry 2)` : fullName;
           return (
             <li
               key={m.id}
@@ -841,6 +856,19 @@ function MembersSection({
                 <span className="min-w-0 flex-1 lg:min-w-0">
                   <span className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink">{fullName}</span>
+                    {/* The same badge the standings board draws, on the same
+                        rule: second entries only. Its accessible text rides on
+                        the controls' labels below rather than here, so a screen
+                        reader hears the entry as part of "Buy-in paid — Ali B.
+                        (Entry 2)" rather than as a stray digit in the row. */}
+                    {m.entryNo === 2 ? (
+                      <span
+                        aria-hidden
+                        className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute"
+                      >
+                        2
+                      </span>
+                    ) : null}
                     {m.role === "admin" ? (
                       <Label className="rounded bg-[#EEF1F6] px-1 text-ink-mute">Admin</Label>
                     ) : null}
@@ -880,7 +908,7 @@ function MembersSection({
                 checked={paid}
                 disabled={pending.has(`${m.id}:paid`)}
                 onChange={(next) => toggle(m, "paid", next)}
-                a11y={`Buy-in paid — ${fullName}`}
+                a11y={`Buy-in paid — ${rowName}`}
               />
               <MemberToggle
                 label="Show preseason weeks"
@@ -896,11 +924,11 @@ function MembersSection({
                 checked={preseasonOpen && preseason}
                 disabled={!preseasonOpen || pending.has(`${m.id}:preseason`)}
                 onChange={(next) => toggle(m, "preseason", next)}
-                a11y={`Show preseason weeks — ${fullName}`}
+                a11y={`Show preseason weeks — ${rowName}`}
               />
               <RemoveControl
                 member={m}
-                name={fullName}
+                name={rowName}
                 open={removalOpen}
                 confirming={confirmingId === m.id}
                 pending={pending.has(`${m.id}:remove`)}

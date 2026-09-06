@@ -14,6 +14,7 @@ import { TourCarousel } from "@/components/onboarding/TourCarousel";
 import { AccountSection, CARD, PAGE_TITLE } from "@/components/account/surfaces";
 import { SPEC_BUTTON_DARK } from "@/components/account/spec";
 import { cn } from "@/lib/cn";
+import { isEntryOpen } from "@/lib/game/season";
 import type { AccountData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
@@ -67,7 +68,18 @@ export function AccountClient({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
 
-  const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
+  /*
+   * EVERY summary for the active league, not `.find()` (0017).
+   *
+   * `loadAccount` returns one `LeagueSummary` per MEMBERSHIP, so a player with
+   * two entries has two summaries carrying the same `group.id` — and `.find()`
+   * silently answered with entry 1, hiding the second entry's dues and its paid
+   * state entirely. `activeLeague` stays as the representative row for
+   * everything that is a fact about the LEAGUE (its name, whether the viewer
+   * administers it); `activeEntries` is what anything per-entry reads.
+   */
+  const activeEntries = leagues.filter((l) => l.group.id === activeGroupId);
+  const activeLeague = activeEntries[0] ?? null;
   const admin = activeLeague && adminMembers ? { league: activeLeague, members: adminMembers } : null;
 
   // Inlined at build time and blank outside production on purpose, so a preview
@@ -101,7 +113,16 @@ export function AccountClient({
             `/app/standings` offer the same `JoinByCode` through `NoLeagueState`,
             and three entry points is intentional. */}
         {activeLeague ? (
-          <LeagueDues league={activeLeague} />
+          <LeagueDues
+            leagues={activeEntries}
+            viewerName={viewer.name}
+            // Exactly one entry, and the league's window still open — the same
+            // two conditions `add_entry` itself enforces.
+            canAddEntry={
+              activeEntries.length === 1 &&
+              isEntryOpen(new Date(activeLeague.group.entryClosesAt), new Date(now))
+            }
+          />
         ) : (
           <AccountSection title="Join an Existing League">
             <div className={CARD}>
@@ -139,7 +160,11 @@ export function AccountClient({
         viewer={viewer}
         currentPhone={account.phone}
       />
-      <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+      <DeleteAccountModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        entryCount={activeEntries.length}
+      />
 
       {/* The replay path, and it deliberately does NOT write `tour_completed_at`
           — only `FirstRunTour` completes the tour. Someone who opened this on

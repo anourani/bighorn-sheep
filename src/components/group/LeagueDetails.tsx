@@ -143,13 +143,20 @@ export function LeagueDetails({
         <Row label="Buy in">
           <Value>{formatMoney(group.buyInCents)}</Value>
         </Row>
-        <Row label="Headcount">
+        {/* "Entries", not "Headcount" (0017). The number is a count of
+            group_members rows and one player may hold two, so "headcount" would
+            be a claim about people that this figure does not make. */}
+        <Row label="Entries">
           <Value>{memberCount}</Value>
         </Row>
         {/* The pot, not the gross. `siteFeeCents` is the site's cut and is
             charged on top of the buy-in — the account page's League Dues card
             shows a member the two added together — so what the winner takes is
-            the buy-in alone, times everyone in. Derived live; nothing stores it. */}
+            the buy-in alone, times every ENTRY in. Entries are what pay a buy-in
+            (a second entry is a second one, which is what AddEntryCta warns
+            about), so this arithmetic needed no change when they arrived —
+            `memberCount` counts the rows that owe. Derived live; nothing
+            stores it. */}
         <Row label="Winner takes">
           <Value>{formatMoney(group.buyInCents * memberCount)}</Value>
         </Row>

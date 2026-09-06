@@ -250,12 +250,27 @@ export interface Database {
            * buy_in_paid above.
            */
           show_preseason: boolean;
+          /**
+           * WHICH of this person's entries this row is — 1 or 2 (0017).
+           *
+           * A group_members row IS an entry, so (group_id, user_id, entry_no)
+           * is the identity `group_members_entry_key` enforces, and the row's
+           * own `id` is what the app carries as `Member.id`.
+           *
+           * Typed as present, on the `show_preseason` precedent above: 0017 is
+           * applied BY HAND, so a row read before it lands has no such key at
+           * runtime. Every reader therefore spells `row.entry_no ?? 1`, and
+           * anything that must branch on whether the column exists at all uses
+           * `"entry_no" in row` rather than a comparison the type forbids.
+           */
+          entry_no: 1 | 2;
           joined_at: string;
         };
         Insert: {
           id?: string;
           group_id: string;
           user_id: string;
+          entry_no?: 1 | 2;
           role?: "admin" | "player";
           status?: "alive" | "eliminated";
           strikes?: number;
@@ -305,6 +320,16 @@ export interface Database {
           id: string;
           group_id: string;
           user_id: string;
+          /**
+           * Which of the picker's entries this pick belongs to (0017). Carries
+           * the same hand-applied caveat as group_members.entry_no above.
+           *
+           * Note it is NOT a foreign key to group_members: picks reference
+           * groups and profiles only (0001), which is why 0013_remove_member
+           * deletes them explicitly rather than relying on a cascade. The tie
+           * to a membership row is the (group_id, user_id, entry_no) triple.
+           */
+          entry_no: 1 | 2;
           season_type: "pre" | "regular" | "post";
           week: number;
           team_id: string;
@@ -318,6 +343,8 @@ export interface Database {
           id?: string;
           group_id: string;
           user_id: string;
+          /** Defaults to 1 in the database (0017). */
+          entry_no?: 1 | 2;
           /** Defaults to 'regular' in the database (0006). */
           season_type?: "pre" | "regular" | "post";
           week: number;
@@ -354,6 +381,20 @@ export interface Database {
         Args: { p_code: string };
         Returns: Database["public"]["Tables"]["groups"]["Row"];
       };
+      /**
+       * Adds a SECOND entry for the caller in a league they already belong to
+       * (0017). The only way a second entry is created — join_by_invite is
+       * deliberately unchanged, because turning its already-a-member guard into
+       * the second-entry path would enrol someone twice on a re-clicked invite.
+       *
+       * Fails closed and raises rather than returning a sentinel:
+       * `not_authenticated`, `group_not_found`, `not_a_member`, `entry_closed`
+       * (the join window governs entries too), `entry_limit` (already holds two).
+       */
+      add_entry: {
+        Args: { p_group_id: string };
+        Returns: Database["public"]["Tables"]["group_members"]["Row"];
+      };
       create_group: {
         Args: {
           p_name: string;
@@ -378,6 +419,23 @@ export interface Database {
         Returns: string[];
       };
       /**
+       * The entry-aware sibling of hidden_picks_for_week (0017), returning
+       * group_members.id rather than user_id. Two entries of one person are two
+       * rows on the standings board, and the padlock has to land on the entry
+       * that picked — an answer a user_id cannot express.
+       *
+       * A third name rather than a redefinition, on the same reasoning 0006
+       * used when it added hidden_picks_for_week beside 0003's version.
+       *
+       * Missing until 0017 is applied by hand: the call then 404s (PGRST202),
+       * `data` is not an array, and the caller leaves the padlock set empty.
+       * Cosmetic, and deliberately not a lockout.
+       */
+      hidden_pick_member_ids: {
+        Args: { p_group_id: string; p_season_type: "pre" | "regular" | "post"; p_week: number };
+        Returns: string[];
+      };
+      /**
        * Admin-only buy-in write, added in 0007. SECURITY DEFINER because
        * group_members has no UPDATE policy at all; the function re-checks
        * is_group_admin() itself and raises `not_admin` otherwise.
@@ -388,7 +446,13 @@ export interface Database {
        * The signature is unchanged.
        */
       set_member_buy_in: {
-        Args: { p_group_id: string; p_user_id: string; p_paid: boolean };
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          p_paid: boolean;
+          /** 0017. Defaulted in SQL, so omitting it still means entry 1. */
+          p_entry_no?: 1 | 2;
+        };
         Returns: Database["public"]["Tables"]["group_members"]["Row"];
       };
       /**
@@ -435,7 +499,13 @@ export interface Database {
        * `not_admin`, `member_not_found`.
        */
       set_member_preseason: {
-        Args: { p_group_id: string; p_user_id: string; p_show: boolean };
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          p_show: boolean;
+          /** 0017. Defaulted in SQL, so omitting it still means entry 1. */
+          p_entry_no?: 1 | 2;
+        };
         Returns: Database["public"]["Tables"]["group_members"]["Row"];
       };
       /**
@@ -445,7 +515,16 @@ export interface Database {
        * `entry_closed`, `cannot_remove_admin`, `member_not_found`.
        */
       remove_member: {
-        Args: { p_group_id: string; p_user_id: string };
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          /**
+           * 0017. Scopes the removal to ONE entry — both the membership row and
+           * its picks. Omitting it removes entry 1, which is every
+           * single-entry player.
+           */
+          p_entry_no?: 1 | 2;
+        };
         Returns: void;
       };
       /**

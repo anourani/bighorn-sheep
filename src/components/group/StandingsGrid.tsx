@@ -75,6 +75,19 @@ export function StandingsGrid({
   hiddenPickUserIds = [],
 }: {
   ranked: RankedMember[];
+  /**
+   * The viewer's USER id, matched against `member.userId` — never against
+   * `member.id`, which is the membership id and differs per entry.
+   *
+   * Both of a two-entry player's rows are theirs, so both take the highlight;
+   * that is the intended reading of "your row" and the reason this compares the
+   * person rather than the entry.
+   *
+   * `PublicStandings` passes "" for a signed-out stranger, and the public
+   * payload has no user ids at all (`userId` is "" for every row), so the
+   * comparison below guards against the empty string rather than lighting up
+   * the entire landing board.
+   */
   viewerId: string;
   currentWeek: number;
   finalWeek: number;
@@ -89,9 +102,13 @@ export function StandingsGrid({
   now: Date;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
   /**
-   * user_ids with a locked-but-hidden pick this week. Under RLS a rival's hidden
-   * pick returns no row at all, so this (team-less) flag is what lets the grid
-   * still show a padlock rather than a bare "no pick" slot.
+   * MEMBERSHIP ids (`member.id`) with a locked-but-hidden pick this week. Under
+   * RLS a rival's hidden pick returns no row at all, so this (team-less) flag is
+   * what lets the grid still show a padlock rather than a bare "no pick" slot.
+   *
+   * Membership ids rather than user ids since 0017: a player with two entries
+   * may have picked with one and not the other, and a padlock on the person
+   * would light both rows.
    */
   hiddenPickUserIds?: string[];
 }) {
@@ -202,7 +219,7 @@ export function StandingsGrid({
             </thead>
             <tbody>
               {ranked.map(({ member, rank }, i) => {
-                const isYou = member.id === viewerId;
+                const isYou = viewerId !== "" && member.userId === viewerId;
                 const eliminated = member.status === "eliminated";
                 /*
                  * Zebra stripes replace the row rules the table used to draw.
@@ -254,6 +271,41 @@ export function StandingsGrid({
                         <span className="truncate text-sm font-semibold text-ink">
                           {member.name}
                         </span>
+                        {/*
+                          The entry badge (Figma `4234:68850`), on a player's
+                          SECOND entry only.
+
+                          Entry 1 wears nothing, and that asymmetry is the whole
+                          design: almost every row in the league is somebody's
+                          only entry, so badging all of them would put a "1" on
+                          every line to distinguish the handful that need it.
+                          A bare, unbadged name means what it always meant.
+
+                          `rounded-sm` is stock Tailwind's 2px — the config
+                          defines only card/medium/control/pill, and 2px is not
+                          worth a fifth token for one badge.
+
+                          `shrink-0` because the name beside it is `truncate` in
+                          a 146px column: without it the badge is what gives way,
+                          and a squashed "2" is worse than a clipped name.
+
+                          The digit alone names nothing aloud, so the accessible
+                          text is a sibling `sr-only` and the badge itself is
+                          hidden — rather than an aria-label on the span, which
+                          would leave the visible "2" and the spoken "Entry 2"
+                          failing WCAG 2.5.3's substring rule for voice control.
+                        */}
+                        {member.entryNo === 2 ? (
+                          <>
+                            <span
+                              aria-hidden
+                              className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute"
+                            >
+                              2
+                            </span>
+                            <span className="sr-only">Entry 2</span>
+                          </>
+                        ) : null}
                         {/* The "Out" chip is gone with the redesign — the frame
                             has no room for one at this row height and the frozen
                             position below the living says it instead. Position

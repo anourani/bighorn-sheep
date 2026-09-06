@@ -243,12 +243,19 @@ export function rankMembers(members: readonly Member[], ctx: RankContext): Ranke
       }
 
       if (a.strikes !== b.strikes) return a.strikes - b.strikes;
-      return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+      // Entry before id, so a player's two entries never swap places between
+      // loads on a full tie — `id` is a random uuid and would decide it
+      // arbitrarily. It stays as the final key because it is what keeps the
+      // sort TOTAL for two different people sharing a name.
+      return (
+        a.name.localeCompare(b.name) || a.entryNo - b.entryNo || a.id.localeCompare(b.id)
+      );
     }
     const aw = a.eliminatedWeek ?? 0;
     const bw = b.eliminatedWeek ?? 0;
     if (aw !== bw) return bw - aw;
-    return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    // Same entry-then-id tiebreak as the living branch above.
+    return a.name.localeCompare(b.name) || a.entryNo - b.entryNo || a.id.localeCompare(b.id);
   });
   return ordered.map((member, i) => ({ member, rank: i + 1 }));
 }
@@ -499,7 +506,23 @@ export function viewCurrentPick(
   if (!pick) return { hasPick: false, revealed: true, status: "none" };
 
   const game = gameForTeam(week, pick.teamId);
-  const isOwn = member.id === viewerId;
+  /*
+   * `member.userId`, not `member.id` — since 0017 the latter is the membership
+   * id and would never equal a viewer's user id, which would have hidden every
+   * player's own pick from them until kickoff.
+   *
+   * Both of a two-entry player's rows are "own", deliberately: they are that
+   * person's picks, and a rule that revealed one and padlocked the other would
+   * be telling them something they already know.
+   *
+   * The empty-string guard preserves the convention `rankMembers` depends on —
+   * it passes "" precisely so NOBODY's pick counts as revealed early, and the
+   * public payload's rows also carry `userId: ""`. Without the guard those two
+   * empty strings would match and the landing board would reveal every hidden
+   * pick in the league. Previously an empty string simply could not equal a
+   * uuid, so this cost nothing to get wrong; now it does.
+   */
+  const isOwn = viewerId !== "" && member.userId === viewerId;
   const kicked = game ? isKickedOff(game, now) : false;
   const revealed = isOwn || kicked;
 

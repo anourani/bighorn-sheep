@@ -46,9 +46,20 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** The eyebrow both pick modules print — "Your Week 6 Pick", "Your WK6 Pick". */
-export function eyebrowFor(weekName: string): string {
-  return `Your ${weekName} Pick`;
+/**
+ * The eyebrow both pick modules print — "Your Week 6 Pick", "Your WK6 Pick".
+ *
+ * `plural` is for the sticky bar's multi-entry variant, which heads a pair of
+ * entry cards rather than one pick: "Your WK6 Picks". One function with a flag
+ * rather than a sibling, because the two strings differ by a letter and the
+ * whole reason this lives here is that `PickHero` and `PickStickyBar` must not
+ * be able to word the same eyebrow differently.
+ *
+ * `PickHero` never passes it — a hero always draws exactly one entry's pick,
+ * whichever tab is selected.
+ */
+export function eyebrowFor(weekName: string, opts: { plural?: boolean } = {}): string {
+  return `Your ${weekName} Pick${opts.plural ? "s" : ""}`;
 }
 
 /**

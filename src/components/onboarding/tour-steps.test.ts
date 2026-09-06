@@ -83,7 +83,7 @@ describe("the deck", () => {
     expect(TOUR_STEPS.map((s) => bodyText(s.body))).toEqual([
       "This is where you pick your team each week. Tap the week you want, then tap a team. That's it.",
       "Weeks act like tabs. Tap one and that week's teams appear below. Weeks you've already picked show their team.",
-      "Select the team you know think is going to win. Remember, you can't pick the same team twice so choose wisely!",
+      "Select the team you know think is going to win. Remember, each entry can only use a team once so choose wisely!",
       "The team you pick is locked the moment their game starts. You can change your pick any time before that.",
       "This is the league scoreboard. See what teams everyone else picked, who's in and who's out.",
       'Everybody\'s pick on the Standings page will read as "Hidden" until that team is locked in.',

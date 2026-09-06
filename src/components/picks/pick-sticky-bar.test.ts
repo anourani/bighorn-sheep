@@ -75,14 +75,48 @@ describe("PickStickyBar's logo", () => {
 });
 
 describe("PickStickyBar's accessibility", () => {
-  it("is aria-hidden and has nothing focusable in it", async () => {
-    // The pair is the point: aria-hidden is legal ONLY because nothing inside
-    // can take focus. Making the bar tappable must fail a test rather than
-    // quietly create a keyboard trap no screen reader can name.
-    const src = await read(BAR);
-    expect(src).toContain("aria-hidden");
+  /*
+   * This pair used to read "is aria-hidden and has nothing focusable in it",
+   * and it was rewritten on purpose when 0017 gave the bar a multi-entry
+   * variant. The old assertion is not merely outdated — it would now PASS while
+   * proving nothing, because the focusable controls moved into `EntryTabs` and
+   * a regex over this file cannot see them.
+   *
+   * The rule it was defending still stands, one level up: aria-hidden is legal
+   * only over a subtree nothing can focus. So the bar hides itself when it is
+   * the condensed pick row (a restatement of the hero, no controls) and exposes
+   * itself when it is the entry switcher (two real tabs). What must never
+   * happen is a hard-coded `aria-hidden` over the switcher.
+   */
+  it("makes aria-hidden conditional rather than unconditional", async () => {
     const markup = (await code(BAR)).slice((await code(BAR)).indexOf("return createPortal"));
-    expect(markup).not.toMatch(/<button|onClick|tabIndex|<a\b/);
+    expect(markup).toContain("aria-hidden");
+    // A bare `aria-hidden` or `aria-hidden={true}` would cover the tabs too.
+    expect(markup).toMatch(/aria-hidden=\{[^}]*multiEntry/);
+  });
+
+  it("keeps the condensed pick row itself free of focusable elements", async () => {
+    // The single-entry bar is still hidden, so anything focusable in the row it
+    // draws would be a keyboard trap no screen reader can name. `EntryTabs` is
+    // rendered only on the exposed branch and carries its own controls, so it
+    // is excluded from this scan rather than exempted from the rule.
+    const markup = (await code(BAR)).slice((await code(BAR)).indexOf("return createPortal"));
+    // The else branch of the multiEntry ternary — everything from `) : (` on.
+    // `EntryTabs` is self-closing, so slicing on a closing tag would silently
+    // match nothing and scan the whole file instead, which is a test that
+    // passes without looking at anything.
+    const split = markup.indexOf(") : (");
+    expect(split).toBeGreaterThan(-1);
+    const row = markup.slice(split);
+    expect(row).not.toMatch(/<button|onClick|tabIndex|<a\b|<EntryTabs/);
+  });
+
+  it("only exposes itself when there is more than one entry", async () => {
+    // The condition, not just its presence: `multiEntry` is what decides both
+    // the aria-hidden above and whether the tabs render at all, so the two can
+    // never disagree about whether a focusable control is on screen.
+    const src = await code(BAR);
+    expect(src).toMatch(/const multiEntry = \(entryTabs\?\.length \?\? 0\) >= 2/);
   });
 
   it("does not restate the hero's heading as a heading", async () => {
