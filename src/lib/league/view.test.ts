@@ -228,6 +228,56 @@ describe("rankMembers", () => {
   const ids = (ms: Member[], hidden: string[] = []) =>
     ranked(ms, hidden).map((r) => r.member.id);
 
+  /*
+   * TWO ENTRIES (0017). The ranking was written when one person was one row, and
+   * the property that has to survive is that it still ranks ROWS: two entries of
+   * one player are two independent competitors, with no adjacency rule tying
+   * them together and no shared fate.
+   */
+  describe("with two entries per player", () => {
+    // Same person (`userId`), two membership ids, which is exactly the shape
+    // `toMember` produces from two group_members rows.
+    const e1 = (over: Partial<Member> = {}) => member("m1", { userId: "u1", entryNo: 1, ...over });
+    const e2 = (over: Partial<Member> = {}) => member("m2", { userId: "u1", entryNo: 2, ...over });
+
+    it("ranks a player's two entries independently, on their own weeks", () => {
+      // Entry 1 won this week, entry 2 lost. They must land in their own
+      // buckets, at opposite ends — not beside each other because they belong
+      // to the same person.
+      const won = e1({ currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" } });
+      const lost = e2({ currentPick: { week: WEEK, teamId: "buf", gameId: "g_buf" } });
+      const other = picked("z", "sf");
+      expect(ids([lost, other, won])).toEqual(["m1", "z", "m2"]);
+    });
+
+    it("keys the hidden-pick flag on the entry, not the person", () => {
+      // A padlock belongs to the entry that picked. Flagging `u1` would light
+      // both rows, telling the league that an entry which has not picked has.
+      const a = e1();
+      const b = e2();
+      const ranked1 = ranked([a, b], ["m2"]);
+      expect(ranked1.map((r) => r.member.id)).toEqual(["m2", "m1"]);
+    });
+
+    it("orders a full tie by entry rather than by a random id", () => {
+      /*
+       * Both entries identical in every ranking key, so the tiebreak decides.
+       * `id` is a uuid in production and would order them arbitrarily — and
+       * differently after any row was recreated. Entry number is stable and
+       * reads the way a player expects.
+       */
+      expect(ids([e2(), e1()])).toEqual(["m1", "m2"]);
+    });
+
+    it("still separates two different people who share a name", () => {
+      // The entry key must not displace `id` as the FINAL tiebreak, or the sort
+      // stops being total for a genuine name collision.
+      const p1 = member("aaa", { userId: "ua", name: "Sam" });
+      const p2 = member("bbb", { userId: "ub", name: "Sam" });
+      expect(ids([p2, p1])).toEqual(["aaa", "bbb"]);
+    });
+  });
+
   it("orders the living by how their current week is going", () => {
     // won → live → picked → none → lost. Deliberately fed in reverse.
     expect(

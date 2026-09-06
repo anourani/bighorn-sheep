@@ -77,6 +77,19 @@ describe("eyebrowFor", () => {
     expect(eyebrowFor("WK6")).toBe("Your WK6 Pick");
     expect(eyebrowFor("Hall of Fame")).toBe("Your Hall of Fame Pick");
   });
+
+  /*
+   * The sticky bar's multi-entry variant heads a PAIR of entry cards, so its
+   * eyebrow is plural. One function with a flag rather than a second string in
+   * the component, for the reason this helper exists at all: the hero and the
+   * bar must not be able to word the same eyebrow differently.
+   */
+  it("pluralises for the multi-entry bar and nowhere else", () => {
+    expect(eyebrowFor("WK6", { plural: true })).toBe("Your WK6 Picks");
+    // The default is the singular, so every existing call site is unchanged.
+    expect(eyebrowFor("WK6", {})).toBe("Your WK6 Pick");
+    expect(eyebrowFor("WK6", { plural: false })).toBe("Your WK6 Pick");
+  });
 });
 
 describe("matchupLine", () => {
