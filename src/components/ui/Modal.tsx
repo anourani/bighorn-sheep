@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { XIcon } from "@/components/icons";
 import { Label } from "./Label";
@@ -15,6 +16,25 @@ import { Label } from "./Label";
  * width, with a focus trap and focus restore this does not have. The admin
  * settings panel is its only caller. This component is unchanged by that and
  * should stay the default for anything that fits in a card.
+ *
+ * IT PORTALS TO `document.body`, and it did not until the fourth time that cost
+ * somebody a day. `.stagger > *` carries `reveal-up … both`, whose `to` state is
+ * `transform: translateY(0)` — fill-mode `both` leaves that transform applied for
+ * the life of the page, and ANY non-`none` transform is a containing block for
+ * `position: fixed` descendants. Rendered inline inside a `.stagger` child, this
+ * dialog's `fixed inset-0` scrim therefore resolved against that child's box: a
+ * grey rectangle over one section of the page with the panel centred inside it,
+ * and nothing anywhere reporting an error.
+ *
+ * The workarounds are still in the tree and are worth reading as evidence of how
+ * often this came up — `AccountClient` and `StandingsClient` both mount their
+ * dialogs OUTSIDE `.stagger`, and `TourCarousel` (which still renders inline)
+ * carries the whole argument in its own docblock. A portal makes the position of
+ * the call site stop mattering, which is the only durable fix.
+ *
+ * A second, quieter bug goes with it: a `.stagger` child also inherits an
+ * `:nth-child` entrance delay, so a dialog mounted there sat invisible for up to
+ * 385ms before playing its own animation.
  *
  * The scrim animates with `scrim-in`, NOT `reveal-up`. `reveal-up` starts at
  * translateY(12px), which slid an `absolute inset-0` scrim 12px down the screen
@@ -56,7 +76,10 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  // `typeof document` guards the portal on the server pass, where `open` is
+  // always false in practice but nothing structurally prevents a caller passing
+  // true. Same shape as `Drawer`'s.
+  if (!open || typeof document === "undefined") return null;
 
   // A title-only header is shorter than the 36px close button, so `items-start`
   // visibly parks it above the button's centre. With an eyebrow or a description
@@ -65,7 +88,7 @@ export function Modal({
   // name that has wrapped to three.
   const compact = !eyebrow && !description;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       role="dialog"
@@ -84,7 +107,13 @@ export function Modal({
         className={cn(
           "relative z-10 w-full max-w-app origin-bottom rounded-t-card bg-white shadow-lift outline-none",
           "sm:rounded-card",
-          "animate-reveal-up max-h-[92vh] overflow-y-auto",
+          // TWO ENTRANCES, one per shape. Below `sm` this is a bottom sheet and
+          // slides up like `Drawer`; from `sm` it is a centred card and takes
+          // `reveal-up`'s small nudge, which is what a card should do. The pair
+          // survives `cn()` because `animate-*` and `sm:animate-*` are different
+          // tailwind-merge groups — the same swap `TourCarousel` makes, and its
+          // note is where that was worked out.
+          "animate-drawer-up sm:animate-reveal-up max-h-[92vh] overflow-y-auto",
         )}
       >
         <div
@@ -119,6 +148,7 @@ export function Modal({
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

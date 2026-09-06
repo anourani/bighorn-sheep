@@ -110,7 +110,7 @@ export function AddEntryCta({
         onClose={() => setOpen(false)}
         eyebrow="Second entry"
         title="Add a second entry?"
-        description="You'll play two independent runs at the season."
+        description="You'll play two separate entries this season. Two is the maximum."
         footer={
           <div className="flex flex-col gap-2 sm:flex-row-reverse">
             <Button block disabled={pending} onClick={confirm}>
@@ -124,21 +124,18 @@ export function AddEntryCta({
       >
         <div className="space-y-4 text-sm leading-relaxed text-ink-soft">
           <p>
-            Your second entry keeps its own picks, its own strikes and its own place on
-            the standings board. Losing with one doesn&apos;t end the other, and you can
-            pick the same team with both in the same week.
+            Your second entry gets its own picks, strikes, and standings spot. If one is
+            eliminated, the other keeps going, and both can pick the same team in a week.
           </p>
           <p>
-            <b className="font-semibold text-ink">It costs another buy-in.</b>{" "}
+            {/* The SAME figure the dues card prints as `view.total` — buy-in plus
+                the site fee — because the two sit on one screen and a player who
+                reads one number here and another there has been misled by the
+                page. When the league has no price set, the sentence drops its
+                amount rather than promising "$0". */}
             {owed > 0
-              ? `That's ${formatMoney(owed)} more owed to your league.`
-              : "Settle up with whoever runs your league."}
-          </p>
-          <p>
-            {/* Said here rather than discovered later: this is the one thing on
-                the screen that a player cannot walk back themselves. */}
-            There&apos;s no way to remove an entry from the app yet — ask your league
-            admin if you change your mind.
+              ? `Each entry requires its own league dues payment of ${formatMoney(owed)}.`
+              : "Each entry requires its own league dues payment."}
           </p>
           {error ? <p className="font-medium text-out">{error}</p> : null}
         </div>

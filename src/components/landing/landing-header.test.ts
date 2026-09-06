@@ -42,19 +42,22 @@ describe("the signed-out pill's surface", () => {
     expect(src).toContain("bg-white");
   });
 
-  it("keeps the shadow a box-shadow, because Modal is a fixed descendant", async () => {
-    // Figma draws this shadow with a CSS filter. A filter makes its element a
-    // containing block for `position: fixed` descendants — and `Modal` does NOT
-    // portal (it renders inline, inside the pill), so a filter here would pin
-    // the login dialog inside a 58px pill. `HeaderNav` refuses the filter for
-    // the weaker version of this reason; here it is a real bug.
+  it("keeps the shadow a box-shadow", async () => {
+    // Figma draws this shadow with a CSS filter. This assertion used to be about
+    // `Modal` rendering inline inside the pill — a filter is a containing block
+    // for `position: fixed` descendants, so it would have pinned the login
+    // dialog inside a 58px pill. `Modal` portals to `document.body` now, so that
+    // reason is retired and the plainer one `HeaderNav` gives is what is left:
+    // on an opaque rounded rectangle the two are indistinguishable, and a filter
+    // buys a stacking context for nothing.
     expect(await code(HEADER)).not.toContain("drop-shadow");
   });
 
   it("is opaque, and ships no blur that could not show through it", async () => {
     // Only the desktop signed-out frame carries the 4px blur; the mobile
-    // signed-out frame and both signed-in frames do not. On the band it would
-    // capture the fixed dialog by the same rule as the filter above.
+    // signed-out frame and both signed-in frames do not. It is dead CSS on an
+    // opaque fill either way — and it would make this the app's only frosted
+    // chrome, against the split the design settled on.
     expect(await code(HEADER)).not.toContain("backdrop-blur");
   });
 
@@ -85,9 +88,10 @@ describe("the signed-out pill's wrapper", () => {
 
   it("passes clicks through the dead band and catches them on the pill", async () => {
     // The band spans the full shell while the pill draws about 366 of it, over
-    // a title, a pitch and a table that scrolls sideways. This is also the only
-    // reason the dialogs are clickable: `pointer-events` is inherited, and the
-    // Modal is inside the pill.
+    // a title, a pitch and a table that scrolls sideways. It used to be the only
+    // reason the dialogs were clickable too — they inherited `auto` from the
+    // pill — but `Modal` portals now and inherits from `body`, so this pair is
+    // about the dead band alone.
     const src = await code(HEADER);
     expect(src).toContain("pointer-events-none");
     expect(src).toContain("pointer-events-auto");
