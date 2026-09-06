@@ -127,8 +127,11 @@ describe("cellFor — the current week", () => {
   });
 
   it("shows the viewer their own un-kicked pick", () => {
+    // "u1" — the USER id, not the membership id "m1". Since 0017 the viewer is
+    // matched on `member.userId`, so that a two-entry player sees BOTH of their
+    // own picks rather than only the row whose membership id happens to match.
     const m = member({ currentPick: { week: WEEK, teamId: "dal", gameId: "g3" } });
-    expect(cell(m, WEEK, "m1")).toEqual({
+    expect(cell(m, WEEK, "u1")).toEqual({
       kind: "team",
       teamId: "dal",
       result: undefined,
@@ -139,8 +142,33 @@ describe("cellFor — the current week", () => {
   it("draws a padlock from the team-less flag when RLS withheld the row", () => {
     // A rival's hidden pick returns no row at all, so `currentPick` is null and
     // the flag is the only thing separating "picked, hidden" from "not picked".
+    // The flag holds MEMBERSHIP ids ("m1"), which is what lets a padlock land on
+    // one of a player's two entries and not the other.
     expect(cell(member(), WEEK, "", ["m1"])).toEqual({ kind: "hidden" });
     expect(cell(member(), WEEK)).toEqual({ kind: "empty" });
+  });
+
+  it("reveals both of a two-entry player's own picks", () => {
+    // The two rows share a userId and differ by membership id. Revealing one
+    // and padlocking the other would be hiding somebody's pick from themselves.
+    const pick = { week: WEEK, teamId: "dal", gameId: "g3" } as const;
+    const one = member({ id: "m1", userId: "u1", entryNo: 1, currentPick: pick });
+    const two = member({ id: "m2", userId: "u1", entryNo: 2, currentPick: pick });
+    expect(cell(one, WEEK, "u1")).toMatchObject({ kind: "team", teamId: "dal" });
+    expect(cell(two, WEEK, "u1")).toMatchObject({ kind: "team", teamId: "dal" });
+  });
+
+  it("reveals nobody's pick to an empty viewer id", () => {
+    /*
+     * The landing board passes "" because a stranger is nobody, and
+     * `rankMembers` passes "" so that no row is sorted on information the
+     * others were not. The public payload also maps every row's `userId` to ""
+     * — so without the empty-string guard in `viewCurrentPick` those two would
+     * MATCH and the anonymous board would reveal every hidden pick in the
+     * league. This is the regression that guard exists for.
+     */
+    const m = member({ userId: "", currentPick: { week: WEEK, teamId: "dal", gameId: "g3" } });
+    expect(cell(m, WEEK, "")).toEqual({ kind: "hidden" });
   });
 });
 

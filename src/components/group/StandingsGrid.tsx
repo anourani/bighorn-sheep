@@ -271,6 +271,41 @@ export function StandingsGrid({
                         <span className="truncate text-sm font-semibold text-ink">
                           {member.name}
                         </span>
+                        {/*
+                          The entry badge (Figma `4234:68850`), on a player's
+                          SECOND entry only.
+
+                          Entry 1 wears nothing, and that asymmetry is the whole
+                          design: almost every row in the league is somebody's
+                          only entry, so badging all of them would put a "1" on
+                          every line to distinguish the handful that need it.
+                          A bare, unbadged name means what it always meant.
+
+                          `rounded-sm` is stock Tailwind's 2px — the config
+                          defines only card/medium/control/pill, and 2px is not
+                          worth a fifth token for one badge.
+
+                          `shrink-0` because the name beside it is `truncate` in
+                          a 146px column: without it the badge is what gives way,
+                          and a squashed "2" is worse than a clipped name.
+
+                          The digit alone names nothing aloud, so the accessible
+                          text is a sibling `sr-only` and the badge itself is
+                          hidden — rather than an aria-label on the span, which
+                          would leave the visible "2" and the spoken "Entry 2"
+                          failing WCAG 2.5.3's substring rule for voice control.
+                        */}
+                        {member.entryNo === 2 ? (
+                          <>
+                            <span
+                              aria-hidden
+                              className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute"
+                            >
+                              2
+                            </span>
+                            <span className="sr-only">Entry 2</span>
+                          </>
+                        ) : null}
                         {/* The "Out" chip is gone with the redesign — the frame
                             has no room for one at this row height and the frozen
                             position below the living says it instead. Position

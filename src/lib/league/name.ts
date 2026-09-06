@@ -77,7 +77,7 @@ export function formatFullName(
  * and it stays one.
  */
 export function sortRosterByName<
-  T extends { id: string; firstName: string; lastName: string },
+  T extends { id: string; firstName: string; lastName: string; entryNo?: number },
 >(members: readonly T[]): T[] {
   return [...members].sort((a, b) => {
     const byName = formatFullName(a.firstName, a.lastName).localeCompare(
@@ -85,6 +85,16 @@ export function sortRosterByName<
       undefined,
       { sensitivity: "base" },
     );
-    return byName || a.id.localeCompare(b.id);
+    /*
+     * ENTRY BEFORE ID (0017). Two entries of one player share a name, so the
+     * name comparison ties and the tiebreak decides their order — and `id` is a
+     * random uuid, which would put "Ali B. (Entry 2)" above "Ali B." about half
+     * the time, in an order that changed whenever a row was recreated.
+     *
+     * `id` stays as the final key: it is what makes the sort TOTAL for two
+     * genuinely different people who happen to share a name, which entry number
+     * alone cannot separate.
+     */
+    return byName || (a.entryNo ?? 1) - (b.entryNo ?? 1) || a.id.localeCompare(b.id);
   });
 }

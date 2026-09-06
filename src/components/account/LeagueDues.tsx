@@ -1,6 +1,7 @@
 import { LocalTime } from "@/components/ui/LocalTime";
 import { VENMO_HANDLE, VENMO_URL } from "@/lib/app";
 import { cn } from "@/lib/cn";
+import { formatMoney } from "@/lib/money";
 import { H3 } from "@/lib/type-scale";
 import { AccountSection, BODY, CARD } from "./surfaces";
 import { buyInView } from "./league-dues";
@@ -53,7 +54,14 @@ function BuyInBadge({ paid, children }: { paid: boolean; children: React.ReactNo
  * the client bundle with everything else that file names, and `LocalTime` below
  * is itself a client component. A statement about the component, not the bundle.
  */
-export function LeagueDues({ league }: { league: LeagueSummary }) {
+/**
+ * One entry's dues card.
+ *
+ * `showEntry` draws the entry number as a badge beside "League Buy In" — only
+ * when there is more than one card on screen, because a solitary card labelled
+ * "Entry 1" invites the question of where entry 2 is.
+ */
+function DuesCard({ league, showEntry }: { league: LeagueSummary; showEntry: boolean }) {
   const view = buyInView({
     buyInCents: league.group.buyInCents,
     siteFeeCents: league.group.siteFeeCents,
@@ -62,7 +70,6 @@ export function LeagueDues({ league }: { league: LeagueSummary }) {
   });
 
   return (
-    <AccountSection title="League Dues">
       <div
         className={cn(
           CARD,
@@ -78,8 +85,17 @@ export function LeagueDues({ league }: { league: LeagueSummary }) {
           {/* Not the `Label` primitive: this one is 12px/1.0 uppercase like
               Label, but the design tracks it at 0 where Label is set wide, and
               the difference shows at this size directly above a 32px number. */}
-          <p className="text-[12px] font-semibold uppercase leading-none text-shell-mute">
+          <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase leading-none text-shell-mute">
             League Buy In
+            {showEntry ? (
+              // The same badge the standings board and the admin roster draw,
+              // and here it is on BOTH cards rather than on the second alone:
+              // this list is two of one thing, where those are one row among
+              // many, so an unlabelled card would be the ambiguous one.
+              <span className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute">
+                Entry {league.entryNo}
+              </span>
+            ) : null}
           </p>
           <div className="flex flex-col justify-center">
             {/* H3 — 32px/1.2/−4%, composed rather than retyped. That constant
@@ -141,6 +157,45 @@ export function LeagueDues({ league }: { league: LeagueSummary }) {
             </div>
           )}
         </div>
+      </div>
+  );
+}
+
+/**
+ * League Dues — one card per ENTRY (0017).
+ *
+ * `leagues` is every summary for the active league, which is one for almost
+ * everybody and two for a player who has taken a second entry. Each carries its
+ * own `buyInPaid` and its own stamp, because an admin ticks them off
+ * independently — so a player can genuinely be paid for one and not the other,
+ * and a single card would have to pick one of those to report.
+ *
+ * The total is drawn only when there is more than one card, and it is the sum of
+ * what is still OWED rather than of the league's price: with one entry paid and
+ * one not, the useful number is what is left.
+ */
+export function LeagueDues({ leagues }: { leagues: LeagueSummary[] }) {
+  const first = leagues[0];
+  if (!first) return null;
+  const multi = leagues.length > 1;
+  const owedCents = leagues
+    .filter((l) => !l.buyInPaid)
+    .reduce((sum, l) => sum + l.group.buyInCents + l.group.siteFeeCents, 0);
+
+  return (
+    <AccountSection title="League Dues">
+      <div className="flex flex-col gap-3">
+        {leagues.map((l) => (
+          // Keyed on the membership id, which is the one id that differs between
+          // two entries of the same league.
+          <DuesCard key={l.memberId} league={l} showEntry={multi} />
+        ))}
+        {multi && owedCents > 0 ? (
+          <p className={cn(BODY, "font-medium text-shell-ink")}>
+            Still owed across your entries:{" "}
+            <span className="font-semibold tabular-nums">{formatMoney(owedCents)}</span>
+          </p>
+        ) : null}
       </div>
     </AccountSection>
   );

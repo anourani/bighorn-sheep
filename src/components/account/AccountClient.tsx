@@ -67,7 +67,18 @@ export function AccountClient({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
 
-  const activeLeague = leagues.find((l) => l.group.id === activeGroupId) ?? null;
+  /*
+   * EVERY summary for the active league, not `.find()` (0017).
+   *
+   * `loadAccount` returns one `LeagueSummary` per MEMBERSHIP, so a player with
+   * two entries has two summaries carrying the same `group.id` — and `.find()`
+   * silently answered with entry 1, hiding the second entry's dues and its paid
+   * state entirely. `activeLeague` stays as the representative row for
+   * everything that is a fact about the LEAGUE (its name, whether the viewer
+   * administers it); `activeEntries` is what anything per-entry reads.
+   */
+  const activeEntries = leagues.filter((l) => l.group.id === activeGroupId);
+  const activeLeague = activeEntries[0] ?? null;
   const admin = activeLeague && adminMembers ? { league: activeLeague, members: adminMembers } : null;
 
   // Inlined at build time and blank outside production on purpose, so a preview
@@ -101,7 +112,7 @@ export function AccountClient({
             `/app/standings` offer the same `JoinByCode` through `NoLeagueState`,
             and three entry points is intentional. */}
         {activeLeague ? (
-          <LeagueDues league={activeLeague} />
+          <LeagueDues leagues={activeEntries} />
         ) : (
           <AccountSection title="Join an Existing League">
             <div className={CARD}>
@@ -126,6 +137,9 @@ export function AccountClient({
             onDelete={() => setDeleteOpen(true)}
             onReplayTour={() => setTourOpen(true)}
             now={now}
+            // Exactly one entry, and a league to add a second to. The window
+            // check is MoreSection's own, off the same `now` its invite row uses.
+            canAddEntry={activeEntries.length === 1}
           />
         </div>
       </div>
@@ -139,7 +153,11 @@ export function AccountClient({
         viewer={viewer}
         currentPhone={account.phone}
       />
-      <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
+      <DeleteAccountModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        entryCount={activeEntries.length}
+      />
 
       {/* The replay path, and it deliberately does NOT write `tour_completed_at`
           — only `FirstRunTour` completes the tour. Someone who opened this on

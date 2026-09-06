@@ -23,8 +23,21 @@ export default async function AccountPage() {
   // the panel behind it cannot disagree about who is an admin. Failing CLOSED is the
   // right side to err on for one admin control, and is the opposite of
   // `accountClosed()`, where the same error must not lock a league out.
-  const active = account.leagues.find((l) => l.group.id === account.activeGroupId) ?? null;
-  const load = active?.role === "admin" ? await loadLeague(active.group.id) : null;
+  /*
+   * `.some`, not `active.role` (0017). `loadAccount` returns one summary per
+   * ENTRY, so a two-entry admin has two rows for this league and only one of
+   * them carries the admin role — `add_entry` always creates a player.
+   *
+   * Reading the role off whichever row came back first would therefore have
+   * hidden the control center from an admin who took a second entry. It works
+   * out today (rows are ordered by `joined_at`, and entry 2 is always later),
+   * but that is an accident of ordering standing in for a rule, and this is one
+   * of the two places CLAUDE.md warns about failing closed.
+   */
+  const entries = account.leagues.filter((l) => l.group.id === account.activeGroupId);
+  const active = entries[0] ?? null;
+  const isAdmin = entries.some((l) => l.role === "admin");
+  const load = active && isAdmin ? await loadLeague(active.group.id) : null;
   const adminMembers = load?.kind === "ok" ? load.data.members : null;
 
   // `now` is resolved here rather than in the client. `MoreSection` hides the

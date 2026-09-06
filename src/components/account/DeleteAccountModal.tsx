@@ -32,7 +32,20 @@ const ERROR_COPY: Record<string, string> = {
  * out. Order matters — `signOut()` invalidates the session the action needs, so
  * doing it first would close nothing and log a `not_authenticated`.
  */
-export function DeleteAccountModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function DeleteAccountModal({
+  open,
+  onClose,
+  entryCount = 1,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /**
+   * How many entries the viewer holds. `close_own_account` is keyed on the
+   * PROFILE (0010), so closing takes both — and someone with two entries who
+   * expected to close one would not find that out anywhere else on the screen.
+   */
+  entryCount?: number;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -96,6 +109,13 @@ export function DeleteAccountModal({ open, onClose }: { open: boolean; onClose: 
           won&apos;t let you in. Only your commissioner can reopen your account, or remove
           you from the board for good.
         </p>
+        {entryCount > 1 ? (
+          <p>
+            <b className="font-semibold text-ink">This closes both of your entries.</b>{" "}
+            Closing an account is about you, not about one run at the season — there is
+            no way to close a single entry.
+          </p>
+        ) : null}
         {error ? (
           <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[#8A2C2C]">
             <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
