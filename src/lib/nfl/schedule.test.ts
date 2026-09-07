@@ -368,11 +368,24 @@ interface StubGroup {
   id: string;
   name: string;
   entry_closes_at: string;
+  /**
+   * Optional, and its ABSENCE is the interesting case rather than an omission:
+   * `join_closes_at` arrives with migration 0018, so a row from a database that
+   * is one migration behind simply has no such key. `select("*")` is what makes
+   * that safe — a named column would 42703 — and the align pass has to treat the
+   * missing key as "not aligned yet" without throwing.
+   */
+  join_closes_at?: string | null;
   season: number;
 }
 
-function stubDb(opts: { week1Kickoffs?: string[]; groups?: StubGroup[] }) {
-  const updates: { id: string; entry_closes_at: string }[] = [];
+function stubDb(opts: {
+  week1Kickoffs?: string[];
+  groups?: StubGroup[];
+  /** Make every `join_closes_at` write fail, as an unapplied 0018 would. */
+  failJoinUpdate?: string;
+}) {
+  const updates: { id: string; entry_closes_at?: string; join_closes_at?: string }[] = [];
   const groups = opts.groups ?? [];
 
   const chain = (rows: unknown[]) => {
@@ -397,9 +410,12 @@ function stubDb(opts: { week1Kickoffs?: string[]; groups?: StubGroup[] }) {
             eq: (_col: string, season: number) =>
               chain(groups.filter((g) => g.season === season)),
           }),
-          update: (patch: { entry_closes_at: string }) => ({
+          update: (patch: { entry_closes_at?: string; join_closes_at?: string }) => ({
             eq: (_col: string, id: string) => {
-              updates.push({ id, entry_closes_at: patch.entry_closes_at });
+              if (patch.join_closes_at !== undefined && opts.failJoinUpdate) {
+                return Promise.resolve({ error: { message: opts.failJoinUpdate } });
+              }
+              updates.push({ id, ...patch });
               return Promise.resolve({ error: null });
             },
           }),
@@ -415,6 +431,8 @@ function stubDb(opts: { week1Kickoffs?: string[]; groups?: StubGroup[] }) {
 }
 
 const WEEK1 = "2026-09-10T00:20:00.000Z";
+/** Monday night of Week 1 — the JOIN deadline since 0018. */
+const WEEK1_LAST = "2026-09-15T00:15:00.000Z";
 const BEFORE_SEASON = new Date("2026-08-09T00:00:00.000Z");
 
 describe("alignEntryDeadlines", () => {
@@ -425,7 +443,7 @@ describe("alignEntryDeadlines", () => {
    */
   it("moves a stale creation+7d deadline onto the real Week 1 kickoff", async () => {
     const { db, updates } = stubDb({
-      week1Kickoffs: [WEEK1, "2026-09-13T17:00:00.000Z"],
+      week1Kickoffs: [WEEK1, "2026-09-13T17:00:00.000Z", WEEK1_LAST],
       groups: [
         { id: "g1", name: "Group Name", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 },
       ],
@@ -438,13 +456,74 @@ describe("alignEntryDeadlines", () => {
     expect(res.changed).toEqual([
       { id: "g1", name: "Group Name", from: "2026-08-15T17:33:00.000Z", to: WEEK1 },
     ]);
+    // BOTH deadlines, in two separate statements. The first kickoff is the
+    // season start; the last is when joining stops.
+    expect(updates).toEqual([
+      { id: "g1", entry_closes_at: WEEK1 },
+      { id: "g1", join_closes_at: WEEK1_LAST },
+    ]);
+  });
+
+  /*
+   * THE POINT OF 0018, stated as the one assertion that would catch it being
+   * undone: min and max come off the same Week 1 read and must not be the same
+   * number. A regression that reused `firstKickoff` for both would close joining
+   * five days early and nothing else in this file would notice.
+   */
+  it("aligns the join deadline to the LAST Week 1 kickoff, not the first", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1_LAST, "2026-09-13T17:00:00.000Z", WEEK1], // deliberately unsorted
+      groups: [
+        {
+          id: "g1",
+          name: "Group Name",
+          entry_closes_at: WEEK1, // already correct
+          join_closes_at: null, // never set
+          season: 2026,
+        },
+      ],
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.firstKickoff).toBe(WEEK1);
+    expect(res.lastKickoff).toBe(WEEK1_LAST);
+    expect(res.changed).toEqual([]); // entry deadline untouched
+    expect(res.joinChanged).toEqual([
+      { id: "g1", name: "Group Name", from: WEEK1, to: WEEK1_LAST },
+    ]);
+    expect(updates).toEqual([{ id: "g1", join_closes_at: WEEK1_LAST }]);
+  });
+
+  /*
+   * An unapplied 0018 must not cost the league its ENTRY deadline, which is the
+   * one that has already broken a season here. The join write is a separate
+   * statement precisely so its failure is reportable rather than fatal.
+   */
+  it("reports a failed join write without abandoning the entry alignment", async () => {
+    const { db, updates } = stubDb({
+      week1Kickoffs: [WEEK1, WEEK1_LAST],
+      groups: [
+        { id: "g1", name: "Behind", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 },
+      ],
+      failJoinUpdate: "column groups.join_closes_at does not exist",
+    });
+
+    const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
+
+    expect(res.error).toBeUndefined(); // the run did not fail
+    expect(res.changed).toHaveLength(1); // the entry deadline WAS repaired
     expect(updates).toEqual([{ id: "g1", entry_closes_at: WEEK1 }]);
+    expect(res.joinError).toContain("join_closes_at");
+    expect(res.joinChanged).toEqual([]);
   });
 
   it("leaves an already-correct league untouched", async () => {
     const { db, updates } = stubDb({
-      week1Kickoffs: [WEEK1],
-      groups: [{ id: "g1", name: "Correct", entry_closes_at: WEEK1, season: 2026 }],
+      week1Kickoffs: [WEEK1, WEEK1_LAST],
+      groups: [
+        { id: "g1", name: "Correct", entry_closes_at: WEEK1, join_closes_at: WEEK1_LAST, season: 2026 },
+      ],
     });
 
     const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
@@ -457,9 +536,15 @@ describe("alignEntryDeadlines", () => {
   // Postgres may return a different string form of the same instant.
   it("compares instants, not strings", async () => {
     const { db, updates } = stubDb({
-      week1Kickoffs: [WEEK1],
+      week1Kickoffs: [WEEK1, WEEK1_LAST],
       groups: [
-        { id: "g1", name: "Same moment", entry_closes_at: "2026-09-10T02:20:00+02:00", season: 2026 },
+        {
+          id: "g1",
+          name: "Same moment",
+          entry_closes_at: "2026-09-10T02:20:00+02:00",
+          join_closes_at: "2026-09-15T02:15:00+02:00",
+          season: 2026,
+        },
       ],
     });
 
@@ -503,14 +588,17 @@ describe("alignEntryDeadlines", () => {
     // Someone runs the loader on Aug 20 — the stale Aug 15 deadline has already
     // passed and entry is wrongly shut, but the season hasn't started.
     const { db, updates } = stubDb({
-      week1Kickoffs: [WEEK1],
+      week1Kickoffs: [WEEK1, WEEK1_LAST],
       groups: [{ id: "g1", name: "Frozen", entry_closes_at: "2026-08-15T17:33:00.000Z", season: 2026 }],
     });
 
     const res = await alignEntryDeadlines(db, 2026, new Date("2026-08-20T00:00:00.000Z"));
 
     expect(res.skipped).toBeNull();
-    expect(updates).toEqual([{ id: "g1", entry_closes_at: WEEK1 }]);
+    expect(updates).toEqual([
+      { id: "g1", entry_closes_at: WEEK1 },
+      { id: "g1", join_closes_at: WEEK1_LAST },
+    ]);
   });
 
   it("only touches leagues in the requested season", async () => {
@@ -525,7 +613,8 @@ describe("alignEntryDeadlines", () => {
     const res = await alignEntryDeadlines(db, 2026, BEFORE_SEASON);
 
     expect(res.changed.map((c) => c.id)).toEqual(["now"]);
-    expect(updates.map((u) => u.id)).toEqual(["now"]);
+    // One league, now possibly two statements — the set is what this test means.
+    expect([...new Set(updates.map((u) => u.id))]).toEqual(["now"]);
   });
 
   it("reports what it would change without writing, on a dry run", async () => {

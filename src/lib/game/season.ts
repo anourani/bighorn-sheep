@@ -36,9 +36,49 @@ export function seasonPhase(entryClosesAt: Date, now: Date, ended = false): Seas
   return now.getTime() < entryClosesAt.getTime() ? "preseason" : "regular";
 }
 
-/** Convenience: is entry still open (i.e. we're in preseason)? */
+/**
+ * Convenience: has the season started yet?
+ *
+ * NOT "may somebody still join" — that is `isJoinOpen` below, and the two
+ * deliberately answer differently for the length of Week 1. Every caller that
+ * means "the season is underway" (the practice round, the rules freeze, the
+ * preseason countdown) wants this one.
+ */
 export function isEntryOpen(entryClosesAt: Date, now: Date): boolean {
   return now.getTime() < entryClosesAt.getTime();
+}
+
+/** The two deadlines a league carries. Structural so callers can pass a `Group`. */
+export interface JoinWindow {
+  /** First kickoff of Week 1 — the season has started. */
+  entryClosesAt: string;
+  /** Last kickoff of Week 1 — joining stops. Null before migration 0018. */
+  joinClosesAt?: string | null;
+}
+
+/**
+ * When joining stops: the last kickoff of Week 1, falling back to the season
+ * start.
+ *
+ * THE FALLBACK IS THE POINT, and it is the same `coalesce` migration 0018
+ * writes into `join_by_invite`, `add_entry` and `remove_member`. Until 0018 is
+ * applied by hand, `groups.join_closes_at` does not exist, every app-side read
+ * of that row is a `select("*")` so the key is simply absent, and this returns
+ * `entryClosesAt` — which is exactly what the app did before this feature. A
+ * half-deployed change closes joining at the first Week 1 kickoff, the rule
+ * nobody is surprised by, rather than throwing or falling open.
+ *
+ * One definition, because the UI must agree with the database about this: the
+ * invite card, the admin drawer's removal window and the rules popup all read
+ * it, and a second hand-rolled `?? entryClosesAt` somewhere is how they drift.
+ */
+export function joinClosesAt(g: JoinWindow): string {
+  return g.joinClosesAt ?? g.entryClosesAt;
+}
+
+/** Convenience: may somebody still join (or be removed from) this league? */
+export function isJoinOpen(g: JoinWindow, now: Date): boolean {
+  return now.getTime() < new Date(joinClosesAt(g)).getTime();
 }
 
 /**

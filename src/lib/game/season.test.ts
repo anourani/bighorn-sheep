@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isEntryOpen,
+  isJoinOpen,
+  joinClosesAt,
   resolveCurrentWeek,
   resolvePickWeek,
   resolveWeekFromKickoffs,
@@ -32,6 +34,74 @@ describe("isEntryOpen", () => {
   it("mirrors the preseason window", () => {
     expect(isEntryOpen(ENTRY, new Date("2025-08-28T12:00:00.000Z"))).toBe(true);
     expect(isEntryOpen(ENTRY, new Date("2025-09-06T00:00:00.000Z"))).toBe(false);
+  });
+});
+
+/*
+ * THE JOIN WINDOW (migration 0018), which is a different fact from the one
+ * above and is the whole reason both exist.
+ *
+ * `entry_closes_at` used to carry two meanings at once: "joining stops" and
+ * "the season has started". They were the same instant, so nothing forced them
+ * apart — and then the league's actual rule turned out to be that entry runs to
+ * the LAST kickoff of Week 1, five days after the first. Moving the one column
+ * would have moved the phase with it.
+ */
+const JOIN = "2025-09-09T00:15:00.000Z"; // Monday night of Week 1
+const LEAGUE = { entryClosesAt: ENTRY.toISOString(), joinClosesAt: JOIN };
+
+describe("joinClosesAt", () => {
+  it("is the league's join deadline when it has one", () => {
+    expect(joinClosesAt(LEAGUE)).toBe(JOIN);
+  });
+
+  /*
+   * The fallback IS the migration story, not defensive padding. 0018 is applied
+   * by hand, so between the deploy and the paste `groups.join_closes_at` does
+   * not exist and `select("*")` omits the key entirely — undefined, never null.
+   * Both spellings must land on the old behaviour rather than on `undefined`,
+   * which `new Date(undefined)` would turn into an Invalid Date and every
+   * comparison below into a silent `false`: nobody could join at all.
+   */
+  it("falls back to the season start when the column is null or absent", () => {
+    expect(joinClosesAt({ entryClosesAt: ENTRY.toISOString(), joinClosesAt: null })).toBe(
+      ENTRY.toISOString(),
+    );
+    expect(joinClosesAt({ entryClosesAt: ENTRY.toISOString() })).toBe(ENTRY.toISOString());
+  });
+});
+
+describe("isJoinOpen", () => {
+  it("stays open through Week 1, after the season has already started", () => {
+    const duringWeek1 = new Date("2025-09-07T18:00:00.000Z"); // Sunday afternoon
+    // The two answers diverge, and that divergence is the feature.
+    expect(isEntryOpen(ENTRY, duringWeek1)).toBe(false);
+    expect(isJoinOpen(LEAGUE, duringWeek1)).toBe(true);
+  });
+
+  it("closes at the last Week 1 kickoff", () => {
+    expect(isJoinOpen(LEAGUE, new Date(JOIN))).toBe(false);
+    expect(isJoinOpen(LEAGUE, new Date("2025-09-09T00:14:59.000Z"))).toBe(true);
+  });
+
+  it("collapses onto the season start with no join deadline set", () => {
+    const bare = { entryClosesAt: ENTRY.toISOString(), joinClosesAt: null };
+    const duringWeek1 = new Date("2025-09-07T18:00:00.000Z");
+    expect(isJoinOpen(bare, duringWeek1)).toBe(false);
+  });
+});
+
+/*
+ * The regression the split exists to prevent, pinned as one assertion: a later
+ * join deadline must NOT drag the phase with it. If it did, the app would sit in
+ * "preseason" through Week 1's games — practice standings board, preseason
+ * headcount, and an admin able to rewrite the rules during live football.
+ */
+describe("seasonPhase is unmoved by the join window", () => {
+  it("is already regular while joining is still open", () => {
+    const duringWeek1 = new Date("2025-09-07T18:00:00.000Z");
+    expect(seasonPhase(ENTRY, duringWeek1)).toBe("regular");
+    expect(isJoinOpen(LEAGUE, duringWeek1)).toBe(true);
   });
 });
 

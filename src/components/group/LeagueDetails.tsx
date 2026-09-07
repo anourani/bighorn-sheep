@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Label } from "@/components/ui/Label";
-import { isEntryOpen } from "@/lib/game/season";
+import { isJoinOpen } from "@/lib/game/season";
 import { formatMoney } from "@/lib/money";
 import { H4 } from "@/lib/type-scale";
 import { cn } from "@/lib/cn";
@@ -118,9 +118,10 @@ export function LeagueDetails({
     }
   }
 
-  // Matches `InviteCta` below: the code still exists after the first Week 1
+  // Matches `InviteCta` below: the code still exists after the LAST Week 1
   // kickoff but `join_by_invite` refuses it, so offering it is a dead end.
-  const canInvite = isEntryOpen(new Date(group.entryClosesAt), now);
+  // `isJoinOpen`, not `isEntryOpen` — the two diverge for the whole of Week 1.
+  const canInvite = isJoinOpen(group, now);
 
   return (
     <section className="flex flex-col items-start lg:flex-row lg:gap-5">

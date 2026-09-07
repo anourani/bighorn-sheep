@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { Label } from "@/components/ui/Label";
 import { AddEntryCta } from "@/components/app/AddEntryCta";
+import { joinClosesAt } from "@/lib/game/season";
 import { VENMO_HANDLE, VENMO_URL } from "@/lib/app";
 import { cn } from "@/lib/cn";
 import { AccountSection, BODY, CARD, VALUE } from "./surfaces";
@@ -99,15 +100,17 @@ export function LeagueDues({
       description={
         <>
           Any entry still unpaid through{" "}
-          <LocalTime iso={first.group.entryClosesAt} mode="weekdaydate" /> will be removed
+          <LocalTime iso={joinClosesAt(first.group)} mode="weekdaydate" /> will be removed
           from the league.
         </>
       }
     >
-      {/* The deadline is the league's own entry cut-off, not a second date to
+      {/* The deadline is the league's own JOIN cut-off, not a second date to
           keep in sync: it is already the moment `join_by_invite` starts refusing
-          codes, so "removed from the league" and "entry closed" are the same
-          boundary. It is stated once, above the card, for every state — the
+          codes AND the moment `remove_member` stops accepting, so "removed from
+          the league" and "joining closed" are the same boundary — which is why
+          removal moved to the last Week 1 kickoff in 0018 along with joining,
+          rather than being left behind on `entryClosesAt`. It is stated once, above the card, for every state — the
           design keeps it on the Paid variants too, where it is a reassurance
           rather than a warning. */}
       <div className={cn(CARD, "flex flex-col gap-4")}>

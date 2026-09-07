@@ -175,12 +175,14 @@ export default async function handler(request: Request): Promise<Response> {
   // The first Week 1 kickoff, taken from what we just fetched. Deliberately NOT
   // `summary.firstKickoff`, which is the earliest game of the whole load — the Hall
   // of Fame game in August — and would close entry immediately if used as a deadline.
-  const week1Kickoff =
-    result.games
-      .filter((g) => g.seasonType === "regular" && g.week === 1)
-      .map((g) => g.kickoff)
-      .sort()
-      .at(0) ?? null;
+  const week1Kickoffs = result.games
+    .filter((g) => g.seasonType === "regular" && g.week === 1)
+    .map((g) => g.kickoff)
+    .sort();
+  const week1Kickoff = week1Kickoffs.at(0) ?? null;
+  // The LAST Week 1 kickoff, which is the join deadline since 0018. Previewing
+  // one deadline and not the other would understate the change.
+  const week1LastKickoff = week1Kickoffs.at(-1) ?? null;
 
   if (dryRun) {
     // Preview the deadline change too, using the kickoff from the fetch — the games
@@ -188,8 +190,10 @@ export default async function handler(request: Request): Promise<Response> {
     const preview = await alignEntryDeadlines(supabase, season, new Date(), {
       dryRun: true,
       firstKickoff: week1Kickoff,
+      lastKickoff: week1LastKickoff,
     });
     lines.push(...deadlineLines(preview, true));
+    lines.push(...joinDeadlineLines(preview, true));
     lines.push("");
     lines.push(`Dry run complete in ${Date.now() - startedAt}ms. Nothing was written.`);
     lines.push("Remove &dry=1 to load these games.");
@@ -208,11 +212,14 @@ export default async function handler(request: Request): Promise<Response> {
   lines.push(`Loaded ${upserted} games in ${Date.now() - startedAt}ms.`);
   lines.push("");
 
-  // Point every league's entry deadline at the real first Week 1 kickoff. create_group
-  // defaults it to "seven days from now", and once that lapses join_by_invite refuses
-  // every new member with no way to reopen it from the app.
+  // Point every league's deadlines at the real Week 1 kickoffs — entry_closes_at
+  // at the first (when the season starts), join_closes_at at the last (when
+  // joining stops, 0018). create_group defaulted the former to "seven days from
+  // now", and once that lapses join_by_invite refuses every new member with no
+  // way to reopen it from the app.
   const aligned = await alignEntryDeadlines(supabase, season, new Date());
   lines.push(...deadlineLines(aligned, false));
+  lines.push(...joinDeadlineLines(aligned, false));
 
   // Never let a bounded run look like a complete one.
   if (result.stoppedEarly && result.skipped.length > 0) {
@@ -279,7 +286,43 @@ function deadlineLines(result: AlignDeadlinesResult, preview: boolean): string[]
     }${result.alreadyAligned > 0 ? `, ${result.alreadyAligned} already correct` : ""}.`,
   );
   if (!preview) {
-    out.push("New members can now join right up until the season actually starts.");
+    out.push("New members can now join right up until the last Week 1 kickoff.");
+  }
+  return out;
+}
+
+/**
+ * Report the JOIN deadline separately, because its most likely failure is not a
+ * failure of this run at all: `join_closes_at` arrives with migration 0018, and
+ * this loader runs against production from a cron. A database one migration
+ * behind reports the column missing here while every entry deadline above was
+ * aligned correctly, and saying so is the whole point — the symptom otherwise is
+ * silence, and joining quietly keeps closing at the FIRST Week 1 kickoff.
+ */
+function joinDeadlineLines(result: AlignDeadlinesResult, preview: boolean): string[] {
+  if (result.skipped || result.error) return []; // already explained above
+  const out: string[] = [];
+
+  if (result.joinError) {
+    out.push(`Join deadlines: FAILED — ${result.joinError}`);
+    out.push("Most likely migration 0018 has not been applied to this database yet.");
+    out.push("Until it is, joining closes at the FIRST Week 1 kickoff, as it always did.");
+    return out;
+  }
+
+  if (!result.lastKickoff) {
+    out.push("Join deadlines: skipped — no regular-season Week 1 kickoff to align to.");
+    return out;
+  }
+
+  if (result.joinChanged.length === 0) {
+    out.push(`Join deadlines: already correct (${result.lastKickoff}).`);
+    return out;
+  }
+
+  out.push(`Join deadlines ${preview ? "would be aligned" : "aligned"} to the last Week 1 kickoff:`);
+  for (const c of result.joinChanged) {
+    out.push(`  "${c.name}"  ${c.from}  →  ${c.to}`);
   }
   return out;
 }

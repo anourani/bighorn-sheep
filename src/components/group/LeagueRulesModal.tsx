@@ -3,10 +3,10 @@
 import { Modal } from "@/components/ui/Modal";
 import { Label } from "@/components/ui/Label";
 import { Pill } from "@/components/ui/Badge";
-import { Avatar } from "@/components/ui/Avatar";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { InfoIcon, LockIcon } from "@/components/icons";
-import { strikeAllowance, type Group, type Member } from "@/lib/league/types";
+import { joinClosesAt } from "@/lib/game/season";
+import type { Group, Member } from "@/lib/league/types";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <Label>{children}</Label>;
@@ -25,9 +25,24 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
  * The league's rules, in full, for everyone — as opposed to `AdminSettingsDrawer`,
  * which is the admin's control panel behind the gear.
  *
- * The elimination and tie sentences are generated from `group.rules` so the copy
- * states THIS league's setting rather than listing both options and leaving the
- * reader to work out which one they're playing.
+ * THE SEVEN RULES ARE FIXED COPY, and that is a decision rather than an
+ * oversight. They were written by the commissioner and they assert this
+ * league's settings outright: single elimination, and a tie counting as a loss.
+ * The previous version generated those two clauses from `group.rules` so the
+ * prose could never contradict the tiles; this one cannot, and if an admin ever
+ * switches Tie Rule to "Push" or elimination to two-time in the settings drawer,
+ * rule 1 will disagree with the tile a few inches below it. Accepted knowingly —
+ * the wording is the league's own and reads worse when assembled from fragments.
+ * If those settings do change, this copy is what has to change with them.
+ *
+ * The two DATES are the opposite call: both are derived, and from the same two
+ * timestamps the tiles print, so the paragraph and the grid cannot drift apart
+ * or go stale next season.
+ *
+ * Order is rules → prose → tiles. The tiles used to sit above the rules with a
+ * commissioner card above them again; the card is gone (its one fact is a
+ * sentence now) and the settings read as a footnote to the rules rather than as
+ * the thing you open this dialog for.
  */
 export function LeagueRulesModal({
   open,
@@ -40,43 +55,73 @@ export function LeagueRulesModal({
   group: Group;
   members: Member[];
 }) {
+  // The NAME is still derived, unlike the rules copy: it is data about who holds
+  // the role, not a claim about how the league is played. `find` takes the first
+  // admin, so a league with two would name one of them.
   const commissioner = members.find((m) => m.role === "admin");
   const locked = Boolean(group.settingsLockedAt);
-  const allowance = strikeAllowance(group.rules.eliminationType);
-
-  const lossRule =
-    group.rules.eliminationType === "single"
-      ? "One loss and you're out."
-      : "Two losses and you're out — the first is a strike.";
-  const tieRule =
-    group.rules.tieRule === "push"
-      ? "A tie is a push: you neither win nor lose the week, and you survive it."
-      : "A tie counts exactly the same as a loss.";
 
   return (
     <Modal open={open} onClose={onClose} eyebrow="League" title="League Rules" description={group.name}>
       <div className="space-y-6">
-        {/* Who runs it */}
+        {/* The game itself */}
         <section className="space-y-2">
-          <SectionHeading>Commissioner</SectionHeading>
-          {commissioner ? (
-            <div className="flex items-center gap-3 rounded-control border border-line bg-[#FAFAFB] p-3">
-              <Avatar
-                firstName={commissioner.firstName}
-                lastName={commissioner.lastName}
-                favoriteAnimal={commissioner.favoriteAnimal}
-                size={40}
-              />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-ink">{commissioner.name}</div>
-                <p className="text-xs text-ink-mute">
-                  Runs this league — settles disputes and any result the feed gets wrong.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-ink-soft">This league has no commissioner set.</p>
-          )}
+          <SectionHeading>The Rules</SectionHeading>
+          {/* An ordered list, so the numbering is the browser's rather than seven
+              hand-typed digits that renumber wrongly the moment a rule is added.
+              `list-decimal` is not optional: Tailwind's preflight sets
+              `list-style: none` on every ol and ul, so without it this renders as
+              seven unnumbered paragraphs — which looks like a copy bug rather
+              than a CSS one. The markers take the ink colour and the body stays
+              soft, so the numbers read as structure. */}
+          <ol className="list-decimal space-y-2.5 pl-5 text-sm leading-relaxed text-ink-soft marker:font-medium marker:text-ink">
+            <li>
+              Pick one NFL team each week. If the team you pick wins, you advance. If the team you
+              pick loses or the game ends in a tie, you&apos;re out.
+            </li>
+            <li>
+              You can only pick each team once per season. Your picks are your own. They
+              don&apos;t affect what anyone else is allowed to pick.
+            </li>
+            <li>
+              A pick locks the instant that team&apos;s game kicks off, not at one shared deadline.
+              Change your pick as often as you want before that.
+            </li>
+            <li>
+              If no pick is made before the last kickoff of the week, whatever day it lands on,
+              it&apos;s an automatic loss.
+            </li>
+            <li>
+              Picks stay invisible to everyone else until that player&apos;s team kicks off.
+            </li>
+            <li>Last player standing wins the season.</li>
+            <li>
+              If more than one player survives throughout the entire season, the commissioner
+              decides how it ends (tiebreaker, co-champs).
+            </li>
+          </ol>
+        </section>
+
+        {/* Who runs it, and when the season runs */}
+        <section className="space-y-2 text-sm leading-relaxed text-ink-soft">
+          <p>
+            The League Commissioner{commissioner ? <> ({commissioner.name})</> : null} settles every
+            dispute. Reach out to them if you have any questions, comments, or concerns.
+          </p>
+          <p>
+            {/* Two readings of two different timestamps, and the distinction is the
+                whole point: `entryClosesAt` is the FIRST kickoff of Week 1 (the
+                season starts, the rules freeze, practice ends) and `joinClosesAt`
+                is the LAST (joining stops). They were one column until migration
+                0018 — see src/lib/game/season.ts. No year is printed: `time.ts`
+                has no year-bearing formatter and the Season tile below already
+                carries it. */}
+            <span className="font-medium text-ink">Season:</span> The season starts{" "}
+            <LocalTime iso={group.entryClosesAt} mode="weekdayordinal" />. New entries can&apos;t be
+            added after the last kickoff of Week 1 (
+            <LocalTime iso={joinClosesAt(group)} mode="full" />
+            ).
+          </p>
         </section>
 
         {/* This league's settings */}
@@ -97,10 +142,16 @@ export function LeagueRulesModal({
             <Tile label="Season">
               {group.season}-{group.season + 1}
             </Tile>
-            {/* "full", not "dayclock": a deadline rendered as "Fri 12:20 AM"
+            {/* The JOIN deadline, not `entryClosesAt` — this tile is labelled
+                "Entry closes" and that is the moment `join_by_invite` starts
+                refusing codes. Reading the season start here instead would put
+                two different deadlines on one screen, since the paragraph above
+                prints this same value.
+
+                "full", not "dayclock": a deadline rendered as "Fri 12:20 AM"
                 doesn't say WHICH Friday. */}
             <Tile label="Entry closes">
-              <LocalTime iso={group.entryClosesAt} mode="full" />
+              <LocalTime iso={joinClosesAt(group)} mode="full" />
             </Tile>
           </div>
           {locked ? (
@@ -109,48 +160,6 @@ export function LeagueRulesModal({
               Rules locked when Week 1 picks began — they can&apos;t change mid-season.
             </p>
           ) : null}
-        </section>
-
-        {/* The game itself */}
-        <section className="space-y-2">
-          <SectionHeading>How the game works</SectionHeading>
-          <ul className="space-y-2.5 text-sm leading-relaxed text-ink-soft">
-            <li>
-              <span className="font-medium text-ink">Pick one team a week.</span> If they win, you
-              survive to the next week. {lossRule}
-            </li>
-            <li>
-              <span className="font-medium text-ink">A team can only be used once all season.</span>{" "}
-              Spend the good ones carefully — there are 32 teams and 18 weeks.
-            </li>
-            <li>
-              <span className="font-medium text-ink">Picks lock at kickoff — their kickoff.</span> A
-              team becomes unpickable the moment its own game starts, not at one weekly deadline. A
-              Thursday team locks Thursday.
-            </li>
-            <li>
-              <span className="font-medium text-ink">Miss a week and it counts as a loss.</span> Once
-              the week&apos;s last kickoff passes, no pick is scored the same as a wrong one.
-            </li>
-            <li>
-              <span className="font-medium text-ink">Ties.</span> {tieRule}
-            </li>
-            <li>
-              <span className="font-medium text-ink">Everyone&apos;s pick stays hidden.</span> You
-              can&apos;t see what anyone else took until that team&apos;s game kicks off.
-            </li>
-            <li>
-              <span className="font-medium text-ink">Last one standing takes the season.</span>{" "}
-              Results update the moment a game goes final. If Week 18 ends with more than one
-              survivor — or nobody at all — the commissioner settles it.
-            </li>
-          </ul>
-          <p className="flex items-start gap-1.5 text-xs text-ink-mute">
-            <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {allowance === 1
-              ? "You have no margin: a single wrong pick ends your season."
-              : "You have two lives. The first loss costs you a strike, the second ends your season."}
-          </p>
         </section>
       </div>
     </Modal>

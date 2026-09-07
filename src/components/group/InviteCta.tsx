@@ -3,14 +3,19 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { LocalTime } from "@/components/ui/LocalTime";
-import { isEntryOpen } from "@/lib/game/season";
+import { isJoinOpen, joinClosesAt } from "@/lib/game/season";
 import { countNoun } from "@/lib/league/view";
 import type { Group } from "@/lib/league/types";
 
 /**
- * Recruitment CTA. Hidden once entry closes at the first Week 1 kickoff — the
+ * Recruitment CTA. Hidden once joining closes at the LAST Week 1 kickoff — the
  * invite code still exists but `join_by_invite` will refuse it, so offering it
  * would be a dead end.
+ *
+ * `isJoinOpen`, never `isEntryOpen`: those two answer differently for the whole
+ * of Week 1 since 0018, and this card must agree with the RPC rather than with
+ * the phase. Hiding it at the first kickoff would take the invite away five
+ * days before the database stopped honouring it.
  *
  * Built to the Figma "Grow-the-League Module": a heading with the headcount
  * beside it, then a card carrying the league's photo, the deadline set large,
@@ -60,7 +65,7 @@ export function InviteCta({
     }
   }
 
-  if (!isEntryOpen(new Date(group.entryClosesAt), now)) return null;
+  if (!isJoinOpen(group, now)) return null;
 
   return (
     <section className="flex flex-col gap-3">
@@ -159,7 +164,7 @@ export function InviteCta({
               a test pinning it, so this is the codebase's existing bargain
               rather than a new one. */}
           <p className="text-[24px] font-semibold leading-[1.2] tracking-[-0.96px] text-shell-ink">
-            <LocalTime iso={group.entryClosesAt} mode="weekdayordinal" />
+            <LocalTime iso={joinClosesAt(group)} mode="weekdayordinal" />
           </p>
           {/* Inside the text column, not appended to the card: from `lg` the
               card is a flex ROW, so a sibling of the button would become a
