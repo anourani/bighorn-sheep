@@ -22,7 +22,7 @@ import {
   setMemberPreseason,
   removeMember,
 } from "@/app/app/actions";
-import { isEntryOpen } from "@/lib/game/season";
+import { isJoinOpen, joinClosesAt } from "@/lib/game/season";
 import { formatMoney } from "@/lib/money";
 import { formatMonthDayClock } from "@/lib/time";
 import {
@@ -619,11 +619,18 @@ function MembersSection({
   members,
   phase,
   entryClosesAt,
+  // The league's JOIN deadline, already resolved by the caller through
+  // `joinClosesAt()`. Passed as a string beside `entryClosesAt` rather than
+  // taking the whole `Group`, so this section keeps naming the two facts it
+  // actually uses — and note it deliberately SHADOWS the helper of the same
+  // name inside this function; there is nothing left to resolve here.
+  joinClosesAt,
 }: {
   groupId: string;
   members: Member[];
   phase: SeasonPhase;
   entryClosesAt: string;
+  joinClosesAt: string;
 }) {
   const router = useRouter();
   // Optimistic overlay, keyed by user id: only members whose switch has been
@@ -685,18 +692,19 @@ function MembersSection({
   // Printing the moment is the same trade League Settings already makes beside
   // "Entry closes", in the same format as the paid stamp one column over.
   const preseasonClosedStamp = formatMonthDayClock(entryClosesAt);
-  // remove_member (0013) refuses after entry_closes_at, for the same reason
-  // set_member_preseason does: the window in which a player can be un-joined is
-  // exactly the window in which they could have joined. Read from the same
-  // helper every other consumer uses, so the button and the database close
-  // together. Derived separately from `preseasonOpen` above even though the two
+  // remove_member refuses after the JOIN deadline, for the same reason it used
+  // to refuse after entry_closes_at: the window in which a player can be
+  // un-joined is exactly the window in which they could have joined. 0018 moved
+  // both to the last Week 1 kickoff together, which is why this is not
+  // `isEntryOpen` — that one still answers "has the season started", and the
+  // preseason switch one column over correctly still asks it. Derived separately from `preseasonOpen` above even though the two
   // almost always agree — `seasonPhase` has a third answer ("ended") that this
   // question does not, and collapsing them would make that coincidence load-bearing.
   //
   // `new Date()` in a render body is a hydration mismatch anywhere else in this
   // app; it is safe here because the drawer never renders on the server (`open`
   // starts false), which is the same licence `formatMonthDayClock` takes below.
-  const removalOpen = isEntryOpen(new Date(entryClosesAt), new Date());
+  const removalOpen = new Date().getTime() < new Date(joinClosesAt).getTime();
 
   // Which row is mid-"are you sure?". One at a time: a roster full of armed
   // delete buttons is how the wrong one gets pressed. Cleared on every success,
@@ -1128,12 +1136,16 @@ function MemberToggle({
  * the roster wanted the rail's width back and these two are the pair a member
  * actually sees: the league is called X and here is how you get into it.
  *
- * ONE boolean for the whole section, and it comes from `isEntryOpen` rather than
+ * ONE boolean for the whole section, and it comes from `isJoinOpen` rather than
  * the local `new Date(...) <= Date.now()` this used to compute for itself.
- * `join_by_invite` and `remove_member` both refuse after `entry_closes_at`, so
+ * `join_by_invite` and `remove_member` both refuse after the join deadline, so
  * the link going dead and removal going away are the same fact, and reading it
  * through the helper every other consumer uses is what keeps the copy and the
  * database closing together.
+ *
+ * That deadline is `join_closes_at` (0018) — the LAST kickoff of Week 1 — and
+ * NOT `entry_closes_at`, which still means the first and still governs the
+ * phase, the rules freeze and the practice window elsewhere in this drawer.
  */
 function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
   const [copied, setCopied] = useState(false);
@@ -1144,7 +1156,11 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
   const inviteLink = `${origin}/login?invite=${group.inviteCode}`;
   // `new Date()` in a render body is a hydration mismatch anywhere else in this
   // app; safe here for the same reason as above.
-  const entryOpen = isEntryOpen(new Date(group.entryClosesAt), new Date());
+  // `isJoinOpen`, not `isEntryOpen`: both facts this hint states — whether
+  // anyone may still join, and whether Remove still works — are governed by
+  // `join_closes_at` since 0018, which outlives the season start by all of
+  // Week 1.
+  const entryOpen = isJoinOpen(group, new Date());
 
   async function copyInvite() {
     try {
@@ -1180,12 +1196,12 @@ function InviteSection({ group, appUrl }: { group: Group; appUrl: string }) {
         {entryOpen ? (
           <>
             Remove takes a player out of the league along with their picks. It&apos;s the undo for
-            a wrong join, and it closes when entry does, on{" "}
-            <LocalTime iso={group.entryClosesAt} mode="full" />. Admins can&apos;t be removed.
+            a wrong join, and it closes when joining does, at the last Week 1 kickoff on{" "}
+            <LocalTime iso={joinClosesAt(group)} mode="full" />. Admins can&apos;t be removed.
           </>
         ) : (
           <>
-            Entry closed <LocalTime iso={group.entryClosesAt} mode="full" />. New members
+            Entry closed <LocalTime iso={joinClosesAt(group)} mode="full" />. New members
             can&apos;t join and the roster is the season&apos;s record now, so an eliminated player
             still shows as Out.
           </>
@@ -1936,6 +1952,7 @@ export function AdminSettingsDrawer({
             members={members}
             phase={phase}
             entryClosesAt={group.entryClosesAt}
+            joinClosesAt={joinClosesAt(group)}
           />
           <MembersHints
             preseasonOpen={phase === "preseason"}

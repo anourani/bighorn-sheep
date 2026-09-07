@@ -100,7 +100,8 @@ create table if not exists public.groups (
   elimination_type  text not null default 'single' check (elimination_type in ('single', 'two_time')),
   tie_rule          text not null default 'push'   check (tie_rule in ('push', 'loss')),
   invite_code       text not null unique,
-  entry_closes_at   timestamptz not null,  -- first kickoff of Week 1
+  entry_closes_at   timestamptz not null,  -- FIRST kickoff of Week 1: the season has started
+  join_closes_at    timestamptz,           -- LAST kickoff of Week 1: joining stops (0018)
   settings_locked_at timestamptz,          -- set once Week 1 picks begin
   created_by        uuid not null references public.profiles (id),
   created_at        timestamptz not null default now()
@@ -347,7 +348,7 @@ as $$
   select
     g.name,
     g.season,
-    (g.entry_closes_at > now())                                     as entry_open,
+    (coalesce(g.join_closes_at, g.entry_closes_at) > now())         as entry_open,
     (select count(*) from public.group_members m
        where m.group_id = g.id)::int                                as member_count,
     g.elimination_type,
@@ -383,7 +384,7 @@ begin
     raise exception 'invalid_code' using errcode = 'P0002';
   end if;
 
-  if g.entry_closes_at <= now() then
+  if coalesce(g.join_closes_at, g.entry_closes_at) <= now() then
     raise exception 'entry_closed' using errcode = 'P0001';
   end if;
 
@@ -469,6 +470,14 @@ declare
                               where season      = v_season
                                 and season_type = 'regular'
                                 and week        = 1));
+  -- The LAST kickoff of Week 1 — when joining stops (0018). Same three columns
+  -- as v_entry above, max instead of min. Null falls back to entry_closes_at
+  -- everywhere it is read, so unlike v_entry there is nothing to raise about.
+  v_join   timestamptz := (select max(kickoff)
+                             from public.games
+                            where season      = v_season
+                              and season_type = 'regular'
+                              and week        = 1);
   attempts int         := 0;
 begin
   if uid is null then
@@ -511,9 +520,11 @@ begin
   end loop;
 
   insert into public.groups
-    (name, season, elimination_type, tie_rule, invite_code, entry_closes_at, created_by)
+    (name, season, elimination_type, tie_rule, invite_code,
+     entry_closes_at, join_closes_at, created_by)
   values
-    (trim(p_name), v_season, p_elimination_type, p_tie_rule, code, v_entry, uid)
+    (trim(p_name), v_season, p_elimination_type, p_tie_rule, code,
+     v_entry, v_join, uid)
   returning * into g;
 
   insert into public.group_members (group_id, user_id, role, status)
@@ -2453,7 +2464,7 @@ begin
     raise exception 'not_a_member' using errcode = 'P0002';
   end if;
 
-  if g.entry_closes_at <= now() then
+  if coalesce(g.join_closes_at, g.entry_closes_at) <= now() then
     raise exception 'entry_closed' using errcode = '55000';
   end if;
 
@@ -2621,7 +2632,7 @@ begin
     raise exception 'not_admin' using errcode = '42501';
   end if;
 
-  select entry_closes_at into v_entry_closes_at
+  select coalesce(join_closes_at, entry_closes_at) into v_entry_closes_at
     from public.groups where id = p_group_id;
 
   if not found then

@@ -185,6 +185,12 @@ function rowToGroup(r: GroupRow): Group {
     rules: { eliminationType: r.elimination_type, tieRule: r.tie_rule },
     inviteCode: r.invite_code,
     entryClosesAt: r.entry_closes_at,
+    // `?? null`, not a bare read: until 0018 is applied the column does not
+    // exist and `select("*")` simply omits the key, so this is `undefined` at
+    // runtime while the row type says `string | null`. Normalising here is what
+    // keeps `joinClosesAt()`'s fallback the only place that has to think about
+    // it.
+    joinClosesAt: r.join_closes_at ?? null,
     settingsLockedAt: r.settings_locked_at,
     buyInCents: r.buy_in_cents,
     siteFeeCents: r.site_fee_cents,

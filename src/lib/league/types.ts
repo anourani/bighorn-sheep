@@ -33,8 +33,21 @@ export interface Group {
   season: number;
   rules: GroupRules;
   inviteCode: string;
-  /** First kickoff of Week 1 — entry closes here (survival convention). */
+  /**
+   * First kickoff of Week 1 — the season has started (survival convention).
+   *
+   * This is NOT when joining stops; see `joinClosesAt` below. It is what
+   * `seasonPhase()` flips on, what freezes the rules editor, and what closes
+   * the practice round.
+   */
   entryClosesAt: string;
+  /**
+   * Last kickoff of Week 1 — when joining (and removing a member) stops.
+   * Migration 0018, and **null until it is applied by hand**, in which case
+   * every reader falls back to `entryClosesAt` through `joinClosesAt()` in
+   * src/lib/game/season.ts. Never read this field directly.
+   */
+  joinClosesAt: string | null;
   /** Set once Week 1 picks begin; rules are frozen after this. */
   settingsLockedAt?: string | null;
   /**

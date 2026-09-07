@@ -229,7 +229,8 @@ export const GROUP: Group = {
   season: SEASON,
   rules: { eliminationType: "two_time", tieRule: "push" },
   inviteCode: "BIGHORN-7F3K",
-  entryClosesAt: "2025-09-05T00:20:00.000Z", // Week 1 kickoff
+  entryClosesAt: "2025-09-05T00:20:00.000Z", // first Week 1 kickoff — season starts
+  joinClosesAt: "2025-09-09T00:15:00.000Z", // last Week 1 kickoff — joining stops
   settingsLockedAt: "2025-09-05T00:20:00.000Z",
   buyInCents: 2000,
   siteFeeCents: 100,

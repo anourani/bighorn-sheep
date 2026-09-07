@@ -14,7 +14,7 @@ import { TourCarousel } from "@/components/onboarding/TourCarousel";
 import { AccountSection, CARD, PAGE_TITLE } from "@/components/account/surfaces";
 import { SPEC_BUTTON_DARK } from "@/components/account/spec";
 import { cn } from "@/lib/cn";
-import { isEntryOpen } from "@/lib/game/season";
+import { isJoinOpen } from "@/lib/game/season";
 import type { AccountData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
 
@@ -116,11 +116,11 @@ export function AccountClient({
           <LeagueDues
             leagues={activeEntries}
             viewerName={viewer.name}
-            // Exactly one entry, and the league's window still open — the same
-            // two conditions `add_entry` itself enforces.
+            // Exactly one entry, and the league's JOIN window still open — the
+            // same two conditions `add_entry` itself enforces. A second entry is
+            // an entry, so it closes on the last Week 1 kickoff with the first.
             canAddEntry={
-              activeEntries.length === 1 &&
-              isEntryOpen(new Date(activeLeague.group.entryClosesAt), new Date(now))
+              activeEntries.length === 1 && isJoinOpen(activeLeague.group, new Date(now))
             }
           />
         ) : (

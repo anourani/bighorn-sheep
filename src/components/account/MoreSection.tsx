@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { FEEDBACK_URL } from "@/lib/app";
-import { isEntryOpen } from "@/lib/game/season";
+import { isJoinOpen } from "@/lib/game/season";
 import { cn } from "@/lib/cn";
 import { SPEC_BUTTON_LIGHT } from "./spec";
 import { AccountSection, VALUE } from "./surfaces";
@@ -52,7 +52,10 @@ export function MoreSection({
   now: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const showInvite = group !== null && isEntryOpen(new Date(group.entryClosesAt), new Date(now));
+  // `isJoinOpen`, not `isEntryOpen`: the invite row must follow what
+  // `join_by_invite` will actually accept, which since 0018 runs to the LAST
+  // Week 1 kickoff. Same call `InviteCta` and `LeagueDetails` make.
+  const showInvite = group !== null && isJoinOpen(group, new Date(now));
 
   async function copy() {
     if (!group) return;

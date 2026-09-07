@@ -41,7 +41,9 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0009_public_standings` → `0010_account_closure_and_league_buy_in` →
 `0011_admin_settings` → `0012_create_group_entry_deadline` →
 `0013_lock_membership_writes` → `0014_pick_consistency` →
-`0015_pick_and_buy_in_reminders` → `0016_profile_tour`.
+`0015_pick_and_buy_in_reminders` → `0016_profile_tour` → `0017_two_entries` →
+`0018_join_window`. (Note `0013` is TWO files — `0013_lock_membership_writes` and
+`0013_remove_member` — which share a number and are ordered as written here.)
 
 **0013 and 0014 close two direct-write holes reachable with the anon key**, and
 both are pure RLS changes — idempotent, no backfill, hand-applied. 0013 drops
@@ -584,6 +586,82 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **`groups` carries TWO Week 1 deadlines now, and telling them apart is the
+  whole of `0018_join_window`.** `entry_closes_at` is the FIRST kickoff of Week 1
+  and `join_closes_at` is the LAST, because the league's actual rule is that a
+  new player may enter right up until the final game of Week 1 starts — five days
+  later than the app used to allow. **0018 must be applied to production by
+  hand.** Seven things:
+  - **Moving the one column was the obvious fix and it is wrong.** `seasonPhase()`
+    (`src/lib/game/season.ts`) derives the app's entire notion of phase from
+    `entry_closes_at`, so pushing it five days later leaves the app in phase
+    `"preseason"` through Week 1's Thursday and Sunday games: the practice
+    standings board, the preseason headcount, and a rules editor an admin could
+    still change during live football. The column carried two facts that merely
+    happened to coincide, and 0018 splits them rather than moving them.
+  - **Which meaning each consumer wants is the only question to ask here.**
+    JOINING (`join_by_invite`, `add_entry`, `remove_member`, every invite CTA, the
+    account page's Add-2nd-Entry button, the admin drawer's Remove) reads
+    `join_closes_at`. THE SEASON HAVING STARTED (`seasonPhase`, `set_group_rules`'s
+    freeze, `set_member_preseason`'s window, `derivePractice`, the preseason
+    countdown) still reads `entry_closes_at`. Removal moved WITH joining because
+    it is the undo for a join — 0013's own stated reason for coupling them.
+  - **`coalesce(join_closes_at, entry_closes_at)` is in every SQL gate and in
+    `joinClosesAt()` on the TS side, and the fallback is the migration story.**
+    The column is nullable with no default, so until 0018 is pasted in, joining
+    closes at the first Week 1 kickoff exactly as it always did. A half-deployed
+    change degrades to yesterday's rule rather than throwing or falling open.
+    Never read `group.joinClosesAt` directly; `joinClosesAt()` / `isJoinOpen()` in
+    `src/lib/game/season.ts` are the one definition, and the UI must agree with
+    the RPC or a button offers something the database refuses.
+  - **`isEntryOpen` and `isJoinOpen` now answer differently for the whole of Week
+    1**, which is precisely when it matters and never at any other time of year.
+    Anything reaching for `isEntryOpen` to mean "can they still join" will test
+    green all summer and be wrong for the five days that decide the feature.
+  - **The backfill is FENCED inside the column-creation guard**, on 0011's and
+    0016's pattern: a bare `update` out in the file would re-run on every replay
+    and stomp a deadline an admin had set by hand.
+  - **`alignEntryDeadlines` maintains both**, off ONE Week 1 read folded to a min
+    and a max, so the two can never come from different result sets. Its group
+    query is `select("*")` — a NAMED `join_closes_at` would raise `42703` on every
+    database one migration behind the code, and this runs from a Netlify cron,
+    which is the exact window this repo keeps falling into. The `join_closes_at`
+    write is a SEPARATE, non-fatal statement reported as `joinError`: folding it
+    into the entry update would let an unapplied 0018 abort the entry repair that
+    has already cost this league a season once.
+  - **`create_group`'s signature is still unchanged**, for 0012's reason exactly —
+    a non-defaulted parameter may not follow a defaulted one, so there is no
+    `p_join_closes_at`; the value is derived or it is null and falls back. And
+    unlike `v_entry` it does NOT raise when it comes back null: a missing entry
+    deadline is unrecoverable from inside the app, a missing join deadline just
+    means joining follows the season start.
+
+- **The League Rules dialog opens on the rules, and its seven numbered rules are
+  FIXED COPY.** `LeagueRulesModal` was a commissioner card (avatar + name), then
+  the settings tiles, then a bullet list whose elimination and tie sentences were
+  generated from `group.rules`. It is now the numbered rules, then two sentences
+  (who the commissioner is, when the season runs), then the same four tiles at
+  the bottom. Four things:
+  - **The prose no longer derives from `group.rules`, and that is a knowing
+    trade.** The seven rules are the commissioner's own wording and assert single
+    elimination and tie-as-loss outright. If an admin ever switches Tie Rule to
+    "Push" in the settings drawer, rule 1 contradicts the tile a few inches below
+    it. `league-rules.test.ts` pins the rules slice as free of `group.rules` so
+    re-deriving them is a deliberate act rather than a tidy-up — the tiles, which
+    still read the settings, are outside that slice.
+  - **Both dates ARE derived, from the two different timestamps.** The supplied
+    copy named real dates; typing them in would have gone stale next season and,
+    worse, disagreed with the "Entry closes" tile on the same screen. That tile
+    reads `joinClosesAt(group)` now, because "entry closes" is the join deadline.
+  - **`list-decimal` is load-bearing.** Tailwind's preflight sets
+    `list-style: none` on every `ol`, so dropping it renders seven unnumbered
+    paragraphs — which reads as a copy bug and sends the next person to the wrong
+    file. Verified in the compiled CSS, not by eye.
+  - **The commissioner card went and the fact stayed.** One sentence naming the
+    admin, still derived from `members` (`find` takes the FIRST admin, so a league
+    with two names one of them). No `Avatar`, and a test says so: re-adding one
+    pushes the rules below the fold, which is what this dialog exists to show.
 
 - **`ui/Modal.tsx` PORTALS to `document.body`, and it slides up on phones.** Both
   are one-line changes and both retire long-standing rules, so the old ones are

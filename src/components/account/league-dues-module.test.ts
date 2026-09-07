@@ -104,6 +104,12 @@ describe("where the Add 2nd Entry button lives", () => {
     expect(src).toContain("activeEntries.length === 1");
     expect(src).not.toMatch(/activeEntries\.length\s*>=?\s*1/);
     // ANDed with the window, so the UI mirrors both conditions the RPC enforces.
-    expect(src).toMatch(/activeEntries\.length === 1\s*&&\s*isEntryOpen\(/);
+    //
+    // `isJoinOpen`, NOT `isEntryOpen`, and the distinction is the whole reason
+    // this line is pinned: since 0018 those two answer differently for the whole
+    // of Week 1. `add_entry` gates on the join deadline, so a button gated on the
+    // season start would vanish five days before the RPC stopped accepting.
+    expect(src).toMatch(/activeEntries\.length === 1 &&\s*isJoinOpen\(/);
+    expect(src).not.toMatch(/isEntryOpen\(/);
   });
 });

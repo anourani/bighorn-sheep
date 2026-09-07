@@ -255,16 +255,33 @@ export interface DeadlineChange {
 export interface AlignDeadlinesResult {
   /** First regular-season Week 1 kickoff, or null when none is loaded. */
   firstKickoff: string | null;
+  /** LAST regular-season Week 1 kickoff — the join deadline (0018). */
+  lastKickoff: string | null;
   changed: DeadlineChange[];
-  /** How many groups in the season were already correct. */
+  /** Groups whose `join_closes_at` was moved. Separate from `changed`. */
+  joinChanged: DeadlineChange[];
+  /** How many groups in the season were already correct on BOTH deadlines. */
   alreadyAligned: number;
   /** Set when nothing was attempted, with the reason. */
   skipped: "no-week-1" | "season-started" | null;
   error?: string;
+  /**
+   * A `join_closes_at` write failed. Kept apart from `error` on purpose: the
+   * overwhelmingly likely cause is that migration 0018 has not been applied to
+   * this database yet, and the entry deadlines above it were still aligned
+   * correctly. A missing join deadline degrades to today's behaviour; aborting
+   * the whole pass over it would not.
+   */
+  joinError?: string;
 }
 
 /**
- * Point every league's entry deadline at the real first Week 1 kickoff.
+ * Point every league's deadlines at the real Week 1 kickoffs — `entry_closes_at`
+ * at the FIRST, `join_closes_at` at the LAST.
+ *
+ * Those are two different facts since 0018 and this function maintains both:
+ * the first kickoff is when the season starts (phase, rules freeze, practice),
+ * the last is when joining stops. One Week 1 read answers both.
  *
  * `groups.entry_closes_at` is documented as "first kickoff of Week 1"
  * (0001_init.sql:54) and relied on as that throughout — but `create_group` defaulted
@@ -312,6 +329,19 @@ export interface AlignDeadlinesOptions {
    * is what a real run wants, since a resumed load may not have re-fetched Week 1.
    */
   firstKickoff?: string | null;
+  /**
+   * Likewise for the LAST Week 1 kickoff. Passing `firstKickoff` alone leaves
+   * this null and the join deadline unaligned, which is why the loader passes
+   * both — a dry run that previewed only half the change would be misleading in
+   * exactly the direction that matters.
+   */
+  lastKickoff?: string | null;
+}
+
+/** Same instant? Postgres may hand back a different string form of one moment. */
+function sameInstant(a: string | null | undefined, b: string | null): boolean {
+  if (!a || !b) return false;
+  return new Date(a).getTime() === new Date(b).getTime();
 }
 
 export async function alignEntryDeadlines(
@@ -320,64 +350,123 @@ export async function alignEntryDeadlines(
   now: Date = new Date(),
   opts: AlignDeadlinesOptions = {},
 ): Promise<AlignDeadlinesResult> {
-  const empty = { firstKickoff: null, changed: [], alreadyAligned: 0 };
+  const empty = {
+    firstKickoff: null,
+    lastKickoff: null,
+    changed: [],
+    joinChanged: [],
+    alreadyAligned: 0,
+  };
 
   let firstKickoff = opts.firstKickoff ?? null;
-  if (!firstKickoff) {
+  let lastKickoff = opts.lastKickoff ?? null;
+  if (!firstKickoff || !lastKickoff) {
+    // ONE query for both ends, and no `.limit(1)`. Two ordered single-row reads
+    // would work against Postgres and would let the two deadlines be derived
+    // from different result sets; folding min and max over one list means they
+    // are the same Week 1 by construction. `order` stays for readability — the
+    // fold does not depend on it.
     const { data: week1, error: gamesErr } = await supabase
       .from("games")
       .select("kickoff")
       .eq("season", season)
       .eq("season_type", "regular")
       .eq("week", 1)
-      .order("kickoff", { ascending: true })
-      .limit(1);
+      .order("kickoff", { ascending: true });
     if (gamesErr) return { ...empty, skipped: null, error: gamesErr.message };
-    firstKickoff = week1?.[0]?.kickoff ?? null;
+    for (const row of week1 ?? []) {
+      const k = row.kickoff;
+      if (!firstKickoff || new Date(k) < new Date(firstKickoff)) firstKickoff = k;
+      if (!lastKickoff || new Date(k) > new Date(lastKickoff)) lastKickoff = k;
+    }
   }
 
   if (!firstKickoff) return { ...empty, skipped: "no-week-1" };
 
   if (new Date(firstKickoff).getTime() <= now.getTime()) {
-    return { firstKickoff, changed: [], alreadyAligned: 0, skipped: "season-started" };
+    return { ...empty, firstKickoff, lastKickoff, skipped: "season-started" };
   }
 
+  // `select("*")`, NOT a named column list. `join_closes_at` does not exist
+  // until 0018 is applied by hand, and PostgREST answers a NAMED unknown column
+  // with 42703 — which would take the entry-deadline align down with it on
+  // every database that is one migration behind the code. This function runs
+  // from a Netlify cron, so that window is exactly the one this repo keeps
+  // falling into.
   const { data: groups, error: groupsErr } = await supabase
     .from("groups")
-    .select("id, name, entry_closes_at")
+    .select("*")
     .eq("season", season);
   if (groupsErr) {
-    return { firstKickoff, changed: [], alreadyAligned: 0, skipped: null, error: groupsErr.message };
+    return { ...empty, firstKickoff, lastKickoff, skipped: null, error: groupsErr.message };
   }
 
   const changed: DeadlineChange[] = [];
+  const joinChanged: DeadlineChange[] = [];
   let alreadyAligned = 0;
+  let joinError: string | undefined;
 
   for (const group of groups ?? []) {
-    // Compare as instants: Postgres may hand back a different string form of the
-    // same moment (offset vs Z, differing fractional-second precision).
-    if (new Date(group.entry_closes_at).getTime() === new Date(firstKickoff).getTime()) {
+    const entryOk = sameInstant(group.entry_closes_at, firstKickoff);
+    // `lastKickoff` null means Week 1 is not loaded, so there is nothing to
+    // align to and the column is left alone rather than cleared.
+    const joinOk = !lastKickoff || sameInstant(group.join_closes_at, lastKickoff);
+    if (entryOk && joinOk) {
       alreadyAligned += 1;
       continue;
     }
-    if (!opts.dryRun) {
-      const { error } = await supabase
-        .from("groups")
-        .update({ entry_closes_at: firstKickoff })
-        .eq("id", group.id);
-      if (error) {
-        return { firstKickoff, changed, alreadyAligned, skipped: null, error: error.message };
+
+    if (!entryOk) {
+      if (!opts.dryRun) {
+        const { error } = await supabase
+          .from("groups")
+          .update({ entry_closes_at: firstKickoff })
+          .eq("id", group.id);
+        if (error) {
+          return {
+            firstKickoff,
+            lastKickoff,
+            changed,
+            joinChanged,
+            alreadyAligned,
+            skipped: null,
+            error: error.message,
+          };
+        }
       }
+      changed.push({
+        id: group.id,
+        name: group.name,
+        from: group.entry_closes_at,
+        to: firstKickoff,
+      });
     }
-    changed.push({
-      id: group.id,
-      name: group.name,
-      from: group.entry_closes_at,
-      to: firstKickoff,
-    });
+
+    // A SEPARATE statement, and a non-fatal one. Folded into the update above it
+    // would make an unapplied 0018 (PGRST204, "column not found in the schema
+    // cache") abort a correct entry-deadline repair — trading the deadline that
+    // has already cost this league a season for the one that has not.
+    if (!joinOk && lastKickoff) {
+      if (!opts.dryRun) {
+        const { error } = await supabase
+          .from("groups")
+          .update({ join_closes_at: lastKickoff })
+          .eq("id", group.id);
+        if (error) {
+          joinError ??= error.message;
+          continue;
+        }
+      }
+      joinChanged.push({
+        id: group.id,
+        name: group.name,
+        from: group.join_closes_at ?? group.entry_closes_at,
+        to: lastKickoff,
+      });
+    }
   }
 
-  return { firstKickoff, changed, alreadyAligned, skipped: null };
+  return { firstKickoff, lastKickoff, changed, joinChanged, alreadyAligned, skipped: null, joinError };
 }
 
 export interface ScheduleSummaryLine {

@@ -197,6 +197,16 @@ export interface Database {
           tie_rule: "push" | "loss";
           invite_code: string;
           entry_closes_at: string;
+          /**
+           * Migration 0018 — the last kickoff of Week 1, when joining stops.
+           * Nullable, and ABSENT ENTIRELY until 0018 is applied by hand, which
+           * is safe here only because every app-side read of this table is a
+           * `select("*")`: PostgREST answers a NAMED unknown column with 42703
+           * rather than undefined. Read it through `joinClosesAt()` in
+           * src/lib/game/season.ts, which coalesces to entry_closes_at exactly
+           * as the SQL does.
+           */
+          join_closes_at: string | null;
           settings_locked_at: string | null;
           /**
            * What the pot costs, in cents, added in 0010. Writable only through
@@ -218,6 +228,7 @@ export interface Database {
           tie_rule?: "push" | "loss";
           invite_code: string;
           entry_closes_at: string;
+          join_closes_at?: string | null;
           settings_locked_at?: string | null;
           buy_in_cents?: number;
           site_fee_cents?: number;
