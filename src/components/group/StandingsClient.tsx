@@ -251,10 +251,19 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              * preseason. Same grid, same props, same 18 columns as the landing
              * page — see `regularBoard` above.
              *
-             * The note stays, and it stays ABOVE the table: two quite different
-             * causes land here, which is why `practiceEnabled` exists as its own
-             * flag rather than being inferred from the null, and the reader needs
-             * to know why there is no practice round before they wonder where it
+             * ONE of the two causes still gets a note, and that asymmetry is the
+             * point of `practiceEnabled` existing as its own flag rather than
+             * being inferred from the null. "No preseason schedule has been
+             * loaded" is a fact about the app that nothing on screen explains, so
+             * it stays. The other one — practice not switched on for this member —
+             * is GONE: it told a player about an admin switch they cannot reach,
+             * on a page that is now drawing the real board underneath it, and per
+             * 0011 `show_preseason` defaults to false, so that sentence was the
+             * COMMON state rather than an edge case. A blank note above a full
+             * board reads as an error; no note reads as the board.
+             *
+             * When it does render it stays ABOVE the table — the reader needs to
+             * know why there is no practice round before they wonder where it
              * went. There is no visible `SectionHeader` any more — it said
              * "Practice Standings", which is now a lie about the table directly
              * underneath it. The `sr-only` heading the other two grid branches
@@ -263,11 +272,16 @@ export function StandingsClient({ data }: { data: LeagueData }) {
              */
             <section className="mt-16 lg:mt-14">
               <h2 className="sr-only">Standings</h2>
-              <p className="mb-4 text-xs leading-relaxed text-ink-mute">
-                {practiceEnabled
-                  ? "No preseason schedule has been loaded yet, so there's nothing to practise against."
-                  : "Preseason practice isn't switched on for you. Your league admin can turn it on from Settings."}
-              </p>
+              {/* Rendered conditionally rather than left as an empty `<p>`: the
+                  `mb-4` is on the paragraph, so an always-present element with no
+                  text would still push the board down by a seam belonging to copy
+                  that isn't there. */}
+              {practiceEnabled ? (
+                <p className="mb-4 text-xs leading-relaxed text-ink-mute">
+                  No preseason schedule has been loaded yet, so there&apos;s nothing to practise
+                  against.
+                </p>
+              ) : null}
               {regularBoard}
             </section>
           )
