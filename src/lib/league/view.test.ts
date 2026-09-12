@@ -276,6 +276,41 @@ describe("rankMembers", () => {
       const p2 = member("bbb", { userId: "ub", name: "Sam" });
       expect(ids([p2, p1])).toEqual(["aaa", "bbb"]);
     });
+
+    it("leaves one entry ALIVE when the other is knocked out for good", () => {
+      /*
+       * The elimination case, which is a stronger claim than the week-by-week
+       * one above: entry 2 is out of the season entirely while entry 1 plays
+       * on. `status` is the first key in the sort, so entry 2 must fall into
+       * the frozen dead block BELOW every living row — including strangers —
+       * and entry 1 must keep its ordinary place among the living.
+       *
+       * Nothing may tie the two together. `status` is read per ROW
+       * (`group_members.id`), never per person, and this is the test that says
+       * a shared `userId` does not leak one row's fate onto the other.
+       */
+      const alive = e1({ currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" } });
+      const out = e2({ status: "eliminated", eliminatedWeek: 3, strikes: 1 });
+      const stranger = picked("z", "sf");
+
+      expect(ids([out, stranger, alive])).toEqual(["m1", "z", "m2"]);
+
+      const rows = ranked([out, stranger, alive]);
+      expect(rows.map((r) => r.member.status)).toEqual(["alive", "alive", "eliminated"]);
+      // Rank is a position in the league, so the surviving entry outranks a
+      // stranger on merit and the dead entry is last whatever it once did.
+      expect(rows.find((r) => r.member.id === "m1")?.rank).toBe(1);
+      expect(rows.find((r) => r.member.id === "m2")?.rank).toBe(3);
+    });
+
+    it("counts two entries of one player as two competitors in the headcount", () => {
+      // `survivorCounts` folds ROWS. One player with a live entry and a dead
+      // one is one survivor and one casualty out of two — not one of one, and
+      // not a player who is somehow both.
+      const alive = e1();
+      const out = e2({ status: "eliminated", eliminatedWeek: 3 });
+      expect(survivorCounts([alive, out])).toEqual({ alive: 1, eliminated: 1, total: 2 });
+    });
   });
 
   it("orders the living by how their current week is going", () => {
