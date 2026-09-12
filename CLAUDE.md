@@ -613,6 +613,30 @@ reading, but only the first kind is the lesson.
     — naming `PickRow` would drag the whole generated Supabase type tree into
     the scorer's graph for one field. Same leaf discipline as `accent.ts`.
 
+- **Every count in the app counts ENTRIES, not people, and that is the design —
+  confirmed with the user, not drifted into.** A player holding two entries
+  (0017) appears twice in "29 still standing", draws two cubes in the headcount
+  grid, adds two to "N joined" / "N in", and contributes TWO buy-ins to the
+  "Winner takes" pot. All of it falls out of one fact: a `group_members` row is
+  an entry, and `survivorCounts` / `members.length` / `memberCount` fold rows.
+  Three things:
+  - **It is correct because an entry is what competes and what pays.** Two
+    entries are two independent runs at the season — separate picks, separate
+    strikes, separate elimination — and two buy-ins were collected for them. A
+    headcount that counted people would say 28 still standing while 29 rows were
+    still picking, and a pot that counted people would be short by exactly the
+    money the second entries paid in.
+  - **So it is NOT a bug to go and fix**, which is the whole reason this entry
+    exists. The tempting "fix" is a `new Set(members.map(m => m.userId))` in
+    `survivorCounts` or in the pot arithmetic, and it would silently understate
+    both. Same trap as 0011's `show_preseason` default a few entries down: a
+    deliberate choice that reads like an oversight to somebody arriving at it
+    cold.
+  - **The one place it genuinely is per-person is the buy-in DOT**, and that is
+    also deliberate. `viewerBuyInUnpaid` uses `.some` over the viewer's rows —
+    the dot means "you owe this league something", so either entry being unpaid
+    lights it once, rather than a dot per entry.
+
 - **A week that went by unpicked is a RED tile now, not a hollow circle.**
   `WeekCell` gained a `missed` kind: the loss tint in the same 42px box a picked
   week draws, with a dash where the logo would be, an `sr-only` "No pick,
