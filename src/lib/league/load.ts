@@ -10,6 +10,7 @@ import { evaluateTeamPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "@/lib/game/season";
 import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
+import { entryKey, groupPicksByEntry } from "./entry-key";
 import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
 import { mapPublicSnapshot, type PublicLeagueData } from "./public";
@@ -162,6 +163,17 @@ export interface ViewerEntry {
   /** `group_members.id` — the same id the standings board uses as its row key. */
   memberId: string;
   entryNo: EntryNo;
+  /**
+   * Whether this entry is still in it — PER ENTRY, which is the whole point.
+   * One person's two entries are eliminated independently, so a status read off
+   * the person rather than the row would close both screens the moment either
+   * went out.
+   *
+   * The pick screen reads it to stop offering a live-looking grid to an entry
+   * `canPick` will refuse. Without it the grid painted a tap optimistically and
+   * snapped back a moment later under "You're eliminated, so picks are closed."
+   */
+  status: Member["status"];
   /** Every regular-season pick this entry holds, including future weeks. */
   picks: { week: number; teamId: TeamId }[];
   practiceEnabled: boolean;
@@ -197,34 +209,51 @@ function rowToGroup(r: GroupRow): Group {
   };
 }
 
-/** A past pick's result: trust the scored value, else derive from the game. */
+/**
+ * A past pick's result: trust the scored value, else derive it from the game.
+ *
+ * NEVER null. It returned null for anything that would not resolve — a
+ * postponed game, a week the scorer has not reached — and `toMember` then
+ * dropped the pick, so the standings board drew that week as if no pick had
+ * ever been made. Since the missed-pick tile that empty slot is a red "counted
+ * as a loss", which turns a shrug into an accusation. `"pending"` says what is
+ * actually true: the pick is real and its outcome is not known yet.
+ */
 function historyResult(
   p: PickRow,
   game: Game | undefined,
   rules: GroupRules,
-): HistoryPick["result"] | null {
+): HistoryPick["result"] {
   if (p.result === "win" || p.result === "loss" || p.result === "push") return p.result;
   const derived = evaluateTeamPick(game ?? null, p.team_id, rules);
-  return derived === "win" || derived === "loss" || derived === "push" ? derived : null;
+  return derived === "win" || derived === "loss" || derived === "push" ? derived : "pending";
 }
 
 function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickRow[], currentWeek: number, rules: GroupRules, gameById: (id: string) => Game | undefined): Member {
   const history: HistoryPick[] = [];
   let currentPick: Member["currentPick"] = null;
   // A pick for a week AFTER `currentWeek` matches neither branch below and is
-  // dropped here on purpose — `HistoryPick.result` is not optional and a week
-  // that has not been played has no result, so it cannot join `history` without
-  // making every consumer of `history` (StandingsGrid folds it for every
-  // member) handle a resultless entry. Those rows reach the pick screen as
-  // `LeagueData.viewerPicks` instead. There is nothing to filter for privacy:
-  // RLS returns another member's un-kicked pick to nobody, so `picks` only ever
-  // carries future rows for the viewer's own row.
+  // dropped here on purpose: `StandingsGrid` folds `history` for EVERY member,
+  // so letting a future week in would paint the viewer's own plan into their own
+  // standings row. THE WEEK FILTER is what enforces that, not the result type —
+  // `HistoryPick.result` now carries "pending", so the type alone would no
+  // longer stop it. Those rows reach the pick screen as `LeagueData.viewerPicks`
+  // instead. There is nothing to filter for privacy: RLS returns another
+  // member's un-kicked pick to nobody, so `picks` only ever carries future rows
+  // for the viewer's own row.
+  //
+  // Every PAST pick joins history now, resolved or not. It used to be dropped
+  // when nothing would resolve it, and a dropped pick is drawn as a week that
+  // was never picked at all — a red missed-pick tile since that landed.
   for (const p of picks) {
     if (p.week === currentWeek) {
       currentPick = { week: p.week, teamId: p.team_id, gameId: p.game_id };
     } else if (p.week < currentWeek) {
-      const result = historyResult(p, gameById(p.game_id), rules);
-      if (result) history.push({ week: p.week, teamId: p.team_id, result });
+      history.push({
+        week: p.week,
+        teamId: p.team_id,
+        result: historyResult(p, gameById(p.game_id), rules),
+      });
     }
   }
   history.sort((a, b) => a.week - b.week);
@@ -385,30 +414,18 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   /*
    * Picks grouped by ENTRY, not by person.
    *
-   * `picks` carries (group_id, user_id, entry_no) rather than a membership id —
-   * see the note on picks.entry_no in supabase/types.ts for why it was left
-   * that way — so the grouping key has to be the pair. Keyed on user_id alone,
-   * as this was before 0017, a two-entry player's rows would be handed to BOTH
-   * of their memberships and each entry would show the other's picks.
-   *
-   * `?? 1` on both sides, so a pre-0017 database groups every row under
-   * `user|1` and every membership asks for `user|1`. Identical behaviour to
-   * before, by construction rather than by luck.
+   * The key and its `?? 1` fallback live in `entry-key.ts`, shared with the
+   * scorer (`game/score.ts`) — which had this keyed on `user_id` alone and so
+   * scored one entry against the other's pick. Two modules deriving the same
+   * key two ways is the whole reason it is a module.
    */
-  const entryKey = (userId: string, entryNo: number) => `${userId}|${entryNo}`;
-  const picksByEntry = new Map<string, PickRow[]>();
-  for (const p of pickRows ?? []) {
-    const k = entryKey(p.user_id, p.entry_no ?? 1);
-    const arr = picksByEntry.get(k) ?? [];
-    arr.push(p);
-    picksByEntry.set(k, arr);
-  }
+  const picksByEntry = groupPicksByEntry(pickRows);
 
   const members: Member[] = (memberRows ?? []).map((row) =>
     toMember(
       row,
       profileById.get(row.user_id),
-      picksByEntry.get(entryKey(row.user_id, row.entry_no ?? 1)) ?? [],
+      picksByEntry.get(entryKey(row.user_id, row.entry_no)) ?? [],
       currentWeek,
       group.rules,
       idx.gameById,
@@ -431,7 +448,11 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
     .map((m) => ({
       memberId: m.id,
       entryNo: (m.entry_no ?? 1) as EntryNo,
-      picks: (picksByEntry.get(entryKey(m.user_id, m.entry_no ?? 1)) ?? [])
+      // Off the membership ROW, so each entry answers for itself. `memberRows`
+      // is a `select("*")`, so this names no new column and risks no 42703 —
+      // the trap a widened select walks into on a database one migration behind.
+      status: m.status,
+      picks: (picksByEntry.get(entryKey(m.user_id, m.entry_no)) ?? [])
         .map((p) => ({ week: p.week, teamId: p.team_id as TeamId }))
         .sort((a, b) => a.week - b.week),
       // Fails OPEN, exactly as `toMember` and `practiceEnabled` below do: an
@@ -525,14 +546,14 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   // the same map, and a pick whose membership has since been removed is dropped
   // rather than bucketed under a key nothing renders.
   const membershipIdByEntry = new Map(
-    (memberRows ?? []).map((m) => [entryKey(m.user_id, m.entry_no ?? 1), m.id] as const),
+    (memberRows ?? []).map((m) => [entryKey(m.user_id, m.entry_no), m.id] as const),
   );
   let practice: PracticeData | null = null;
   if (phase === "preseason" && practiceEnabled) {
     const derived = derivePractice({
       games: (preGameRows ?? []).map(rowToGame),
       picks: (prePickRows ?? []).flatMap((p) => {
-        const memberId = membershipIdByEntry.get(entryKey(p.user_id, p.entry_no ?? 1));
+        const memberId = membershipIdByEntry.get(entryKey(p.user_id, p.entry_no));
         return memberId
           ? [{ userId: memberId, week: p.week, teamId: p.team_id, gameId: p.game_id }]
           : [];

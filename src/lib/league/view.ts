@@ -384,7 +384,13 @@ export function buildTeamStates(
     }
     const used = usedByTeam.get(id);
     if (used) {
-      out.set(id, { state: "used", week: used.week, result: used.result });
+      // `result` is dropped when the pick has not resolved. `HistoryPick`
+      // carries "pending" for a past pick whose game produced no outcome, and
+      // `TeamAvailability` deliberately does not — its `result` is optional for
+      // exactly this case, and the card prints "Used · W3" with no verdict
+      // rather than inventing one.
+      const result = used.result === "pending" ? undefined : used.result;
+      out.set(id, { state: "used", week: used.week, result });
       continue;
     }
     out.set(id, byeSet.has(id) ? { state: "bye" } : { state: "available" });

@@ -416,6 +416,35 @@ function WeekCellView({ cell }: { cell: WeekCell }) {
     );
   }
 
+  if (cell.kind === "missed") {
+    /*
+     * The same 42px box a picked week draws, under the same loss tint — so a
+     * week somebody skipped reads down the column exactly like a week they lost,
+     * which is what it cost them. The dash stands where the logo would be
+     * because there is no team to draw, and it is the ONE thing separating this
+     * tile from a loss at a glance.
+     *
+     * `aria-hidden` on the glyph: a bare "—" read aloud names nothing, and the
+     * sr-only text below states the whole fact instead. Spoken in full because
+     * the tint is the only other thing carrying it, and colour alone fails WCAG
+     * 1.4.1 — the same argument `chipName` makes for the week strip.
+     */
+    return (
+      <span className={TILE} title="No pick — counted as a loss">
+        <span
+          className={cn(
+            "grid h-[42px] w-[42px] place-items-center rounded text-[15px] font-semibold leading-none text-[#8A2C2C]",
+            RESULT_BOX.loss,
+          )}
+          aria-hidden
+        >
+          —
+        </span>
+        <span className="sr-only">No pick, counted as a loss</span>
+      </span>
+    );
+  }
+
   const team = getTeam(cell.teamId);
   const box = cell.result ? RESULT_BOX[cell.result] : "";
   const resultLabel = cell.result ?? (cell.live ? "live" : "");
@@ -473,6 +502,20 @@ function Legend() {
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className={cn("h-3 w-3 rounded", RESULT_BOX.push)} /> Push
+      </span>
+      {/* Shares the loss fill, so it needs the dash to tell the two apart in
+          the legend exactly as it does in the table. */}
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className={cn(
+            "grid h-3 w-3 place-items-center rounded text-[9px] font-semibold leading-none text-[#8A2C2C]",
+            RESULT_BOX.loss,
+          )}
+          aria-hidden
+        >
+          —
+        </span>{" "}
+        Missed pick
       </span>
       <span className="inline-flex items-center gap-1.5">
         <LockIcon className="h-3.5 w-3.5" /> Hidden until kickoff
