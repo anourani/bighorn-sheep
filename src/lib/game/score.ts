@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../supabase/types";
 import { computeStatus, evaluateWeek } from "./elimination";
+import { entryKey, groupPicksByEntry } from "../league/entry-key";
 import type { GroupRules, PickResult } from "../league/types";
 import type { Game } from "../nfl/types";
 
@@ -15,6 +16,10 @@ import type { Game } from "../nfl/types";
  * `eliminated_week` for the given season, folding weeks 1..throughWeek. By default
  * that covers EVERY group in the season — pass `opts.groupId` to scope it to one.
  *
+ * ONE ENTRY AT A TIME. A `group_members` row IS an entry (0017), so a two-entry
+ * player is folded twice and each fold reads only its own entry's picks — see
+ * `groupPicksByEntry` below and the shared `entryKey` it keys on.
+ *
  * REGULAR SEASON ONLY. Both queries below filter `season_type = 'regular'`.
  * Preseason is a practice round that resets at Week 1: its results are derived at
  * read time and never written to `group_members`. Without these filters a
@@ -23,7 +28,6 @@ import type { Game } from "../nfl/types";
  */
 type DB = SupabaseClient<Database>;
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
-type PickRow = Database["public"]["Tables"]["picks"]["Row"];
 
 export function rowToGame(r: GameRow): Game {
   return {
@@ -93,15 +97,26 @@ export async function recomputeSeason(
       .eq("group_id", group.id)
       .eq("season_type", "regular");
 
-    const picksByUser = new Map<string, PickRow[]>();
-    for (const p of pickRows ?? []) {
-      const arr = picksByUser.get(p.user_id) ?? [];
-      arr.push(p);
-      picksByUser.set(p.user_id, arr);
-    }
+    /*
+     * Grouped by ENTRY, not by person (migration 0017).
+     *
+     * Keyed on `user_id` alone, as this was, a two-entry player's rows were
+     * handed to BOTH of their memberships and `find(p => p.week === w)` below
+     * took whichever the database returned first. So entry 2's strike and
+     * elimination could be computed from entry 1's pick, and the other row's
+     * `result`/`locked_at` were never written at all — a silent, wrong
+     * elimination and a permanently unscored pick, from one missing field in a
+     * grouping key.
+     *
+     * `entryKey` is shared with `league/load.ts` precisely so the scorer and
+     * the screen cannot disagree about whose pick is whose.
+     */
+    const picksByEntry = groupPicksByEntry(pickRows);
 
     for (const member of members ?? []) {
-      const userPicks = (picksByUser.get(member.user_id) ?? []).sort((a, b) => a.week - b.week);
+      const userPicks = (
+        picksByEntry.get(entryKey(member.user_id, member.entry_no)) ?? []
+      ).sort((a, b) => a.week - b.week);
       const weeks: number[] = [];
       const results: PickResult[] = [];
 

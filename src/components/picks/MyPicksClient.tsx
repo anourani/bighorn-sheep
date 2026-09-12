@@ -10,6 +10,7 @@ import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { GRID_LAYOUTS } from "@/components/picks/team-grid";
 import { IDLE_QUEUE, settlePick, tapPick, type PickQueue } from "@/components/picks/pick-queue";
 import { buildChipPicks } from "@/components/picks/week-strip";
+import { isEntryWritable } from "@/components/picks/writability";
 import { Toast } from "@/components/ui/Toast";
 import { raiseToast, releaseMessage, type ToastMessage } from "@/components/ui/toast";
 import { InfoIcon } from "@/components/icons";
@@ -93,7 +94,19 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const entries: ViewerEntry[] =
     data.viewerEntries.length > 0
       ? data.viewerEntries
-      : [{ memberId: data.viewer.id, entryNo: 1, picks: data.viewerPicks, practiceEnabled: true }];
+      : [
+          {
+            memberId: data.viewer.id,
+            entryNo: 1,
+            // "alive" because this entry does not exist: a viewer with no
+            // membership row never reaches this component, so the synthetic one
+            // exists only to keep the array indexable. Anything it claims about
+            // elimination would be a claim about nobody.
+            status: "alive",
+            picks: data.viewerPicks,
+            practiceEnabled: true,
+          },
+        ];
   const [entryChoice, setEntryChoice] = useStoredChoice(PICKS_ENTRY_KEY, ENTRY_CHOICES, "1");
   // The STORED choice is a preference; the entries are the fact. Somebody whose
   // second entry was removed in the SQL editor still has "2" in localStorage,
@@ -271,17 +284,34 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const viewingPast = !isCurrent && viewRef.week < liveRef.week;
   const viewingFuture = !isCurrent && viewRef.week > liveRef.week;
   /*
-   * Whether this week may be WRITTEN to — the live week and everything after it.
+   * Whether this week may be WRITTEN to. Two gates — the week, and whether the
+   * entry on screen is still in it — both of which live in `writability.ts`
+   * with the reasoning and the tests.
    *
-   * Stated as a positive rather than as `!viewingPast`, even though the two are
-   * identical today. `viewingPast` leans on an invariant (the two refs share a
-   * seasonType) that holds because of the sanitising above; if that ever slipped,
-   * a negation would fail OPEN and quietly make an unrelated week writable, where
-   * this fails closed. Per-game locks are still the surface's own job —
-   * `buildGridCards` refuses a card whose kickoff has passed — so this is a week
-   * gate, not a pick gate.
+   * The entry half is the one that was missing: this screen read the week alone,
+   * so an eliminated player was handed a live grid that `submitPick` then
+   * refused. `activeEntry.status` is per ENTRY, so one of a player's two runs
+   * ending leaves the other fully playable.
    */
-  const writable = isCurrent || viewingFuture;
+  const writable = isEntryWritable({
+    isCurrent,
+    viewingFuture,
+    entryStatus: activeEntry.status,
+  });
+  /*
+   * The line above the grid: one slot, two sources.
+   *
+   * An eliminated entry gets a STANDING notice rather than waiting for a tap to
+   * produce one — the grid below is drawn inert for it, and an inert grid with
+   * no explanation reads as a bug. It reuses `PICK_ERROR`'s own copy rather
+   * than a second string, because the two have to say the same thing: this is
+   * the state `submitPick` would report, said before a tap is spent finding it.
+   *
+   * `pickError` wins when both apply. It is the newer fact, and it answers
+   * something the player just did.
+   */
+  const pickNotice =
+    pickError ?? (activeEntry.status === "eliminated" ? PICK_ERROR.eliminated : null);
   // The pick for the week the strip names — not the phase's live week, which
   // left the banner contradicting the schedule underneath it.
   const pickTeam = pickForWeek(viewRef, serverPicks, pendingPicks);
@@ -587,10 +617,12 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         weekFinalKickoff={viewDeadline}
       />
 
-      {pickError ? (
+      {/* Both the tap-driven error and the standing eliminated notice — see
+          `pickNotice`, which decides between them. */}
+      {pickNotice ? (
         <div className="mt-4 flex items-start gap-2 rounded-control border border-out/30 bg-out-wash px-3 py-2.5 text-sm text-[#8A2C2C]">
           <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{pickError}</span>
+          <span>{pickNotice}</span>
         </div>
       ) : null}
 

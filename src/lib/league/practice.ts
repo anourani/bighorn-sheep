@@ -68,6 +68,18 @@ export interface PracticeMember {
   picks: { week: number; teamId: TeamId }[];
   /** False when this member has not joined the practice round at all. */
   participating: boolean;
+  /**
+   * The week this member's practice record starts at — their first practice
+   * pick — or null when they have none.
+   *
+   * `participating` says WHETHER they are in; this says FROM WHEN, which is the
+   * fact the standings board needs. Weeks before it are skipped rather than
+   * forgiven (see the clamp in `derivePracticeMember`), so without this the
+   * board would draw a red "no pick, counted as a loss" over every preseason
+   * week that finished before the member ever opened the app. It reaches
+   * `cellFor` as `Member.scoredFromWeek`.
+   */
+  firstWeek: number | null;
 }
 
 export interface PracticeState {
@@ -220,7 +232,12 @@ function derivePracticeMember(args: {
 
     results.push(result);
 
-    if (pick && week < currentWeek && (result === "win" || result === "loss" || result === "push")) {
+    // `result !== "no_pick"` narrows `PickResult` to exactly
+    // `HistoryPick["result"]`, and it keeps an UNRESOLVED pick on the board:
+    // dropping it, as this did, left a week that was picked looking like a week
+    // that was not — which the standings board now draws as a red missed pick.
+    // Same fix as `historyResult` in load.ts, for the same reason.
+    if (pick && week < currentWeek && result !== "no_pick") {
       history.push({ week, teamId: pick.teamId, result });
     }
   }
@@ -237,6 +254,7 @@ function derivePracticeMember(args: {
     currentPick,
     picks: picks.map((p) => ({ week: p.week, teamId: p.teamId })),
     participating,
+    firstWeek: firstPickWeek,
   };
 }
 

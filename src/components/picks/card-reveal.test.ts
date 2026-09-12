@@ -293,23 +293,48 @@ describe("the two reveals", () => {
 // copy drifts. vitest runs in Node and the config is plain TS with a default
 // export, so the copy can simply be checked against the original.
 describe("the fade against the blur-in keyframe it mirrors", () => {
-  const keyframe = tailwind.theme?.extend?.keyframes?.["blur-in"] as Record<
-    string,
-    Record<string, string>
-  >;
-  const token = tailwind.theme?.extend?.animation?.["blur-in"] as string;
+  /*
+   * The CONTAINER is cast, then indexed — not the other way round.
+   *
+   * Tailwind types `theme.extend.keyframes` as a deeply nested
+   * `ResolvableTo<KeyValuePair<…>>` union, so indexing it by a literal raises
+   * TS7053 whatever the result is cast to: the error is on the index
+   * expression, and a cast wrapped around the whole thing arrives too late to
+   * help. Narrowing the container first is what makes the lookup legal, and
+   * every value stays optional so the reads below are honest about a key that
+   * might not be there.
+   */
+  // Three levels: keyframe name → step (`from`/`to`) → CSS property.
+  const keyframes = tailwind.theme?.extend?.keyframes as
+    | Record<string, Record<string, Record<string, string> | undefined> | undefined>
+    | undefined;
+  const animation = tailwind.theme?.extend?.animation as
+    | Record<string, string | undefined>
+    | undefined;
+  const keyframe = keyframes?.["blur-in"];
+  const token = animation?.["blur-in"];
+
+  // Optional chaining rather than `!` throughout, and this test rather than a
+  // non-null assertion: a keyframe that has been renamed or deleted is itself
+  // the drift this block exists to catch, so it should fail as a named
+  // expectation instead of as a TypeError inside an unrelated one.
+  it("is still in the config, which is the whole premise of the checks below", () => {
+    expect(keyframe?.from).toBeDefined();
+    expect(keyframe?.to).toBeDefined();
+    expect(token).toBeDefined();
+  });
 
   it("starts from the keyframe's own blur and scale", () => {
-    expect(keyframe.from.filter).toBe(`blur(${FADE_BLUR_PX}px)`);
-    expect(keyframe.from.transform).toBe(`scale(${FADE_SCALE})`);
-    expect(keyframe.from.opacity).toBe("0");
+    expect(keyframe?.from?.filter).toBe(`blur(${FADE_BLUR_PX}px)`);
+    expect(keyframe?.from?.transform).toBe(`scale(${FADE_SCALE})`);
+    expect(keyframe?.from?.opacity).toBe("0");
   });
 
   it("resolves to the same place, modulo the unit GSAP needs and CSS does not", () => {
     // The keyframe may say `blur(0)`; GSAP must say `blur(0px)`. Same picture,
     // and the difference is the whole of the test above.
-    expect(keyframe.to.filter.replace("blur(0)", "blur(0px)")).toBe(FADE_SHOWN_FILTER);
-    expect(keyframe.to.transform).toBe("scale(1)");
+    expect(keyframe?.to?.filter?.replace("blur(0)", "blur(0px)")).toBe(FADE_SHOWN_FILTER);
+    expect(keyframe?.to?.transform).toBe("scale(1)");
   });
 
   it("eases on the curve the token names, which is why CustomEase is registered", () => {

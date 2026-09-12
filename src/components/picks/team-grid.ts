@@ -57,12 +57,14 @@ export function buildGridCards(input: {
   usedByTeam: ReadonlyMap<TeamId, { week: number }>;
   selectedTeam: TeamId | null;
   /**
-   * Whether this week may be WRITTEN to — false only on a week already played.
+   * Whether this week may be WRITTEN to — false on a week already played, and
+   * false for every week once the ENTRY is eliminated.
    *
    * Named before picking ahead existed, when "writable" and "the live week"
    * were the same set. They are not any more: every week from the live one
    * forward is interactive, and per-game kickoff is what locks an individual
-   * card inside it.
+   * card inside it. `isEntryWritable` in `writability.ts` is the one definition
+   * of what the caller passes here.
    */
   interactive: boolean;
   now: Date;

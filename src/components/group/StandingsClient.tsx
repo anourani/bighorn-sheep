@@ -101,6 +101,17 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         strikes: p?.strikes ?? 0,
         history: p?.history ?? [],
         currentPick: p?.currentPick ?? null,
+        /*
+         * MUST be overridden, not inherited from the spread.
+         *
+         * `Member.scoredFromWeek` is absent on the regular-season row, which
+         * means "from week 1" — and practice's rule is the opposite: weeks
+         * before a member's first practice pick are skipped, not forgiven, so
+         * inheriting the regular meaning would print a red "counted as a loss"
+         * over every preseason week that finished before they arrived. `null`
+         * for a member who never practised at all, so no week counts.
+         */
+        scoredFromWeek: p?.firstWeek ?? null,
       };
     });
     // The practice week and the practice game index, never the regular ones.

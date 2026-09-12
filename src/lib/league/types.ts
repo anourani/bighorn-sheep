@@ -67,7 +67,26 @@ export interface Group {
 export interface HistoryPick {
   week: number;
   teamId: TeamId;
-  result: "win" | "loss" | "push";
+  /**
+   * How that week went — or `"pending"` for a pick whose game has been and gone
+   * without producing one.
+   *
+   * `"pending"` exists because the alternative was DROPPING the pick. The three
+   * producers all used to keep only a win, loss or push, so a past week whose
+   * game was postponed (or simply never scored) left no history entry at all —
+   * and the standings board draws a week with no entry as an unpicked slot. A
+   * pick that vanishes from the board reads as "they forgot", which is a worse
+   * lie than "we don't know yet", and since the missed-pick tile it is now a
+   * RED one. The pick is real; only its outcome is unknown.
+   *
+   * Nothing tints a `"pending"` cell — see `cellFor` — so it draws the team's
+   * logo plain, exactly as a win in a settled week does.
+   *
+   * Widening this does NOT let a future week into `history`. What keeps those
+   * out is the week filter in each producer, never the result type; see
+   * `LeagueData.viewerPicks`.
+   */
+  result: "win" | "loss" | "push" | "pending";
 }
 
 export interface CurrentPick {
@@ -161,6 +180,30 @@ export interface Member {
   eliminatedWeek?: number | null;
   history: HistoryPick[];
   currentPick?: CurrentPick | null;
+  /**
+   * The first week this member's record answers for — which weeks a MISSING
+   * pick may legitimately be counted against them.
+   *
+   * Three values, and the two nullish ones mean different things:
+   *
+   * - **absent** — from week 1. The regular season's rule, and the reason this
+   *   is optional: `recomputeSeason` folds every week from 1 with no clamp, and
+   *   joining closes during Week 1, so there is no regular-season week a member
+   *   was not present for. Both real boards leave it unset.
+   * - **a number** — from that week. Only the preseason practice table sets it,
+   *   from the member's first practice pick: preseason has no entry deadline, so
+   *   folding every week would charge a brand-new account for the Hall of Fame
+   *   game in early August. Practice weeks before it are *skipped, not
+   *   forgiven* — see `derivePracticeMember`.
+   * - **null** — no week counts. A member who has not joined the practice round
+   *   at all.
+   *
+   * Read only by `cellFor`, which needs it to tell a genuinely missed pick from
+   * a week that was never this member's to play. Without it the practice board
+   * would print a red "counted as a loss" tile over exactly the weeks practice
+   * deliberately forgives.
+   */
+  scoredFromWeek?: number | null;
 }
 
 /** Losses tolerated before elimination. */

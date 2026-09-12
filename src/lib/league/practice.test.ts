@@ -252,7 +252,26 @@ describe("derivePractice", () => {
     expect(state.members.u1).toMatchObject({
       strikes: 0,
       participating: true,
+      // The week the clamp starts at, published so the standings board can draw
+      // weeks 1-2 as "not yours to play" rather than as missed picks. Without
+      // it the board would print a red "counted as a loss" over exactly the
+      // weeks the assertion above proves are forgiven.
+      firstWeek: 3,
     });
+  });
+
+  it("publishes a null record start for somebody who never practised", () => {
+    // `scoredFromWeek: null` on the board — no practice week counts against
+    // them at all, rather than every one of them counting.
+    const state = derivePractice({
+      games: SLATE,
+      picks: [],
+      memberIds: ["u1"],
+      rules: SINGLE,
+      now: AFTER_PRESEASON,
+    })!;
+
+    expect(state.members.u1).toMatchObject({ participating: false, firstWeek: null });
   });
 
   it("still counts a missed week once you are in the practice round", () => {
@@ -387,9 +406,14 @@ describe("practiceUsedTeams", () => {
       now: new Date("2026-08-16T00:00:00.000Z"),
     })!;
 
-    // Nothing resolved, so history is empty …
-    expect(state.members.u1!.history).toEqual([]);
-    // … but the team is unambiguously spent.
+    // Nothing resolved, so the pick is on the record as "pending" rather than
+    // with a verdict. It used to be dropped from history entirely, which the
+    // standings board reads as a week that was never picked — a red missed-pick
+    // tile since that landed, i.e. a loss printed over a pick that was made.
+    expect(state.members.u1!.history).toEqual([{ week: 1, teamId: "kc", result: "pending" }]);
+    // … and the team is unambiguously spent either way. `practiceUsedTeams`
+    // still reads `picks`, never `history`, which is what kept this correct
+    // through the whole window where nothing resolved at all.
     expect(practiceUsedTeams(state.members.u1).map((u) => u.teamId)).toEqual(["kc"]);
   });
 });
