@@ -123,15 +123,23 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
         continue;
       }
       // Trust the scored value, else derive it — same rule as load.ts's
-      // historyResult, which is why step 3 has to precede this.
+      // historyResult, which is why step 3 has to precede this. Falls back to
+      // `"pending"` rather than dropping the pick, for the reason given there:
+      // a past week with no history entry is drawn as a MISSED pick, so losing
+      // an unresolved one here would put a red tile over a pick that was made.
       const stored = p.result;
-      const result =
+      const derived = evaluateTeamPick(
+        idx.gameById(p.game_id) ?? null,
+        p.team_id as TeamId,
+        rules,
+      );
+      const result: HistoryPick["result"] =
         stored === "win" || stored === "loss" || stored === "push"
           ? stored
-          : ((d) => (d === "win" || d === "loss" || d === "push" ? d : null))(
-              evaluateTeamPick(idx.gameById(p.game_id) ?? null, p.team_id as TeamId, rules),
-            );
-      if (result) history.push({ week: p.week, teamId: p.team_id as TeamId, result });
+          : derived === "win" || derived === "loss" || derived === "push"
+            ? derived
+            : "pending";
+      history.push({ week: p.week, teamId: p.team_id as TeamId, result });
     }
 
     return {

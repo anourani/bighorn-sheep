@@ -587,6 +587,125 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The scorer grouped picks by PERSON, not by entry, and with two entries in
+  the league that was a wrong elimination waiting to happen.** `recomputeSeason`
+  (`src/lib/game/score.ts`) bucketed `picks` on `user_id` alone and then took
+  `find(p => p.week === w)` — so for a player holding two entries, week w's
+  lookup returned whichever row the database handed back first. **No migration;
+  this was a code bug against a schema that was already correct.** Four things:
+  - **`load.ts` had already got this right, and that is what made it invisible.**
+    The screen keyed on `(user_id, entry_no)` from the day 0017 landed; only the
+    scorer did not. So the board showed each entry its own picks while the
+    scorer wrote strikes and eliminations from the other one's — two modules
+    deriving the same key two ways, which is the whole reason `entryKey` /
+    `groupPicksByEntry` are now a shared leaf (`src/lib/league/entry-key.ts`)
+    rather than a closure in each file.
+  - **Both halves of the damage are silent.** One entry's `status` /
+    `eliminated_week` could be computed from the other's pick, AND the loser of
+    the coin-flip never had its own `picks.result` / `locked_at` written at all —
+    so a pick stayed unscored forever, which nothing on any screen reports.
+  - **The `?? 1` fallback lives in `entryKey` and nowhere else.** Pre-0017 the
+    column does not exist, so `select("*")` omits it and every row reads
+    `undefined` while the row type says `1 | 2`. Folding both sides of the
+    lookup to entry 1 is what makes a pre-0017 database behave exactly as it
+    did — by construction rather than by luck.
+  - **`groupPicksByEntry` is generic over the row**, so the leaf imports nothing
+    — naming `PickRow` would drag the whole generated Supabase type tree into
+    the scorer's graph for one field. Same leaf discipline as `accent.ts`.
+
+- **Every count in the app counts ENTRIES, not people, and that is the design —
+  confirmed with the user, not drifted into.** A player holding two entries
+  (0017) appears twice in "29 still standing", draws two cubes in the headcount
+  grid, adds two to "N joined" / "N in", and contributes TWO buy-ins to the
+  "Winner takes" pot. All of it falls out of one fact: a `group_members` row is
+  an entry, and `survivorCounts` / `members.length` / `memberCount` fold rows.
+  Three things:
+  - **It is correct because an entry is what competes and what pays.** Two
+    entries are two independent runs at the season — separate picks, separate
+    strikes, separate elimination — and two buy-ins were collected for them. A
+    headcount that counted people would say 28 still standing while 29 rows were
+    still picking, and a pot that counted people would be short by exactly the
+    money the second entries paid in.
+  - **So it is NOT a bug to go and fix**, which is the whole reason this entry
+    exists. The tempting "fix" is a `new Set(members.map(m => m.userId))` in
+    `survivorCounts` or in the pot arithmetic, and it would silently understate
+    both. Same trap as 0011's `show_preseason` default a few entries down: a
+    deliberate choice that reads like an oversight to somebody arriving at it
+    cold.
+  - **The one place it genuinely is per-person is the buy-in DOT**, and that is
+    also deliberate. `viewerBuyInUnpaid` uses `.some` over the viewer's rows —
+    the dot means "you owe this league something", so either entry being unpaid
+    lights it once, rather than a dot per entry.
+
+- **A week that went by unpicked is a RED tile now, not a hollow circle.**
+  `WeekCell` gained a `missed` kind: the loss tint in the same 42px box a picked
+  week draws, with a dash where the logo would be, an `sr-only` "No pick,
+  counted as a loss", and its own legend swatch. All three boards get it from
+  the one component. Before this, going out by not picking at all was the ONLY
+  outcome the table did not draw — the cell was `empty`, i.e. identical to a
+  week nobody had reached yet — which made the standings entry's claim that
+  position plus "the red tile on the week they went out" carries elimination
+  only half true. Five things:
+  - **It needed `HistoryPick.result` to carry `"pending"`, and that is the
+    subtle half of the change.** All three producers (`historyResult` in
+    `load.ts`, `mapPublicSnapshot`, `derivePracticeMember`) used to DROP a past
+    pick that would not resolve — a postponed game, or one the scorer had not
+    marked final. A dropped pick leaves no history entry, and a past week with
+    no history entry is exactly what now draws the missed tile: so without this,
+    every unresolved pick would have had a red "counted as a loss" printed over
+    it. `cellFor` tints `loss` alone, so a pending pick draws its logo plain.
+  - **`load.ts`'s docblock argued against widening `HistoryPick` and is
+    corrected in place.** Its point stands — a FUTURE week must never reach
+    `history`, because `StandingsGrid` folds it for every member and would paint
+    the viewer's own plan into their own row — but the WEEK FILTER in each
+    producer is what enforces that, not the result type. The type no longer
+    would.
+  - **An eliminated row stops at the week it went out.** Elimination deletes
+    nothing: picks made ahead stay in the database and resolve happily, so a
+    dead row kept drawing logos, tints and padlocks for weeks the member was no
+    longer in. `cellFor` blanks any week after `eliminatedWeek` — which agrees
+    with the scorer, since `computeStatus` stops folding there too. Guarded on
+    `eliminatedWeek != null`: that field is optional, and a row marked out with
+    no week recorded must draw its history rather than blank the season.
+  - **`Member.scoredFromWeek` exists solely so the PRACTICE board keeps
+    forgiving.** Preseason has no entry deadline and its weeks before a member's
+    first pick are skipped, not forgiven — so a blanket "past week, no pick ⇒
+    missed" would print a red loss over the Hall of Fame game in early August
+    for an account that did not exist yet. Absent means "from week 1" (the
+    regular season's rule, and both real boards leave it unset); a number means
+    from there; **null means no week counts at all**, for somebody who never
+    practised. `StandingsClient`'s practice merge MUST override it — inheriting
+    the regular row's `undefined` through the spread is the regression to watch
+    for — and it reads `PracticeMember.firstWeek`, which is `participating`'s
+    "from when" rather than its "whether".
+  - **The last-preseason-week hole is still there.** The practice table's own
+    missed pick in its CURRENT week still renders empty, because practice
+    members are forced `status: "alive"` so the eliminated-in-this-week branch
+    cannot fire for them. Unchanged, still rare, still accepted.
+
+- **The pick screen reads the ENTRY's status now, so an eliminated player gets a
+  locked grid instead of a live-looking lie.** `canPick` has refused an
+  eliminated member since it was written (`reason: "eliminated"`) and so has
+  `submitPick` — but the screen read the week and nothing else, so a knocked-out
+  player was handed 32 selectable cards, tapped one, watched it paint
+  optimistically and watched it snap back under an error line. Four things:
+  - **`ViewerEntry.status` is PER ENTRY**, off the membership row, which is the
+    whole point: one person's two entries go out independently, and a status
+    read off the person would close both screens the moment either fell. It
+    comes from `memberRows`, already a `select("*")`, so it names no new column
+    and risks no `42703`.
+  - **`interactive: false` is what draws it locked**, and no new card state was
+    needed: `buildGridCards` already makes every card unselectable and gates the
+    "Locked" label behind kickoff, which is the same treatment a week already
+    played gets.
+  - **The notice is a STANDING line, not a tap-driven one.** It renders in
+    `pickError`'s slot from `PICK_ERROR.eliminated` — the same string
+    `submitPick` would have produced — because an inert grid with no explanation
+    reads as a bug. `pickError` wins when both apply; it is the newer fact.
+  - **The gate is a pure module** (`writability.ts`) for this repo's usual
+    reason: vitest runs in the Node environment with no jsdom, so a pure module
+    is the only shape these rules can be pinned in.
+
 - **`groups` carries TWO Week 1 deadlines now, and telling them apart is the
   whole of `0018_join_window`.** `entry_closes_at` is the FIRST kickoff of Week 1
   and `join_closes_at` is the LAST, because the league's actual rule is that a
@@ -1283,7 +1402,11 @@ reading, but only the first kind is the lesson.
     that position carries it — the frozen block plus the red tile on the week
     they went out. Position is unavailable to a screen reader, so the row carries
     an `sr-only` "Eliminated" instead. The 146px name column has no room for a
-    chip at 48px rows anyway.
+    chip at 48px rows anyway. Note that "the red tile on the week they went out"
+    was only half true until the `missed` cell shipped: somebody eliminated for
+    NOT picking had no tile at all, so the one reading this bullet leans on was
+    missing in exactly the case it mattered. An eliminated row also stops dead at
+    that week now — see the entry in "Things that are true now and weren't".
   - **The table opens on the live week.** `scrollLeftForWeek` parks the scroller
     so the accent-chipped column clears the 146px sticky edge — by week 10 it is
     otherwise off the right edge on a phone. Assigned directly, never smooth:
@@ -1666,12 +1789,17 @@ reading, but only the first kind is the lesson.
     moving the row's week is atomic but only covers an empty target week, and two
     write paths for one action is worse. A definer RPC would be atomic outright;
     0014 already refused one.
-  - **`interactive` means WRITABLE, not LIVE.** `MyPicksClient` derives
-    `writable = isCurrent || viewingFuture` — stated positively rather than as
+  - **`interactive` means WRITABLE, not LIVE, and it is TWO gates now.**
+    `isEntryWritable` (`src/components/picks/writability.ts`) is the one
+    definition: the week (`isCurrent || viewingFuture`) **and** the entry not
+    being eliminated. The week half is stated positively rather than as
     `!viewingPast`, so a future change to the ref sanitising fails CLOSED. Its
     second job in `buildGridCards` (gating the `locked` label so a played week
     isn't 32 "Locked" cards) needed no split: nothing in a future week has kicked
     off, so that branch is unreachable there and was always about past weeks.
+    This entry read `writable = isCurrent || viewingFuture` for as long as the
+    entry half was missing — see "The pick screen reads the ENTRY's status now"
+    below for what that cost.
   - **All 18 regular weeks are writable during the preseason**, because
     `resolveCurrentWeek` returns 1 in phase `preseason` so nothing is ever
     `viewingPast`. That is the feature arriving early, not a bug. The other

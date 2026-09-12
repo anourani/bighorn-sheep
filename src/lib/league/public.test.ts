@@ -120,6 +120,29 @@ describe("mapPublicSnapshot", () => {
     expect(out?.members[1]!.history).toEqual([{ week: 1, teamId: "phi", result: "loss" }]);
   });
 
+  it("keeps a past pick whose game never resolved, as pending", () => {
+    /*
+     * `g4` is in no result set the index can resolve, so nothing derives —
+     * which in production means a postponed game, or one the scorer has not
+     * marked final. (The RPC ships the whole season in `raw.games`; only the
+     * OUTPUT `games` field is narrowed to the current week, so a past week does
+     * normally have a game to derive from.)
+     *
+     * The pick used to be DROPPED here, and a past week with no history entry
+     * is what the board draws as a missed pick — so an unresolved pick would
+     * take a red "counted as a loss" tile on the public board. Third producer
+     * of this rule, alongside `historyResult` in load.ts and
+     * `derivePracticeMember`.
+     */
+    const out = mapPublicSnapshot(
+      snapshot({
+        members: [member({ picks: [{ week: 4, team_id: "dal", game_id: "g4", result: null }] })],
+      }),
+      new Date(NOW),
+    );
+    expect(out?.members[0]!.history).toEqual([{ week: 4, teamId: "dal", result: "pending" }]);
+  });
+
   it("prefers a stored result over a derived one", () => {
     const out = mapPublicSnapshot(
       snapshot({

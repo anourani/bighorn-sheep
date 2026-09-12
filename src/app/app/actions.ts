@@ -1254,17 +1254,31 @@ export async function selectLeague(groupId: string): Promise<ActionResult> {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
 
-    const { data: membership, error } = await supabase
+    /*
+     * `.limit(1)` and an array, NOT `.maybeSingle()` — the same correction
+     * `submitPick` already carries, and for the same reason.
+     *
+     * PostgREST raises PGRST116 the moment a single-row query matches more than
+     * one row, and (group_id, user_id) matches TWO for a player holding two
+     * entries (0017). So `maybeSingle` turned "this member has two entries"
+     * into `unexpected_error` and refused to switch them into a league they are
+     * demonstrably in.
+     *
+     * The question here is only "are they a member at all" — which entry is
+     * irrelevant, since the cookie names a league — so one row is enough and a
+     * second must not be an error.
+     */
+    const { data: memberships, error } = await supabase
       .from("group_members")
       .select("group_id")
       .eq("user_id", user.id)
       .eq("group_id", groupId)
-      .maybeSingle();
+      .limit(1);
     if (error) {
       console.error("[selectLeague] membership lookup failed", error);
       return { ok: false, error: "unexpected_error" };
     }
-    if (!membership) return { ok: false, error: "not_a_member" };
+    if (!memberships?.length) return { ok: false, error: "not_a_member" };
 
     const store = await cookies();
     store.set(ACTIVE_LEAGUE_COOKIE, groupId, {

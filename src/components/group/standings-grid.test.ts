@@ -78,8 +78,20 @@ describe("cellFor — settled weeks", () => {
     expect(cell(m, 3)).toEqual({ kind: "team", teamId: "gb", result: undefined });
   });
 
-  it("is an empty slot for a week that went unpicked", () => {
-    expect(cell(member(), 3)).toEqual({ kind: "empty" });
+  it("draws a MISSED tile for a week that went unpicked, not an empty slot", () => {
+    // This was `empty` — the same hollow circle a week still to come draws — so
+    // the single most consequential thing on the board, somebody going out by
+    // not picking at all, was the one outcome it did not show.
+    expect(cell(member(), 3)).toEqual({ kind: "missed" });
+  });
+
+  it("draws an unresolved past pick rather than treating it as missed", () => {
+    // A postponed game, or a week the scorer has not reached. The pick is real,
+    // so it keeps its logo and takes no tint — and `history` carries it as
+    // "pending" precisely so it does not fall into the branch above and get a
+    // red tile printed over a pick that was made.
+    const m = member({ history: [{ week: 3, teamId: "dal", result: "pending" }] });
+    expect(cell(m, 3)).toEqual({ kind: "team", teamId: "dal", result: undefined });
   });
 
   it("never consults the game index for a past week", () => {
@@ -176,6 +188,142 @@ describe("cellFor — future weeks", () => {
   it("is an empty slot", () => {
     const m = member({ currentPick: { week: WEEK, teamId: "kc", gameId: "g1" } });
     expect(cell(m, WEEK + 1)).toEqual({ kind: "empty" });
+  });
+});
+
+describe("cellFor — an eliminated row", () => {
+  it("marks the week they went out by NOT picking, in the window before the week rolls", () => {
+    /*
+     * The whole reason the missed tile exists. `resolveCurrentWeek` holds the
+     * current week until the next week's first kickoff, so somebody struck out
+     * by Monday night reads as eliminated-at-the-current-week from then until
+     * Thursday — and through all of that this cell drew a hollow circle
+     * indistinguishable from a week nobody had got to yet.
+     */
+    const m = member({ status: "eliminated", eliminatedWeek: WEEK });
+    expect(cell(m, WEEK)).toEqual({ kind: "missed" });
+  });
+
+  it("still padlocks rather than accusing, when the flag says they did pick", () => {
+    // Eliminated this week WITH a locked hidden pick — they picked and lost, or
+    // are about to. The padlock outranks the missed tile; claiming they never
+    // picked would be false.
+    const m = member({ status: "eliminated", eliminatedWeek: WEEK });
+    expect(cell(m, WEEK, "", ["m1"])).toEqual({ kind: "hidden" });
+  });
+
+  it("blanks a week AFTER the one they went out in, even with a pick on file", () => {
+    /*
+     * Elimination deletes nothing: picks made ahead stay in the database and
+     * resolve happily, so a dead row kept drawing logos and tints for weeks the
+     * member was no longer playing. The scorer agrees — `computeStatus` stops
+     * folding at elimination — so those weeks are not counted against them
+     * either, and the board should not imply they were played.
+     */
+    const m = member({
+      status: "eliminated",
+      eliminatedWeek: 3,
+      history: [
+        { week: 3, teamId: "buf", result: "loss" },
+        { week: 4, teamId: "kc", result: "win" },
+      ],
+    });
+    expect(cell(m, 3)).toEqual({ kind: "team", teamId: "buf", result: "loss" });
+    expect(cell(m, 4)).toEqual({ kind: "empty" });
+    expect(cell(m, 5)).toEqual({ kind: "empty" });
+  });
+
+  it("draws its history when no elimination week was recorded", () => {
+    // `eliminatedWeek` is optional on `Member`. A row marked out with no week
+    // on it must fall through, not blank the entire season.
+    const m = member({
+      status: "eliminated",
+      eliminatedWeek: null,
+      history: [{ week: 3, teamId: "buf", result: "loss" }],
+    });
+    expect(cell(m, 3)).toEqual({ kind: "team", teamId: "buf", result: "loss" });
+  });
+});
+
+describe("cellFor — one player's two entries draw independently", () => {
+  /*
+   * The shape `toMember` produces from two `group_members` rows: one `userId`,
+   * two membership ids. Entry 1 is still in it, entry 2 is out.
+   *
+   * `cellFor` takes ONE member and reads `member.status` / `member.eliminatedWeek`
+   * off that row, so there is structurally nothing for one entry's fate to
+   * travel along — these tests exist to keep it that way, since a future
+   * "look the player up" change would break it silently and only for the
+   * handful of people holding two entries.
+   */
+  const alive = (over: Partial<Member> = {}) =>
+    member({ id: "m1", userId: "u1", entryNo: 1, ...over });
+  const out = (over: Partial<Member> = {}) =>
+    member({ id: "m2", userId: "u1", entryNo: 2, status: "eliminated", eliminatedWeek: 3, ...over });
+
+  it("keeps drawing the surviving entry's weeks after the other one is out", () => {
+    const live = alive({ history: [{ week: 3, teamId: "kc", result: "win" }] });
+    const dead = out({ history: [{ week: 3, teamId: "buf", result: "loss" }] });
+
+    // Entry 1: an ordinary settled win, untinted, still playing.
+    expect(cell(live, 3)).toEqual({ kind: "team", teamId: "kc", result: undefined });
+    // Entry 2: the week it went out, tinted red, and blank from there on.
+    expect(cell(dead, 3)).toEqual({ kind: "team", teamId: "buf", result: "loss" });
+    expect(cell(dead, 4)).toEqual({ kind: "empty" });
+    // And entry 1 is untouched in that same later week — a missed pick of its
+    // own, not a blank inherited from the entry next to it.
+    expect(cell(live, 4)).toEqual({ kind: "missed" });
+  });
+
+  it("reveals the viewer's own current pick on BOTH entries", () => {
+    // Both rows share `userId`, so the viewer is entitled to see each. Entry 2
+    // being eliminated must not hide the pick it made in the week it went out.
+    const pick = { week: WEEK, teamId: "dal", gameId: "g3" } as const;
+    expect(cell(alive({ currentPick: pick }), WEEK, "u1")).toMatchObject({
+      kind: "team",
+      teamId: "dal",
+    });
+    expect(cell(out({ eliminatedWeek: WEEK, currentPick: pick }), WEEK, "u1")).toMatchObject({
+      kind: "team",
+      teamId: "dal",
+    });
+  });
+
+  it("padlocks per ENTRY, so a rival's two rows do not share one flag", () => {
+    // The hidden set holds MEMBERSHIP ids. Flagging only entry 2 must leave
+    // entry 1 reading as "no pick" rather than borrowing the padlock.
+    expect(cell(alive(), WEEK, "", ["m2"])).toEqual({ kind: "empty" });
+    expect(cell(member({ id: "m2", userId: "u1", entryNo: 2 }), WEEK, "", ["m2"])).toEqual({
+      kind: "hidden",
+    });
+  });
+});
+
+describe("cellFor — scoredFromWeek", () => {
+  it("counts every past week when it is absent, which is the regular season's rule", () => {
+    // `recomputeSeason` folds from week 1 with no clamp, and joining closes
+    // during Week 1, so there is no regular-season week a member was not there
+    // for. Both real boards leave the field unset.
+    expect(member().scoredFromWeek).toBeUndefined();
+    expect(cell(member(), 3)).toEqual({ kind: "missed" });
+  });
+
+  it("forgives a week before the record begins — the practice table's clamp", () => {
+    // Preseason has no entry deadline, so its weeks before a member's first
+    // pick are skipped rather than forgiven. Without this the practice board
+    // would print "counted as a loss" over the Hall of Fame game in early
+    // August for an account that did not exist yet.
+    const m = member({ scoredFromWeek: 3, history: [{ week: 3, teamId: "kc", result: "win" }] });
+    expect(cell(m, 1)).toEqual({ kind: "empty" });
+    expect(cell(m, 2)).toEqual({ kind: "empty" });
+    expect(cell(m, 4)).toEqual({ kind: "missed" });
+  });
+
+  it("counts nothing for a null record start — somebody who never played", () => {
+    const m = member({ scoredFromWeek: null });
+    expect(cell(m, 1)).toEqual({ kind: "empty" });
+    expect(cell(m, 3)).toEqual({ kind: "empty" });
+    expect(cell(m, WEEK)).toEqual({ kind: "empty" });
   });
 });
 
