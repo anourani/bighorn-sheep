@@ -47,7 +47,7 @@ export type WeekCell =
    * `cellFor`.
    */
   | { kind: "missed" }
-  | { kind: "team"; teamId: TeamId; result?: "win" | "loss" | "push"; live?: boolean };
+  | { kind: "team"; teamId: TeamId; result?: "win" | "loss" | "push" };
 
 /**
  * Derive one member's cell for one week, honoring the current-week privacy lock.
@@ -150,7 +150,7 @@ export function cellFor(
     if (!pv.revealed) return { kind: "hidden" };
     const result =
       pv.result === "win" || pv.result === "loss" || pv.result === "push" ? pv.result : undefined;
-    return { kind: "team", teamId: pv.teamId!, result, live: pv.status === "live" };
+    return { kind: "team", teamId: pv.teamId!, result };
   }
   return { kind: "empty" };
 }

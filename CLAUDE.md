@@ -1513,6 +1513,23 @@ reading, but only the first kind is the lesson.
     that counts ties as losses arrives in `history` as a loss already.
   - **A win has a fill at all for the first time.** The old grid painted `""` for
     a win and washed only loss/push/live, so the legend had no swatch to explain.
+  - **A game in progress carries NO marker, and `WeekCell` has no `live` field.**
+    There was a pulsing accent dot in the tile's top-right corner, off
+    `pv.status === "live"`. It is gone, along with the field, the `title` word
+    and the `sr-only` word — the tile is the logo and nothing else. The dot was
+    removed because a revealed logo in the live column already says the game is
+    under way, and the marker was never in the legend, so the only thing it
+    reliably produced was somebody asking what it meant. **It is NOT coming back
+    as a legend swatch** — that was the obvious-looking fix and was considered
+    and declined.
+    One consequence, known and accepted: `revealed = isOwn || kicked`, so your
+    OWN pick shows from the moment you make it while everyone else's waits for
+    kickoff. "Logo therefore playing" is true of every row but the viewer's, and
+    on that row an upcoming game and a live one now look identical. The dot was
+    the only thing separating them. The pick screen is where a member's own
+    kickoff state is reported, and it still reports it.
+    `bg-live` / `animate-pulse-live` survive and are NOT dead: `Pill`'s own copy
+    of that dot is still drawn by the admin drawer's feed-health badge.
   - **`gameForTeam` is still consulted ONLY for `week === currentWeek`**, in
     `cellFor` and now in `rankMembers` too. The landing page narrows its `games`
     payload to that single week on the strength of it, so a lookup for any other
