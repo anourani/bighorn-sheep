@@ -108,6 +108,41 @@ export function computeStatus(
 }
 
 /**
+ * Whether an entry's existing pick for a week is past changing — and therefore
+ * whether the WHOLE week is frozen, every card in it, not just the team that
+ * played.
+ *
+ * ONE definition, three call sites: `canPick` below, `submitPick`, and the pick
+ * screen's `isEntryWritable`. Spelling it per caller is how `queueKey` came to
+ * mean two different things in one map and how `entryKey` came to be derived two
+ * ways — both silent, both expensive. The screen has to agree with the guard.
+ *
+ * `null` existing — no pick yet, so the week is OPEN. A Thursday kickoff does
+ * not close a week you never picked; only that game's own two teams go, and
+ * `buildGridCards` is what takes them.
+ *
+ * `game: null` — the pick row exists but its fixture is missing from the
+ * schedule we hold. FAIL CLOSED, the cut `usedByTeam` already makes: no evidence
+ * it can still be moved, so keep it flagged. A wrongly-frozen week costs an
+ * explained refusal; a wrongly-open one costs a tap that paints, reports success
+ * and changes nothing.
+ *
+ * Note this is NARROWER than the database's own test, and cannot be widened to
+ * match. RLS gates on `kickoff > now() and status = 'scheduled'`, so a POSTPONED
+ * game with a future kickoff is refused there while `isKickedOff` calls it open.
+ * That residue is caught by the zero-row check in `submitPick`, which is why
+ * that check is not a redundant backstop for this one.
+ */
+export function isExistingPickLocked(
+  existing: { game: Pick<Game, "status" | "kickoff"> | null } | null,
+  now: Date,
+): boolean {
+  if (!existing) return false;
+  if (!existing.game) return true;
+  return isKickedOff(existing.game, now);
+}
+
+/**
  * Can a team be picked right now? This is the hard survival rule, enforced
  * server-side (never trusted to the greyed-out UI).
  */
@@ -117,6 +152,20 @@ export interface PickGuardInput {
   teamId: TeamId;
   /** The game the team plays in the target week. */
   game: Pick<Game, "status" | "kickoff"> | null;
+  /**
+   * THIS ENTRY's existing pick for the TARGET week, and the game it is committed
+   * to — null when the entry has no pick there yet, the ordinary first-pick case.
+   *
+   * Distinct from `game` above, and the distinction is the whole point: `game`
+   * is the team being tapped, this is the team already committed. A
+   * Thursday-night pick locks while the Sunday games are still scheduled, so
+   * testing only `game` let a member rewrite a pick that was already in play.
+   *
+   * Required rather than optional, deliberately: optional would fail OPEN at a
+   * call site that forgot it, and the whole bug this closes was a guard that
+   * never asked the question.
+   */
+  existingPick: { game: Pick<Game, "status" | "kickoff"> | null } | null;
   /** Whether entry for the group is still open (before Week 1 first kickoff). */
   entryOpen: boolean;
   now: Date;
@@ -124,15 +173,26 @@ export interface PickGuardInput {
 
 export type PickRejection =
   | "eliminated"
+  | "pick_locked" // your pick for this week has kicked off — you are committed
   | "team_already_used"
   | "game_kicked_off"
   | "no_game_for_team" // bye week — team isn't playing
   | "entry_closed";
 
 export function canPick(input: PickGuardInput): { ok: true } | { ok: false; reason: PickRejection } {
-  const { member, teamId, game, entryOpen, now } = input;
+  const { member, teamId, game, existingPick, entryOpen, now } = input;
   if (member.status === "eliminated") return { ok: false, reason: "eliminated" };
   if (!entryOpen) return { ok: false, reason: "entry_closed" };
+  // Ahead of the tests below it, because this is a fact about the member's own
+  // record rather than about the team they just tapped: a bye or a spent team
+  // must not mask "you are already committed for this week", or the copy sends
+  // them off to find another card when no card will do.
+  //
+  // RLS says the same thing — `"picks update own before kickoff"` gates the
+  // EXISTING row's game — but a failing `using` clause FILTERS the row on
+  // UPDATE rather than raising, so the database's refusal arrives as zero rows
+  // and no error. This is where it becomes a reason somebody can read.
+  if (isExistingPickLocked(existingPick, now)) return { ok: false, reason: "pick_locked" };
   if (!game) return { ok: false, reason: "no_game_for_team" };
   if (isTeamUsed(member.history, teamId)) return { ok: false, reason: "team_already_used" };
   if (isKickedOff(game, now)) return { ok: false, reason: "game_kicked_off" };

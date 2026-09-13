@@ -136,6 +136,41 @@ describe("buildGridCards", () => {
     const all = [...cards({ interactive: false }).values()];
     expect(all.every((c) => !c.selectable)).toBe(true);
   });
+
+  /*
+   * A FROZEN LIVE WEEK renders exactly as a played one, and that is the contract
+   * this pins — `interactive: false` does not only ever mean "a past week".
+   *
+   * Once the entry's own pick has kicked off the whole week closes
+   * (`isEntryWritable`), so the caller hands the grid `interactive: false` while
+   * most of the week's games are still hours away. Nothing here changed to make
+   * that work; what must not change is the treatment.
+   */
+  it("freezes every card on a live week whose pick has kicked off", () => {
+    // cin/bal kicked off (the pick); kc/buf is still five hours out.
+    const LATER = game("kc", "buf", "2025-10-12T21:00:00.000Z");
+    const frozen = buildGridCards({
+      games: [game("cin", "bal"), LATER],
+      usedByTeam: new Map(),
+      selectedTeam: "cin",
+      interactive: false,
+      now: AFTER,
+    });
+
+    expect([...frozen.values()].every((c) => !c.selectable)).toBe(true);
+
+    // Your pick keeps its identity — `selected` outranks everything, so the one
+    // fact that matters is not buried under a disabled treatment.
+    expect(frozen.get("cin")!.state).toBe("selected");
+
+    // And NOTHING says "Locked", because that is a claim about the GAME
+    // ("locked — the game has kicked off") and kc/buf has not played. A frozen
+    // week is a week-level fact, so it is carried by week-level copy above the
+    // grid, never by thirteen cards lying about their kickoff.
+    expect([...frozen.values()].some((c) => c.state === "locked")).toBe(false);
+    expect(frozen.get("kc")!.state).toBe("available");
+    expect(cardSubtitle(frozen.get("kc")!)).toBe(matchupLabel("kc", LATER));
+  });
 });
 
 const RECORDS: Record<string, TeamRecord> = {

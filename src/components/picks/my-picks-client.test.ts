@@ -110,3 +110,77 @@ describe("the release lookup", () => {
     expect(src).toMatch(/if \(released !== null && stillShowing\)/);
   });
 });
+
+describe("the frozen week", () => {
+  /*
+   * Once this entry's pick for the week on screen has kicked off, the member is
+   * committed and the WHOLE week closes.
+   *
+   * The bug these pin: the screen gated only on the week and the entry's status,
+   * so a Thursday-night pick locked while every Sunday card stayed in colour
+   * with an enabled radio. Tapping one reached `submitPick`, which also never
+   * asked, and the database refused by FILTERING the update — a failing RLS
+   * `using` clause removes a row from an UPDATE rather than raising, so zero
+   * rows changed, no error came back, and the action reported success. The
+   * overlay painted the new team and `pruneAgreedPicks` only retires entries the
+   * server agrees with, so the lie survived until a reload.
+   */
+
+  /** Just the lock derivation, so a match elsewhere cannot stand in. */
+  async function pickLocked(): Promise<string> {
+    const src = await code(CLIENT);
+    const start = src.indexOf("const lockedTeam =");
+    expect(start, "the lock should be derived in MyPicksClient").toBeGreaterThan(0);
+    const end = src.indexOf("const writable =", start);
+    expect(end, "writable should still follow the lock derivation").toBeGreaterThan(start);
+    return src.slice(start, end);
+  }
+
+  it("derives the lock through the shared helper, not a local spelling", async () => {
+    // ONE definition, shared with `canPick`. Two spellings of one rule is how
+    // `queueKey` came to mean different things on the tap and settle sides, and
+    // how `entryKey` came to be derived two ways — both silent. The screen has
+    // to agree with the guard or it offers what the server will refuse.
+    const src = await code(CLIENT);
+    expect(src).toContain("isExistingPickLocked(");
+    expect(src).toMatch(/import \{[^}]*isExistingPickLocked[^}]*\} from "@\/lib\/game\/elimination"/);
+  });
+
+  it("reads SERVER truth, never the optimistic overlay", async () => {
+    // The overlay is what this tab hopes is true; the database gates on the row
+    // it actually holds. Reading `pendingPicks` would let an in-flight pick
+    // freeze the week under itself, and a reverted one leave it frozen.
+    const stmt = await pickLocked();
+    expect(stmt).toContain("serverPicks.get(");
+    expect(stmt).not.toContain("pendingPicks");
+    expect(stmt).not.toContain("pickTeam");
+  });
+
+  it("reaches the one gate both pick surfaces read", async () => {
+    // `writable` is what becomes `interactive` on TeamGrid and WeekSchedule and
+    // what `handleSelect` returns early on, so landing it here closes the grid,
+    // the matchup list and the tap handler together.
+    const src = await code(CLIENT);
+    const start = src.indexOf("isEntryWritable({");
+    expect(start, "isEntryWritable should still gate the screen").toBeGreaterThan(0);
+    expect(src.slice(start, src.indexOf("})", start))).toContain("pickLocked");
+  });
+
+  it("keeps the frozen week out of the red refusal slot", async () => {
+    // `pickNotice` is the refusal treatment — red rule, wash and ink. Being
+    // locked in is the ordinary weekly cycle, not bad news, so its explanation
+    // sits with the neutral `viewingPast` / `viewingFuture` week-state lines.
+    const src = await code(CLIENT);
+    const start = src.indexOf("const pickNotice =");
+    expect(start, "pickNotice should still decide the refusal line").toBeGreaterThan(0);
+    expect(src.slice(start, src.indexOf(";", start))).not.toContain("pickLocked");
+  });
+
+  it("does not promise a frozen week can still be changed", async () => {
+    // "you can change it any time until then" is the exact opposite of a frozen
+    // week, and the two can co-occur: a future week whose pick names a fixture
+    // we do not hold reads as locked, because the helper fails closed.
+    const src = await code(CLIENT);
+    expect(src).toContain("viewingFuture && !pickLocked");
+  });
+});

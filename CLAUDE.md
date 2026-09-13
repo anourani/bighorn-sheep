@@ -633,6 +633,60 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **A week FREEZES once your pick in it has kicked off, and the database had been
+  refusing that write SILENTLY the whole time.** The grid gated each card on its
+  OWN game's kickoff, so a Thursday-night pick locked while all thirteen Sunday
+  cards stayed in colour with enabled radios — and tapping one rewrote a pick
+  already in play. `isExistingPickLocked` (`src/lib/game/elimination.ts`) is the
+  one definition, read by `canPick`, by `submitPick`, and by `isEntryWritable`.
+  **No migration; the database was already correct.** Six things:
+  - **The silence is the part worth remembering.** RLS's
+    `"picks update own before kickoff"` gates the EXISTING row's game in its
+    `using` clause, and Postgres applies a failing `using` on an UPDATE by
+    FILTERING the row out of the statement rather than raising. So the write
+    matched zero rows, PostgREST returned no error, and `submitPick` — which read
+    only `error` — returned `{ ok: true }`. The overlay painted the new team,
+    `pruneAgreedPicks` only retires entries the server AGREES with, so nothing
+    ever retired it, and the pick reverted on the next props refresh with no
+    message anywhere. A `with check` violation RAISES (42501); only `using`
+    filters, which is why the INSERT branch could never have this bug and takes
+    no zero-row check.
+  - **So `.select("id")` on the update is load-bearing, not tidiness.** It is
+    what makes the refusal countable. `user_id = auth.uid()` is the policy's only
+    other conjunct and holds by construction (the row came out of `myPicks`, read
+    as this user), so zero rows means the game-state test failed and
+    `pick_locked` is the honest code rather than a catch-all.
+  - **That zero-row check is NOT a redundant backstop for the guard.** RLS tests
+    `kickoff > now() and status = 'scheduled'`, which is WIDER than `isKickedOff`
+    — a POSTPONED game with a future kickoff is refused by the database and
+    called open by the guard. There is a real case only the write can catch, and
+    a test in `elimination.test.ts` pins that divergence deliberately rather than
+    leaving it to look like an oversight.
+  - **The copy therefore does not say "its game has kicked off."** It says
+    "locked in — it can't be changed now", because the kickoff sentence would be
+    false in exactly the postponed case. The refusal is the fact; the cause is
+    `PickHero`'s to print.
+  - **The explanation is NEUTRAL copy, not the red `pickNotice` slot.** That slot
+    is the refusal treatment (`border-out/30 bg-out-wash`), and an eliminated
+    entry belongs in it; being locked in is the ordinary weekly cycle. The line
+    sits with `viewingPast` / `viewingFuture` above the grid, and
+    `viewingFuture`'s own line is gated on `!pickLocked` — "you can change it any
+    time until then" is the exact opposite of a frozen week, and the two CAN
+    co-occur because the helper fails closed on a missing fixture.
+  - **No card says "Locked" on a frozen week, and that is right.** `"Locked"` is
+    a claim about the GAME (`cardAriaLabel`: "locked — the game has kicked off"),
+    and most of a frozen week's fixtures have not played. `buildGridCards` gates
+    that label on `interactive`, so the whole week falls through to `"available"`
+    but unselectable — identical to a past week — while your own pick keeps
+    `"selected"`. **Nothing in either pick surface was edited**; they already do
+    the right thing once `interactive` goes false. Note `WeekSchedule` still
+    prints its per-card "Locked" badge on `kicked` alone, ungated — already true
+    of past weeks, not something to "fix" here.
+  - **It does NOT touch the admin Picks tab.** `setPickForMember` goes through
+    0019's definer RPC and deliberately edits weeks that have already started;
+    it calls neither `canPick` nor `submitPick`. Freezing it would delete the
+    feature.
+
 - **The submit chain's key is built in ONE place, and for a while it was built in
   two that disagreed.** `createPickQueues` (`src/components/picks/pick-queue.ts`)
   closes over the chain map and exposes `tap` / `settle`; `MyPicksClient` holds
@@ -2007,22 +2061,26 @@ reading, but only the first kind is the lesson.
     moving the row's week is atomic but only covers an empty target week, and two
     write paths for one action is worse. A definer RPC would be atomic outright;
     0014 already refused one.
-  - **`interactive` means WRITABLE, not LIVE, and it is TWO gates now.**
+  - **`interactive` means WRITABLE, not LIVE, and it is THREE gates now.**
     `isEntryWritable` (`src/components/picks/writability.ts`) is the one
-    definition: the week (`isCurrent || viewingFuture`) **and** the entry not
-    being eliminated. The week half is stated positively rather than as
-    `!viewingPast`, so a future change to the ref sanitising fails CLOSED. Its
-    second job in `buildGridCards` (gating the `locked` label so a played week
-    isn't 32 "Locked" cards) needed no split: nothing in a future week has kicked
-    off, so that branch is unreachable there and was always about past weeks.
-    This entry read `writable = isCurrent || viewingFuture` for as long as the
-    entry half was missing — see "The pick screen reads the ENTRY's status now"
-    below for what that cost.
+    definition: the week (`isCurrent || viewingFuture`), the entry not being
+    eliminated, **and** the entry's own pick for the week on screen not having
+    locked. The week half is stated positively rather than as `!viewingPast`, so
+    a future change to the ref sanitising fails CLOSED. Its second job in
+    `buildGridCards` (gating the `locked` label so a played week isn't 32
+    "Locked" cards) needed no split: nothing in a future week has kicked off, so
+    that branch is unreachable there and was always about past weeks. This entry
+    read `writable = isCurrent || viewingFuture` for as long as the entry half
+    was missing — see "The pick screen reads the ENTRY's status now" below for
+    what that cost, and "A week FREEZES once your pick in it has kicked off" for
+    the third.
   - **All 18 regular weeks are writable during the preseason**, because
     `resolveCurrentWeek` returns 1 in phase `preseason` so nothing is ever
-    `viewingPast`. That is the feature arriving early, not a bug. The other
-    consequence worth knowing: you can clear your LIVE week's pick from a future
-    tab while that game is still scheduled, and the toast is the only warning.
+    `viewingPast`. That is the feature arriving early, not a bug. The freeze
+    never fires there either — no regular game has kicked off, so `pickLocked`
+    is false on all 18 tabs. The other consequence worth knowing: you can clear
+    your LIVE week's pick from a future tab while that game is still scheduled,
+    and the toast is the only warning.
 
 - **`ui/Toast.tsx` is the app's first floating message, and it MUST portal.**
   One at a time, replaced rather than stacked — the app raises exactly one kind

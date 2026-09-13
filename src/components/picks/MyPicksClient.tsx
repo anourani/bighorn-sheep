@@ -15,6 +15,7 @@ import { Toast } from "@/components/ui/Toast";
 import { raiseToast, releaseMessage, type ToastMessage } from "@/components/ui/toast";
 import { InfoIcon } from "@/components/icons";
 import { getTeam, type TeamId } from "@/lib/nfl/teams";
+import { isExistingPickLocked } from "@/lib/game/elimination";
 import { isKickedOff } from "@/lib/nfl/types";
 import {
   PRE_WEEK,
@@ -57,6 +58,11 @@ const PICK_ERROR: Record<string, string> = {
   team_already_used: "You've already used that team.",
   game_kicked_off: "That game has kicked off — pick locked.",
   eliminated: "You're eliminated, so picks are closed.",
+  // Deliberately not "its game has kicked off": RLS also refuses a POSTPONED
+  // game whose kickoff is still ahead, so that sentence would be false in the
+  // one case only the server catches. The refusal is the fact; the cause is on
+  // the hero.
+  pick_locked: "Your pick for this week is locked in — it can't be changed now.",
   no_game_for_team: "That team isn't playing this week.",
   entry_closed: "Entry for this league has closed.",
   not_a_member: "You're not a member of this league.",
@@ -281,19 +287,46 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const viewingPast = !isCurrent && viewRef.week < liveRef.week;
   const viewingFuture = !isCurrent && viewRef.week > liveRef.week;
   /*
-   * Whether this week may be WRITTEN to. Two gates — the week, and whether the
-   * entry on screen is still in it — both of which live in `writability.ts`
-   * with the reasoning and the tests.
+   * Your pick for the week on screen has kicked off, so you are committed and
+   * the WHOLE week closes — every card in it, not just the team that played.
    *
-   * The entry half is the one that was missing: this screen read the week alone,
-   * so an eliminated player was handed a live grid that `submitPick` then
-   * refused. `activeEntry.status` is per ENTRY, so one of a player's two runs
-   * ending leaves the other fully playable.
+   * Server truth (`serverPicks`), never the optimistic overlay: an overlay entry
+   * is by definition a pick whose game has not started, so reading it would let
+   * an in-flight value unlock a week the server still holds locked. And
+   * `serverPicks` is already scoped to the ACTIVE ENTRY, so this is per-entry
+   * for free — one of a player's two runs locking leaves the other alone.
+   *
+   * `isExistingPickLocked` is the ONE definition, shared with `canPick` — the
+   * screen has to agree with the guard or it is offering something the server
+   * will refuse, and two spellings of one rule is how `queueKey` and `entryKey`
+   * both went wrong. It also owns the fail-closed answer for a pick whose
+   * fixture is missing.
+   */
+  const lockedTeam = serverPicks.get(weekKey(viewRef)) ?? null;
+  const pickLocked = isExistingPickLocked(
+    lockedTeam === null ? null : { game: activeIdx.gameForTeam(viewRef.week, lockedTeam) ?? null },
+    now,
+  );
+  /*
+   * Whether this week may be WRITTEN to. THREE gates — the week, whether the
+   * entry on screen is still in it, and whether its pick here has already
+   * locked — all of which live in `writability.ts` with the reasoning and the
+   * tests.
+   *
+   * The entry half was missing first: this screen read the week alone, so an
+   * eliminated player was handed a live grid that `submitPick` then refused.
+   * `activeEntry.status` is per ENTRY, so one of a player's two runs ending
+   * leaves the other fully playable.
+   *
+   * The pick half was missing next, and failed worse: a Thursday-night pick
+   * locked while the rest of the week's cards stayed live, and the write that
+   * followed was refused by RLS with no error at all.
    */
   const writable = isEntryWritable({
     isCurrent,
     viewingFuture,
     entryStatus: activeEntry.status,
+    pickLocked,
   });
   /*
    * The line above the grid: one slot, two sources.
@@ -303,6 +336,14 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
    * no explanation reads as a bug. It reuses `PICK_ERROR`'s own copy rather
    * than a second string, because the two have to say the same thing: this is
    * the state `submitPick` would report, said before a tap is spent finding it.
+   *
+   * A FROZEN WEEK is deliberately NOT routed here, even though it also draws an
+   * inert grid. This slot is the refusal treatment — red rule, wash and ink —
+   * and a locked pick is the ordinary weekly cycle rather than bad news. Its
+   * explanation sits with the other week-state lines above the grid, where
+   * `viewingPast` and `viewingFuture` already say what a week is doing.
+   * `PICK_ERROR.pick_locked` still exists, for the race where kickoff passes
+   * between paint and tap.
    *
    * `pickError` wins when both apply. It is the newer fact, and it answers
    * something the player just did.
@@ -663,7 +704,24 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
           </p>
         ) : null}
 
-        {viewingFuture ? (
+        {/* The frozen week, and why the grid under it does nothing. Neutral copy
+            beside the other week-state lines rather than the red `pickNotice`
+            slot: being locked in is the ordinary weekly cycle, not a refusal.
+            `!viewingPast` because a played week already has its own line, and
+            that one is the more useful of the two. */}
+        {pickLocked && !viewingPast ? (
+          <p className="mb-2.5 text-xs text-ink-mute">
+            Your pick for{" "}
+            <span className="font-semibold text-ink-soft">{viewName}</span> is locked
+            in, so no team can be changed here. Picks are open for every week that
+            hasn&apos;t started.
+          </p>
+        ) : null}
+
+        {/* `!pickLocked`: "you can change it any time until then" is the exact
+            opposite of a frozen week, and the two can co-occur — a future week
+            whose pick references a fixture we don't hold reads as locked. */}
+        {viewingFuture && !pickLocked ? (
           <p className="mb-2.5 text-xs text-ink-mute">
             Picking ahead for{" "}
             <span className="font-semibold text-ink-soft">{viewName}</span>. It locks
