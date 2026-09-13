@@ -10,8 +10,22 @@ import type { Database } from "./types";
  * `record_feed_sync` is granted to `service_role` alone (migration 0011), and
  * the scorer's `upsertGames` / `recomputeSeason` write tables no player policy
  * allows. Exactly two files import it — `netlify/functions/poll-scores.ts` and
- * the `runFeedCheck` server action — and that list should stay short enough to
- * hold in your head.
+ * `src/app/app/actions.ts` — and that list should stay short enough to hold in
+ * your head.
+ *
+ * TWO call sites in that second file now, and both for the same reason: the
+ * scorer. `runFeedCheck` runs the whole poll on an admin's say-so, and
+ * `setPickForMember` (0019) re-scores one league after an admin has corrected
+ * somebody's pick. Neither could do it any other way — `recomputeSeason` writes
+ * `picks.result` and `group_members.strikes`, and there is no policy under which
+ * a browser session may write either.
+ *
+ * Note what does NOT use it: the pick change itself. That goes through
+ * `admin_set_pick`, a `security definer` RPC that checks `is_group_admin` in
+ * Postgres. The service role would have worked and would have put the only
+ * authorisation check in TypeScript, which is the thing this app keeps refusing
+ * to do. Use a definer RPC for a privileged WRITE; use this for work that is
+ * genuinely the scorer's.
  *
  * `SUPABASE_SERVICE_ROLE_KEY` has no `NEXT_PUBLIC_` prefix, so it is never
  * inlined into the browser bundle; an accidental client import would fail at

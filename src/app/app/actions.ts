@@ -5,9 +5,10 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canPick } from "@/lib/game/elimination";
 import { resolveCurrentWeek, resolvePickWeek, seasonPhase } from "@/lib/game/season";
-import { rowToGame } from "@/lib/game/score";
+import { recomputeSeason, rowToGame } from "@/lib/game/score";
 import { FINAL_WEEK, REGULAR_WEEKS } from "@/lib/nfl/calendar";
 import { isKickedOff, type SeasonType } from "@/lib/nfl/types";
+import { getTeam } from "@/lib/nfl/teams";
 import { derivePractice, practiceUsedTeams } from "@/lib/league/practice";
 import { ACTIVE_LEAGUE_COOKIE } from "@/lib/league/active";
 import { isFavoriteAnimal } from "@/lib/profile/animals";
@@ -1001,6 +1002,135 @@ export async function setMemberPreseason(input: {
     revalidatePath("/app");
     revalidatePath("/app/standings");
     return { ok: true };
+  });
+}
+
+/**
+ * An admin corrects any entry's pick for a week that has ALREADY STARTED.
+ *
+ * The repair tool the league has never had. Until 0019 the only way to fix a
+ * pick after kickoff was the Supabase SQL editor, because every `picks` RLS
+ * policy requires `user_id = auth.uid()` AND an un-kicked-off game — so an admin
+ * could not write another member's pick at all, and could not touch a kicked-off
+ * one even of their own.
+ *
+ * `teamId: null` CLEARS the pick. `picks.result` has no `no_pick` value, so a
+ * clear is necessarily a delete and the RPC does it; clearing an already-empty
+ * week is a no-op rather than an error.
+ *
+ * AUTHORISATION IS POSTGRES'S, as everywhere else here. `admin_set_pick` raises
+ * `not_admin` itself, so there is no second place for the admin check to rot —
+ * and a Server Action gated only in the UI is not gated. `not_admin` is in
+ * `known` and therefore tested BEFORE `rpcErrorCode` reaches its bare-42501
+ * branch; both raise 42501, and the one that means "grants were never replayed"
+ * must not swallow the one that means "you aren't an admin".
+ *
+ * `p_entry_no` is passed UNCONDITIONALLY, unlike the three older member verbs.
+ * Their conditional spread exists so a database one migration behind still
+ * answers; this function does not exist at all before 0019, so there is no older
+ * shape to stay compatible with and the trick would only hide a real argument.
+ *
+ * THE RESCORE IS BEST-EFFORT, AND SAYS SO. It runs after the write has already
+ * landed, so failing the action on it would report "nothing happened" about a
+ * change that did — `release_failed`'s lesson about partial writes. Nothing is
+ * lost by a skipped one: `recomputeSeason` refolds weeks 1..throughWeek from
+ * scratch and the five-minute cron folds the same weeks, so the standings
+ * self-heal. `rescored: false` is what lets the drawer say so out loud instead
+ * of leaving an admin watching a stale board.
+ */
+export async function setPickForMember(input: {
+  groupId: string;
+  userId: string;
+  week: number;
+  /** `null` clears the pick. Required — a dropped field must not delete one. */
+  teamId: string | null;
+  /** Which entry. Omit for entry 1. */
+  entryNo?: EntryNo;
+}): Promise<ActionResult<{ rescored: boolean; previousTeamId: string | null }>> {
+  return attempt(async () => {
+    // Shape before substance, and before createClient(): submitPick's idiom, so
+    // a hand-rolled POST naming entry 7 or week 1e9 never reaches the database.
+    const entryNo: EntryNo = input.entryNo ?? 1;
+    if (entryNo !== 1 && entryNo !== 2) return { ok: false, error: "bad_entry" };
+    if (!Number.isInteger(input.week) || input.week < 1 || input.week > FINAL_WEEK) {
+      return { ok: false, error: "bad_week" };
+    }
+    if (input.teamId !== null && !getTeam(input.teamId)) {
+      return { ok: false, error: "bad_team" };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "not_authenticated" };
+
+    const { data, error } = await supabase.rpc("admin_set_pick", {
+      p_group_id: input.groupId,
+      p_user_id: input.userId,
+      p_week: input.week,
+      p_team_id: input.teamId,
+      p_entry_no: entryNo,
+    });
+    if (error) {
+      const reason = rpcErrorCode(
+        error,
+        [
+          "not_authenticated",
+          "not_admin",
+          "group_not_found",
+          "member_not_found",
+          "bad_entry",
+          "bad_week",
+          "week_not_scheduled",
+          "week_not_started",
+          "no_game_for_team",
+          "team_already_used",
+        ],
+        "pick_update_failed",
+      );
+      console.error("[setPickForMember] rpc failed", error);
+      return { ok: false, error: reason };
+    }
+
+    // Narrowed here rather than typed in supabase/types.ts, on
+    // feed_status_for_admin's precedent: a hand-written row type would be a
+    // second source of truth for a shape the database owns.
+    const payload = data as
+      | { season?: number; throughWeek?: number; previousTeamId?: string | null }
+      | null;
+    const season = typeof payload?.season === "number" ? payload.season : null;
+    const throughWeek = typeof payload?.throughWeek === "number" ? payload.throughWeek : null;
+
+    let rescored = false;
+    const service = serviceClient();
+    if (!service) {
+      console.error("[setPickForMember] no service-role key in this runtime");
+    } else if (season === null || throughWeek === null) {
+      console.error("[setPickForMember] rpc payload missing season/throughWeek", data);
+    } else {
+      try {
+        // `opts.groupId` is not optional here. Without it one admin's correction
+        // refolds every league in the season — production runs the cron that
+        // way deliberately, a button must not.
+        await recomputeSeason(service, season, throughWeek, new Date(), {
+          groupId: input.groupId,
+        });
+        rescored = true;
+      } catch (err) {
+        // The write landed. Log and report; never rethrow, or attempt() turns a
+        // successful change into `unexpected_error`.
+        console.error("[setPickForMember] recompute failed", err);
+      }
+    }
+
+    // A moved pick changes the picks screen, the board, and the account page's
+    // strike and dues lines — and the drawer's own roster, which that page
+    // loads. removeMember revalidates the same three.
+    revalidatePath("/app");
+    revalidatePath("/app/standings");
+    revalidatePath("/app/account");
+    return { ok: true, data: { rescored, previousTeamId: payload?.previousTeamId ?? null } };
   });
 }
 

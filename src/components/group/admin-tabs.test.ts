@@ -32,9 +32,9 @@ async function code(url: URL): Promise<string> {
 const DRAWER = new URL("./AdminSettingsDrawer.tsx", import.meta.url);
 
 describe("the admin drawer's tabs", () => {
-  it("carries exactly the four the drawer renders", async () => {
+  it("carries exactly the five the drawer renders", async () => {
     const src = await code(DRAWER);
-    for (const value of ["members", "league", "feed", "emails"]) {
+    for (const value of ["members", "picks", "league", "feed", "emails"]) {
       expect(src, `TABS should still declare ${value}`).toContain(`value: "${value}"`);
     }
     // Rules and Name merged into League Settings; a stray branch for either
@@ -44,14 +44,36 @@ describe("the admin drawer's tabs", () => {
   });
 
   /**
-   * Both long labels overflow a phone. Measured at 320: "League Settings" wants
-   * 125.2 and "Data Feed" 89.4, against 72px per tab across four.
+   * COUNTED, not merely present. The original of this test asserted only that
+   * each value appeared, so adding Picks left it green while it quietly stopped
+   * describing the bar — and the width budget below is a function of how many
+   * tabs there are, so a sixth added without thought is exactly the change that
+   * must not pass silently.
    */
-  it("keeps a short label below lg for both of the long ones", async () => {
+  it("declares five and no more, because the width budget is per tab", async () => {
+    const src = await code(DRAWER);
+    const tabs = src.slice(src.indexOf("const TABS"), src.indexOf("];", src.indexOf("const TABS")));
+    expect(tabs.match(/value: "/g) ?? []).toHaveLength(5);
+  });
+
+  /**
+   * Three labels overflow a phone once there are five tabs. Measured at 320 with
+   * four: "League Settings" wants 125.2 and "Data Feed" 89.4, against 72px per
+   * tab. A fifth tab drops the share to ~56, which "Members" (82.4 intrinsic)
+   * no longer clears either — hence the third pair.
+   *
+   * `Tabs` now carries `min-w-0 truncate`, so a missed pair degrades to an
+   * ellipsis rather than to a document that scrolls sideways. These stay
+   * regardless: an ellipsis on a five-letter word is still a bug, just a quiet
+   * one, and the backstop is not the plan.
+   */
+  it("keeps a short label below lg for each of the long ones", async () => {
     const src = await code(DRAWER);
     for (const [short, long] of [
+      ["Roster", "Members"],
       ["League", "League Settings"],
       ["Feed", "Data Feed"],
+      ["Mail", "Emails"],
     ]) {
       expect(src, `${long} needs a phone-width fallback`).toContain(
         `<span className="lg:hidden">${short}</span>`,
@@ -73,15 +95,28 @@ describe("the admin drawer's tabs", () => {
   });
 
   /**
-   * The cap has to clear the widest LABEL, not a per-tab average. At 540 each
-   * tab is 133 against "League Settings"'s 125.2 intrinsic — eight pixels of
-   * margin against a font that renders differently in Figma than in Chromium.
+   * The cap has to clear the widest LABEL, not a per-tab average — and it is a
+   * function of the TAB COUNT, which is why adding Picks moved it.
+   *
+   * Measured in Chromium with the real self-hosted Inter, at `px-3`:
+   * "League Settings" is 113.8 intrinsic, the widest of the five. Each tab gets
+   * (cap - 8) / 5, the 8 being the track's `p-1`:
+   *
+   *   cap 560 → 110.4  (-3.4, would clip)
+   *   cap 620 → 122.4  (+8.6)
+   *   cap 700 → 138.4  (+24.6)
+   *
+   * So 620 would NOT have broken — it would have left 8.6px, which is exactly
+   * the margin the four-tab note above already called uncomfortable ("eight
+   * pixels against a font that renders differently in Figma than in Chromium"),
+   * and which a sixth tab or one longer label would erase. 700 is the same
+   * decision 560 → 620 was, made once rather than twice.
    */
   it("caps the bar wide enough for the longest label from lg", async () => {
     const src = await code(DRAWER);
     const match = /lg:max-w-\[(\d+)px\]/.exec(src);
     expect(match, "the Tabs cap should still be an explicit px value").not.toBeNull();
-    expect(Number(match?.[1])).toBeGreaterThanOrEqual(600);
+    expect(Number(match?.[1])).toBeGreaterThanOrEqual(680);
   });
 
   /**

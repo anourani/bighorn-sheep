@@ -10,6 +10,9 @@ import { Switch } from "@/components/ui/Switch";
 import { Tabs, TabPanel } from "@/components/ui/Tabs";
 import { LocalTime } from "@/components/ui/LocalTime";
 import { CopyIcon, CheckIcon, LockIcon, InfoIcon } from "@/components/icons";
+import { TeamLogo } from "@/components/ui/TeamLogo";
+import { cn } from "@/lib/cn";
+import { getTeam } from "@/lib/nfl/teams";
 import {
   getFeedStatus,
   getReminderStatus,
@@ -21,6 +24,7 @@ import {
   setMemberBuyIn,
   setMemberPreseason,
   removeMember,
+  setPickForMember,
 } from "@/app/app/actions";
 import { isJoinOpen, joinClosesAt } from "@/lib/game/season";
 import { formatMoney } from "@/lib/money";
@@ -43,8 +47,16 @@ import {
   type ReminderSnapshot,
 } from "@/lib/league/reminders";
 import { formatDisplayName, formatFullName, sortRosterByName } from "@/lib/league/name";
+import {
+  canAdminEditPick,
+  usedTeamsForEntry,
+  viewPickForWeek,
+  type AdminPickData,
+  type AdminPickView,
+} from "@/lib/league/admin-picks";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
 import type { SeasonPhase } from "@/lib/game/season";
+import type { TeamId } from "@/lib/nfl/types";
 import type { EliminationType, Group, Member, TieRule } from "@/lib/league/types";
 
 /**
@@ -69,6 +81,17 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   name_too_long: "That name is too long — 60 characters max.",
   settings_locked: "The season has started, so the rules are frozen.",
   preseason_closed: "Preseason is over — that can't be changed now.",
+  // 0019, the Picks tab. `week_not_started` is the one an admin will actually
+  // meet: it fires for a week whose first game is still ahead, which is also
+  // the window in which the player can still change it themselves.
+  week_not_started:
+    "That week hasn't kicked off yet — until it does, only the player can change their pick.",
+  week_not_scheduled: "No games are loaded for that week yet.",
+  no_game_for_team: "That team isn't playing that week.",
+  team_already_used: "That entry has already used that team in another week.",
+  bad_team: "That isn't a team.",
+  bad_entry: "That isn't one of this player's entries.",
+  bad_week: "That isn't a week in this season.",
   bad_elimination_type: "Pick one of the two elimination types.",
   bad_tie_rule: "Pick one of the two tie rules.",
   bad_amount: "Enter an amount of zero or more.",
@@ -83,6 +106,7 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   name_update_failed: "Couldn't save that. Try again.",
   rules_update_failed: "Couldn't save that. Try again.",
   preseason_update_failed: "Couldn't save that. Try again.",
+  pick_update_failed: "Couldn't save that pick. Try again.",
   buy_in_update_failed: "Couldn't save that. Try again.",
   feed_status_unavailable: "Couldn't read the feed status.",
   reminder_status_unavailable: "Couldn't read who needs a reminder.",
@@ -1128,6 +1152,377 @@ function MemberToggle({
   );
 }
 
+/** Which control on which row is mid-flight on the Picks tab. */
+type PickPendingKey = `${string}:pick`;
+
+/**
+ * The admin's pick repair tool: pick a week, then change anybody's team for it.
+ *
+ * THE ONE THING THE LEAGUE COULD NOT DO. Every `picks` RLS policy requires
+ * `user_id = auth.uid()` AND a game that has not kicked off, so an admin could
+ * not write another member's pick at all, and could not touch a kicked-off pick
+ * even of their own. A player whose pick the app ate, or who tapped the wrong
+ * card, had to be fixed in the Supabase SQL editor. `admin_set_pick` (0019) is
+ * the one privileged door, and it is `security definer` checking
+ * `is_group_admin` itself — the anon key still cannot do any of this.
+ *
+ * WEEK-FIRST, not member-first, because the question an admin actually arrives
+ * with is "who got Week 6 wrong". A dropdown per member per week would be 18
+ * controls a row; one week selector turns the roster into that week's answer
+ * sheet and makes fixing three people in a row one choice rather than three.
+ *
+ * ONLY WEEKS THAT HAVE STARTED, and that is what keeps this feature free of any
+ * new READ path. RLS hands another member's pick back once its game has kicked
+ * off, so for a past week the admin is editing something they could already see.
+ * `startedWeeks` derives the list from kickoffs rather than from `currentWeek` —
+ * see the note there about the preseason, where `resolveCurrentWeek` answers 1
+ * and this must answer nothing.
+ *
+ * The third row state is the one worth knowing about. In the LIVE week a member
+ * who picked a 4pm game arrives with no readable pick, exactly like a member who
+ * has not picked at all — so `viewPickForWeek` distinguishes them from
+ * `hiddenPickMemberIds` and this draws a padlock with a DISABLED control.
+ * Overwriting a pick you cannot see is not a correction.
+ */
+function PicksSection({
+  groupId,
+  members,
+  data,
+}: {
+  groupId: string;
+  members: Member[];
+  data: AdminPickData | null;
+}) {
+  const router = useRouter();
+  const [overrides, setOverrides] = useState<Record<string, TeamId | null>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [pending, setPending] = useState<ReadonlySet<PickPendingKey>>(() => new Set());
+  const [, startTransition] = useTransition();
+
+  const started = data?.startedWeeks ?? [];
+
+  /*
+   * DERIVED, not seeded. The default is the most recent started week — last
+   * weekend's results are what prompt "that isn't what I sent you" — and an
+   * explicit choice wins over it.
+   *
+   * A `useState(() => started.at(-1))` initializer would be right on mount and
+   * then stuck: it runs once, so a drawer left open across the season's FIRST
+   * kickoff would keep `week` at null and go on rendering "no week has kicked
+   * off yet" after one had, until the tab was closed and reopened. Deriving
+   * costs nothing and has no such state to go stale.
+   *
+   * `started.includes(chosen)` is also what makes a vanished week fail closed
+   * rather than leaving the tab pointed at a week the RPC would refuse.
+   */
+  const [chosen, setChosen] = useState<number | null>(null);
+  const week =
+    chosen !== null && started.includes(chosen) ? chosen : (started[started.length - 1] ?? null);
+
+  /*
+   * Alphabetical and a NEW array, for `MembersSection`'s reason exactly: the
+   * membership query behind this list has no `.order(...)`, so what arrives is
+   * heap order, which Postgres may change after any UPDATE — and this tab writes
+   * on every save. Without this the roster could reshuffle under the admin who
+   * just changed a pick. Sorted with the same helper so the two tabs agree.
+   */
+  const roster = useMemo(() => sortRosterByName(members), [members]);
+
+  /*
+   * Drop an override once the server agrees, on `pruneAgreed`'s argument one
+   * level along: the overlay covers the gap between the choice and the refresh,
+   * and an override that outlives its write shadows the server for the life of
+   * the mounted drawer — hiding a change made by another admin. Pruning on
+   * AGREEMENT rather than on write-success is what keeps it safe: an entry whose
+   * write is still in flight disagrees with the prop it has not landed in yet,
+   * so it survives and the select does not flicker back.
+   *
+   * Written out rather than routed through `pruneAgreed`, which is typed to
+   * `boolean` for the two switches; the comparison here is against a derived
+   * view rather than a column, so sharing would mean passing the week and the
+   * hidden list into a helper that has no other use for them.
+   */
+  useEffect(() => {
+    setOverrides((current) => {
+      const keys = Object.keys(current);
+      if (keys.length === 0 || week === null || !data) return current;
+      const next: Record<string, TeamId | null> = {};
+      for (const m of members) {
+        const override = current[m.id];
+        if (override === undefined) continue;
+        const view = viewPickForWeek({
+          member: m,
+          week,
+          currentWeek: data.currentWeek,
+          hiddenMemberIds: data.hiddenPickMemberIds,
+        });
+        const server = view.kind === "team" ? view.teamId : null;
+        if (override !== server) next[m.id] = override;
+      }
+      return Object.keys(next).length === keys.length ? current : next;
+    });
+  }, [members, week, data]);
+
+  // A week change is a different question, so a previous week's optimistic
+  // answers must not ride along into it.
+  function selectWeek(next: number) {
+    setChosen(next);
+    setOverrides({});
+    setError(null);
+    setNote(null);
+  }
+
+  function setPick(m: Member, teamId: TeamId | null) {
+    if (week === null) return;
+    const key: PickPendingKey = `${m.id}:pick`;
+    if (pending.has(key)) return;
+    const previous = overrides[m.id];
+    setError(null);
+    setNote(null);
+    setPending((p) => new Set(p).add(key));
+    setOverrides((o) => ({ ...o, [m.id]: teamId }));
+    startTransition(async () => {
+      let failed: string | null = null;
+      let rescored = true;
+      try {
+        // `m.userId` and `m.entryNo`, NOT `m.id`. Since 0017 `Member.id` is the
+        // membership id — the right key for this component's own maps and the
+        // wrong argument for an RPC that locates a row by (group, user, entry).
+        const res = await setPickForMember({
+          groupId,
+          userId: m.userId,
+          week,
+          teamId,
+          entryNo: m.entryNo,
+        });
+        if (res.ok) rescored = res.data?.rescored ?? true;
+        else failed = copyFor(res.error);
+      } catch (err) {
+        if (!(isStaleDeploymentError(err) && reloadOnce())) failed = copyFor("unexpected_error");
+      }
+
+      if (failed) {
+        // Restore what was there before rather than clearing to undefined: an
+        // earlier successful change in this same session is still the truth the
+        // server has not refreshed into the prop yet.
+        setOverrides((o) => {
+          const next = { ...o };
+          if (previous === undefined) delete next[m.id];
+          else next[m.id] = previous;
+          return next;
+        });
+        setError(failed);
+      } else {
+        // The action returns `rescored: false` when it could not reach the
+        // service role. The pick DID change; only the strikes and eliminations
+        // are still the old ones, and the five-minute cron refolds the same
+        // weeks. Saying so beats leaving an admin staring at a stale board.
+        if (!rescored) setNote("Saved. The standings will catch up on the next feed check.");
+        router.refresh();
+      }
+      setPending((p) => {
+        const nextSet = new Set(p);
+        nextSet.delete(key);
+        return nextSet;
+      });
+    });
+  }
+
+  if (!data || started.length === 0 || week === null) {
+    return (
+      <section className="space-y-2">
+        <SectionHeading>Picks</SectionHeading>
+        <HintLine>
+          No week has kicked off yet. A pick can only be changed here once its week has
+          started — until then players change their own.
+        </HintLine>
+      </section>
+    );
+  }
+
+  const teams = data.teamsByWeek[week] ?? [];
+  const picked = roster.filter((m) => {
+    const view = viewPickForWeek({
+      member: m,
+      week,
+      currentWeek: data.currentWeek,
+      hiddenMemberIds: data.hiddenPickMemberIds,
+    });
+    return view.kind !== "none";
+  }).length;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* "Entries", matching the Members tab: the list below is one row per
+            ENTRY, so a two-entry player appears twice and each row has its own
+            pick. Counting people would make this number disagree with its rows. */}
+        <SectionHeading>
+          Entries · {members.length} · {picked} picked
+        </SectionHeading>
+        <label className="flex items-center gap-2">
+          <span className="text-xs font-medium text-ink-mute">Week</span>
+          {/* A plain select. `FavoriteAnimalValue`'s invisible-overlay trick
+              exists because a chevron had to sit 4px after the SELECTED word in
+              a free-flowing detail row, and a select's box is as wide as its
+              widest option; here the control owns its own box, so the honest
+              element is the whole control. */}
+          <select
+            value={week}
+            onChange={(e) => selectWeek(Number(e.target.value))}
+            aria-label="Week to change picks for"
+            className={cn(INPUT_CLASS, "w-auto py-1.5")}
+          >
+            {[...started].reverse().map((w) => (
+              <option key={w} value={w}>
+                Week {w}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Four tracks, and deliberately NOT the roster's six — no `72px` anywhere,
+          which also keeps `admin-tabs.test.ts`'s two-identical-templates check
+          about the roster rather than about every grid in the file. */}
+      <div
+        aria-hidden
+        className="hidden gap-x-4 px-3 pb-1.5 lg:grid lg:grid-cols-[32px_minmax(0,1fr)_200px_240px]"
+      >
+        <span />
+        <Label className="text-ink-mute">Entry</Label>
+        <Label className="text-ink-mute">Pick</Label>
+        <Label className="text-ink-mute">Change to</Label>
+      </div>
+
+      <ul className="divide-y divide-line rounded-control border border-line">
+        {roster.map((m, i) => {
+          const view = viewPickForWeek({
+            member: m,
+            week,
+            currentWeek: data.currentWeek,
+            hiddenMemberIds: data.hiddenPickMemberIds,
+          });
+          const editable = canAdminEditPick(view, week, started);
+          const serverTeam = view.kind === "team" ? view.teamId : null;
+          // Read once into a local: an index access is `T | undefined` to the
+          // compiler however it is tested, and `null` is a real value here (it
+          // means "cleared") so it cannot be collapsed with the absent case.
+          const override = overrides[m.id];
+          const shown = override !== undefined ? override : serverTeam;
+          const used = usedTeamsForEntry(m, week);
+          const fullName = formatFullName(m.firstName, m.lastName);
+          // Two rows carry the same name when a player holds two entries, so
+          // every string that has to tell them apart is suffixed. The badge does
+          // it visually, exactly as the roster does.
+          const rowName = m.entryNo === 2 ? `${fullName} (Entry 2)` : fullName;
+          const busy = pending.has(`${m.id}:pick`);
+
+          return (
+            <li
+              key={m.id}
+              className="space-y-2 px-3 py-2.5 lg:grid lg:grid-cols-[32px_minmax(0,1fr)_200px_240px] lg:items-center lg:gap-x-4 lg:space-y-0"
+            >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
+                <span
+                  aria-hidden
+                  className="shrink-0 tabular-nums text-xs text-ink-mute lg:justify-self-start"
+                >
+                  {i + 1}.
+                </span>
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate text-sm font-medium text-ink">{fullName}</span>
+                  {m.entryNo === 2 ? (
+                    <span
+                      aria-hidden
+                      className="shrink-0 rounded-sm border border-shell-line bg-fill-soft px-1.5 py-1 text-[12px] font-semibold uppercase leading-none text-ink-mute"
+                    >
+                      2
+                    </span>
+                  ) : null}
+                </span>
+                <PickCell view={view} shown={shown} />
+              </div>
+
+              <div className="lg:justify-self-stretch">
+                <select
+                  value={shown ?? ""}
+                  disabled={!editable || busy}
+                  onChange={(e) => setPick(m, e.target.value === "" ? null : e.target.value)}
+                  aria-label={`Week ${week} pick — ${rowName}`}
+                  className={cn(INPUT_CLASS, "disabled:cursor-not-allowed disabled:text-ink-mute/60")}
+                >
+                  <option value="">No pick</option>
+                  {teams.map((teamId) => {
+                    const team = getTeam(teamId);
+                    // Greyed out because `picks_team_once_per_phase` would refuse
+                    // it — but only for the weeks this admin can SEE. A team
+                    // booked for a week that has not started is invisible here
+                    // and the RPC is what refuses it; hence the hint below.
+                    const spent = teamId !== shown && used.includes(teamId);
+                    return (
+                      <option key={teamId} value={teamId} disabled={spent}>
+                        {team ? `${team.location} ${team.name}` : teamId.toUpperCase()}
+                        {spent ? " · already used" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {error ? <ErrorLine>{error}</ErrorLine> : null}
+      {note ? <HintLine>{note}</HintLine> : null}
+      <HintLine>
+        Changing a pick rescores the league straight away. Teams already used in a week
+        that hasn&rsquo;t started yet can&rsquo;t be listed here, so a save can still come
+        back as already used.
+      </HintLine>
+    </section>
+  );
+}
+
+/**
+ * What the admin can see of one entry's pick — the read half of a row.
+ *
+ * Split out because the hidden branch is a claim rather than a blank: a member
+ * who picked a game that has not kicked off is indistinguishable from one who
+ * did not pick at all until you say which is which, and drawing both as "No
+ * pick" is what would let an admin overwrite a real pick unseen.
+ */
+function PickCell({ view, shown }: { view: AdminPickView; shown: TeamId | null }) {
+  if (view.kind === "hidden") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-ink-mute lg:justify-self-start">
+        <LockIcon className="h-3.5 w-3.5 shrink-0" />
+        Hidden until kickoff
+      </span>
+    );
+  }
+
+  if (shown === null) {
+    return <span className="text-xs text-ink-mute lg:justify-self-start">No pick</span>;
+  }
+
+  const team = getTeam(shown);
+  const result = view.kind === "team" ? view.result : null;
+  return (
+    <span className="flex items-center gap-2 lg:justify-self-start">
+      <TeamLogo teamId={shown} size="xs" />
+      <span className="truncate text-sm text-ink">{team ? team.name : shown.toUpperCase()}</span>
+      {result === "win" || result === "loss" ? (
+        <Pill variant={result} className="shrink-0">
+          {result === "win" ? "Won" : "Lost"}
+        </Pill>
+      ) : null}
+    </span>
+  );
+}
+
 /**
  * The invite link, the code, and what the window they open and close on means.
  *
@@ -1781,7 +2176,7 @@ function pickWindowNote(w: PickWindow | null, snapshot: ReminderSnapshot | null)
   return "Every game this week has kicked off, so a reminder can't help now.";
 }
 
-type TabValue = "members" | "league" | "feed" | "emails";
+type TabValue = "members" | "picks" | "league" | "feed" | "emails";
 
 /**
  * TWO labels are nodes rather than strings, because four tabs do not fit on a
@@ -1817,7 +2212,16 @@ type TabValue = "members" | "league" | "feed" | "emails";
  * visible one rather than replacing it.
  */
 const TABS: { value: TabValue; label: React.ReactNode }[] = [
-  { value: "members", label: "Members" },
+  {
+    value: "members",
+    label: (
+      <>
+        <span className="lg:hidden">Roster</span>
+        <span className="hidden lg:inline">Members</span>
+      </>
+    ),
+  },
+  { value: "picks", label: "Picks" },
   {
     value: "league",
     label: (
@@ -1836,7 +2240,15 @@ const TABS: { value: TabValue; label: React.ReactNode }[] = [
       </>
     ),
   },
-  { value: "emails", label: "Emails" },
+  {
+    value: "emails",
+    label: (
+      <>
+        <span className="lg:hidden">Mail</span>
+        <span className="hidden lg:inline">Emails</span>
+      </>
+    ),
+  },
 ];
 
 /**
@@ -1909,6 +2321,7 @@ export function AdminSettingsDrawer({
   members,
   appUrl,
   phase,
+  picks,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1916,6 +2329,16 @@ export function AdminSettingsDrawer({
   members: Member[];
   appUrl: string;
   phase: SeasonPhase;
+  /**
+   * The Picks tab's payload, folded server-side by `buildAdminPickData`.
+   *
+   * Narrowed rather than `LeagueData.games` whole: that is ~272 rows, and the
+   * account page would carry them in its RSC payload on every admin render for
+   * a tab most admins open rarely. Null cannot happen in practice — it comes
+   * from the same `loadLeague` result as `members` — but the tab renders its
+   * empty state rather than nothing, because a blank panel reads as a bug.
+   */
+  picks: AdminPickData | null;
 }) {
   const [tab, setTab] = useState<TabValue>("members");
 
@@ -1938,7 +2361,7 @@ export function AdminSettingsDrawer({
           // four of the old labels; "League Settings" is wider than anything the
           // bar has carried, so 620. Measure rather than derive this — the cap
           // has to clear the widest LABEL, not a per-tab average. See TABS.
-          className="lg:max-w-[620px]"
+          className="lg:max-w-[700px]"
         />
       }
     >
@@ -1958,6 +2381,12 @@ export function AdminSettingsDrawer({
             preseasonOpen={phase === "preseason"}
             entryClosesAt={group.entryClosesAt}
           />
+        </TabPanel>
+      ) : null}
+
+      {tab === "picks" ? (
+        <TabPanel idBase="admin-settings" value="picks">
+          <PicksSection groupId={group.id} members={members} data={picks} />
         </TabPanel>
       ) : null}
 

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { loadAccount, loadLeague } from "@/lib/league/load";
 import { AccountClient } from "@/components/account/AccountClient";
+import { buildAdminPickData } from "@/lib/league/admin-picks";
 
 export default async function AccountPage() {
   const account = await loadAccount();
@@ -38,7 +39,33 @@ export default async function AccountPage() {
   const active = entries[0] ?? null;
   const isAdmin = entries.some((l) => l.role === "admin");
   const load = active && isAdmin ? await loadLeague(active.group.id) : null;
-  const adminMembers = load?.kind === "ok" ? load.data.members : null;
+  const league = load?.kind === "ok" ? load.data : null;
+  const adminMembers = league?.members ?? null;
+
+  /*
+   * The Picks tab's payload (0019), folded from data this page ALREADY FETCHED
+   * and until now discarded: `loadLeague` carries `games`, `currentWeek`,
+   * `nowIso` and `hiddenPickUserIds`, and only `members` was ever read. So the
+   * tab costs zero extra queries.
+   *
+   * Narrowed rather than passed whole. `games` is ~272 rows, and handing them to
+   * a client component would put them in the RSC payload on every admin render
+   * of this page — for a tab most admins open rarely. `buildAdminPickData` folds
+   * them to the started weeks and their teams, which is a couple of kilobytes,
+   * and being pure it is tested without jsdom.
+   *
+   * `nowIso` rather than `new Date()`: the loader already resolved a single
+   * server timestamp, and deriving "which weeks have started" from a second one
+   * is how two numbers on one page come to disagree across a kickoff.
+   */
+  const adminPicks = league
+    ? buildAdminPickData({
+        games: league.games,
+        now: new Date(league.nowIso),
+        currentWeek: league.currentWeek,
+        hiddenPickMemberIds: league.hiddenPickUserIds,
+      })
+    : null;
 
   // `now` is resolved here rather than in the client. `MoreSection` hides the
   // invite row once entry closes, and a `new Date()` during render is a
@@ -47,6 +74,7 @@ export default async function AccountPage() {
     <AccountClient
       account={account}
       adminMembers={adminMembers}
+      adminPicks={adminPicks}
       now={new Date().toISOString()}
     />
   );
