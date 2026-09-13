@@ -477,6 +477,14 @@ export async function submitPick(input: {
           week,
           error,
         });
+        // The delete DID land, so this is the one failure path that changed the
+        // database — and without a revalidate the screen keeps props showing a
+        // pick that no longer exists. Worse, `launchPick`'s failure path restores
+        // the released week by DROPPING its overlay entry, i.e. by falling back
+        // to exactly these props. The refusal above at `releaseError` needs none
+        // of this: nothing was written there.
+        revalidatePath("/app");
+        revalidatePath("/app/standings");
         return { ok: false, error: "release_failed" };
       }
       // 23505 = unique_violation. Key off the SQLSTATE code rather than the message

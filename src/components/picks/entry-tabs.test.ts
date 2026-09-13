@@ -149,9 +149,17 @@ describe("what the switcher scopes", () => {
     // Two entries may hold picks for the same week at once. One chain per week
     // would let entry 2's tap settle entry 1's in-flight request and revert to
     // the wrong team.
+    //
+    // This assertion used to name the `queueKey` helper and the one call site in
+    // `launchPick`, and it PASSED for the entire life of the bug it was written
+    // to prevent: `handleSelect` went on indexing the raw map by the bare week
+    // key, so the chain a tap opened was never the one its response settled. The
+    // map is closed over inside `createPickQueues` now, which is why this can
+    // assert the absence of a raw map rather than the presence of one spelling.
+    // The per-call-site scan is in `my-picks-client.test.ts`.
     const src = await code(CLIENT);
-    expect(src).toContain("const queueKey = (entryNo: EntryNo, key: string) => `${entryNo}|${key}`");
-    expect(src).toContain("const qKey = queueKey(entryNo, key);");
+    expect(src).toContain("useRef(createPickQueues())");
+    expect(src).not.toContain("new Map<string, PickQueue>()");
   });
 
   it("reads the practice record by membership id", async () => {

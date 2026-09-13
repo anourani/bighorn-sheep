@@ -8,7 +8,7 @@ import { TeamGrid } from "@/components/picks/TeamGrid";
 import { WeekStrip } from "@/components/picks/WeekStrip";
 import { WeekSchedule, type UsedPick } from "@/components/picks/WeekSchedule";
 import { GRID_LAYOUTS } from "@/components/picks/team-grid";
-import { IDLE_QUEUE, settlePick, tapPick, type PickQueue } from "@/components/picks/pick-queue";
+import { createPickQueues } from "@/components/picks/pick-queue";
 import { buildChipPicks } from "@/components/picks/week-strip";
 import { isEntryWritable } from "@/components/picks/writability";
 import { Toast } from "@/components/ui/Toast";
@@ -30,6 +30,7 @@ import {
 import { buildGameIndex } from "@/lib/league/games";
 import {
   committedWeek,
+  overlaidPhasePicks,
   pickForWeek,
   pruneAgreedPicks,
   viewerPicksByWeek,
@@ -37,7 +38,6 @@ import {
 } from "@/lib/league/picks";
 import { recordsThroughWeek } from "@/lib/league/records";
 import type { LeagueData, ViewerEntry } from "@/lib/league/load";
-import type { EntryNo } from "@/lib/league/types";
 import { EntryTabs } from "./EntryTabs";
 import { submitPick } from "@/app/app/actions";
 import { isStaleDeploymentError, reloadOnce } from "@/lib/deploy-skew";
@@ -184,24 +184,21 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // so the revalidated RSC payload applies without blocking paint, the same
   // trade AdminSettingsDrawer makes.
   const [, startTransition] = useTransition();
-  // Per-week submit chains — single-flight with a trailing tap, see
-  // pick-queue.ts. A ref, not state: nothing in it drives rendering; the
-  // visible pieces are pendingPicks, pickError and toast above. Keyed by
-  // weekKey, which is why picking ahead needed nothing here: every writable
-  // week already ran its own chain, where before only two ever could (the live
+  // The submit chains — single-flight with a trailing tap, one per ENTRY per
+  // week, see pick-queue.ts. A ref, not state: nothing in it drives rendering;
+  // the visible pieces are pendingPicks, pickError and toast above.
+  //
+  // A store rather than a bare Map, and that is not tidiness: the key used to be
+  // composed at each call site and the call sites disagreed, so a chain was
+  // opened in one slot and settled in another and every tap after the first in a
+  // week was silently dropped. `createPickQueues` owns the key; there is no
+  // `.get`/`.set` here to reach for and `tap`/`settle` will not compile without
+  // an entry.
+  //
+  // The week half is why picking ahead needed nothing here: every writable week
+  // already ran its own chain, where before only two ever could (the live
   // practice week and regular Week 1 during the preseason).
-  const queuesRef = useRef(new Map<string, PickQueue>());
-
-  /*
-   * Submit chains are per ENTRY per week, not per week (0017).
-   *
-   * Two entries may hold picks for the same week at the same time, and each
-   * needs its own single-flight chain — sharing one would let entry 2's tap
-   * settle entry 1's in-flight request and revert to the wrong team. The key is
-   * prefixed rather than the map being nested because everything that touches
-   * it already passes a week key around; one helper keeps that true.
-   */
-  const queueKey = (entryNo: EntryNo, key: string) => `${entryNo}|${key}`;
+  const queuesRef = useRef(createPickQueues());
 
   // The entry currently on screen, readable from inside an async settle without
   // capturing a stale value. `activeEntryNo` in a closure would be whatever it
@@ -410,7 +407,21 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   // strip is not showing.
   // The active entry's, so a team spent by entry 1 does not read as spent for
   // entry 2 — the whole point of the two runs being independent.
-  const phasePicks = viewingPractice ? (practiceMe?.picks ?? []) : activeEntry.picks;
+  //
+  // Laid over the optimistic overlay rather than read raw, because server props
+  // are a round trip behind a release: they still show the freed week holding
+  // the team and the new week empty. A second tap in that window would clear the
+  // already-empty week and leave the team lit twice. `usedByTeam` below is
+  // deliberately NOT given the same treatment — see its own note.
+  const phasePicks = useMemo(
+    () =>
+      overlaidPhasePicks(
+        viewRef.seasonType,
+        viewingPractice ? (practiceMe?.picks ?? []) : activeEntry.picks,
+        pendingPicks,
+      ),
+    [viewRef.seasonType, viewingPractice, practiceMe, activeEntry.picks, pendingPicks],
+  );
 
   // The VIEWED week's fixture. Resolving it against liveWeek instead found that
   // team's game in a completely different week and rendered its opponent,
@@ -432,14 +443,18 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
     // Keyed to the week ON SCREEN, which is now the week submitPick will write.
     // It used to be `weekKey(liveRef)`, because that was the only writable week.
     const key = selectedKey;
-    const queue = queuesRef.current.get(key) ?? IDLE_QUEUE;
     // The revert baseline, read only while the chain is idle: what this tab
     // believes the server holds. Mid-chain the value on screen is the
     // optimistic overlay, which is exactly what a revert must not target —
     // tapPick ignores this argument then and the chain carries its own.
     const serverValue = pickForWeek(viewRef, serverPicks, pendingPicks);
-    const { state, submit } = tapPick(queue, teamId, serverValue);
-    queuesRef.current.set(key, state);
+    // `activeEntryNo` from the render, NOT `activeEntryRef.current`: this runs
+    // synchronously from the tap, and every other value here — serverValue,
+    // usedByTeam, phasePicks — comes off that same render. Keying the chain to
+    // one entry while computing the release from another is the shape of the
+    // bug this store exists to prevent. The ref is for the async settle, where
+    // the closure genuinely IS stale.
+    const { submit } = queuesRef.current.tap(activeEntryNo, key, teamId, serverValue);
 
     /*
      * The release. A team booked for another week of this phase comes off that
@@ -491,7 +506,6 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
     // must settle the chain this pick belongs to, not whichever one is on
     // screen when the server answers.
     const entryNo = activeEntryNo;
-    const qKey = queueKey(entryNo, key);
     // Both derived from the key itself, so neither can disagree with the week
     // the overlay painted under.
     //
@@ -519,8 +533,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         // truth, and a queued tap dies with the page it belonged to.
         if (isStaleDeploymentError(err) && reloadOnce()) return;
       }
-      const outcome = settlePick(queuesRef.current.get(qKey) ?? IDLE_QUEUE, ok);
-      queuesRef.current.set(qKey, outcome.state);
+      const outcome = queuesRef.current.settle(entryNo, key, ok);
       // The overlay, the toast and the error banner all describe the entry on
       // SCREEN. If the player has switched tabs while this was in flight they
       // belong to a view nobody is looking at, and painting them would put one

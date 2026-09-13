@@ -1,3 +1,4 @@
+import type { EntryNo } from "../../lib/league/types";
 import type { TeamId } from "../../lib/nfl/teams";
 
 /**
@@ -99,5 +100,57 @@ export function settlePick(state: PickQueue, ok: boolean): SettleOutcome {
     // rule simple: a chain that ends without sending always ends on `confirmed`.
     revert: ok ? null : { to: confirmed },
     surfaceError: !ok && !superseded,
+  };
+}
+
+/**
+ * Every submit chain a mounted picks screen is running — one per ENTRY per week.
+ *
+ * The map is closed over rather than handed out, and that is the whole point of
+ * this existing at all. Two entries may hold picks for the same week at once and
+ * each needs its own single-flight chain, so the key is `entry|week` — but for
+ * one release the component built that key on the SETTLE side and indexed the
+ * raw map by week ALONE on the TAP side, giving one map two namespaces that
+ * never met.
+ *
+ * What that cost is worth writing down, because every symptom of it was silent.
+ * The tap-side entry was written and never settled, so after the first pick in a
+ * week `tapPick` saw `inFlight !== null` forever: every later tap painted its
+ * optimistic overlay and was NEVER SENT. No request, no error, no toast — and
+ * because `pruneAgreedPicks` only retires overlay entries the server AGREES
+ * with, a write that never happened never got agreement and shadowed server
+ * truth for the life of the screen. That is how one team came to sit on two
+ * weeks at once. The settle side read an empty chain for the same reason, so
+ * `confirmed` was always null and a REFUSED pick blanked its week rather than
+ * restoring the team the server still held.
+ *
+ * So: no `.get`/`.set` to reach for, the key is composed in one place, and a
+ * read-modify-write happens under one key by construction. `tap` and `settle`
+ * will not compile without an entry.
+ */
+export interface PickQueues {
+  /** See `tapPick`. */
+  tap(entryNo: EntryNo, week: string, team: TeamId, serverValue: TeamId | null): TapOutcome;
+  /** See `settlePick`. */
+  settle(entryNo: EntryNo, week: string, ok: boolean): SettleOutcome;
+}
+
+export function createPickQueues(): PickQueues {
+  const chains = new Map<string, PickQueue>();
+  const at = (entryNo: EntryNo, week: string) => `${entryNo}|${week}`;
+
+  return {
+    tap(entryNo, week, team, serverValue) {
+      const key = at(entryNo, week);
+      const outcome = tapPick(chains.get(key) ?? IDLE_QUEUE, team, serverValue);
+      chains.set(key, outcome.state);
+      return outcome;
+    },
+    settle(entryNo, week, ok) {
+      const key = at(entryNo, week);
+      const outcome = settlePick(chains.get(key) ?? IDLE_QUEUE, ok);
+      chains.set(key, outcome.state);
+      return outcome;
+    },
   };
 }
