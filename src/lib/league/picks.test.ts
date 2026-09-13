@@ -3,6 +3,7 @@ import { PRE_WEEK, REGULAR_WEEK, weekKey } from "../nfl/calendar";
 import type { TeamId } from "../nfl/types";
 import {
   committedWeek,
+  overlaidPhasePicks,
   pickForWeek,
   pruneAgreedPicks,
   viewerPicksByWeek,
@@ -208,5 +209,68 @@ describe("committedWeek", () => {
   it("ignores the target week's own pick", () => {
     expect(committedWeek(booked, "cin", 10)).toBeNull();
     expect(committedWeek(booked, "kc", 2)).toBeNull();
+  });
+});
+
+describe("overlaidPhasePicks", () => {
+  const server = [
+    { week: 2, teamId: "kc" as TeamId },
+    { week: 10, teamId: "cin" as TeamId },
+  ];
+
+  it("returns server truth untouched when nothing is pending", () => {
+    expect(overlaidPhasePicks("regular", server, NOTHING_PENDING)).toEqual(server);
+  });
+
+  it("adds a week the overlay holds and the server has not caught up with", () => {
+    const pending: PendingPicks = new Map([[weekKey(REGULAR_WEEK(5)), "sea" as TeamId]]);
+    expect(overlaidPhasePicks("regular", server, pending)).toEqual([
+      { week: 2, teamId: "kc" },
+      { week: 5, teamId: "sea" },
+      { week: 10, teamId: "cin" },
+    ]);
+  });
+
+  it("drops a week the overlay has explicitly emptied", () => {
+    // The explicit null is how a release clears a chip, and it has to beat a
+    // server map that has not been re-fetched — same rule as pickForWeek's `has`.
+    const pending: PendingPicks = new Map([[weekKey(REGULAR_WEEK(10)), null]]);
+    expect(overlaidPhasePicks("regular", server, pending)).toEqual([{ week: 2, teamId: "kc" }]);
+  });
+
+  it("ignores the other phase's overlay entries", () => {
+    // A team practised in the preseason is available again at Week 1, so a
+    // "pre:10" entry must not delete regular Week 10's pick.
+    const pending: PendingPicks = new Map([
+      [weekKey(PRE_WEEK(10)), null],
+      [weekKey(PRE_WEEK(2)), "sea" as TeamId],
+    ]);
+    expect(overlaidPhasePicks("regular", server, pending)).toEqual(server);
+  });
+
+  it("names the released week correctly for a second tap inside the same round trip", () => {
+    // The flash this exists for. CIN was booked in W10; the player has just
+    // moved it to W5, so the overlay holds W5=cin and W10=empty while the server
+    // props still say W10. Asked from server props alone, `committedWeek` would
+    // answer 10 — a week that is already clear — and leave cin lit on W5 AND W7
+    // until the server replied. Over the merged view it answers 5.
+    const pending: PendingPicks = new Map<string, TeamId | null>([
+      [weekKey(REGULAR_WEEK(5)), "cin" as TeamId],
+      [weekKey(REGULAR_WEEK(10)), null],
+    ]);
+    expect(committedWeek(server, "cin", 7)).toBe(10);
+    expect(committedWeek(overlaidPhasePicks("regular", server, pending), "cin", 7)).toBe(5);
+  });
+
+  it("can only ever offer committedWeek ONE other week for a team", () => {
+    // What lets launchPick keep a single `releaseKey` and restore exactly it on
+    // failure: every tap clears the week that held the team before setting its
+    // own, so two weeks can never both be showing it.
+    const pending: PendingPicks = new Map<string, TeamId | null>([
+      [weekKey(REGULAR_WEEK(2)), null],
+      [weekKey(REGULAR_WEEK(6)), "kc" as TeamId],
+    ]);
+    const merged = overlaidPhasePicks("regular", server, pending);
+    expect(merged.filter((p) => p.teamId === "kc")).toEqual([{ week: 6, teamId: "kc" }]);
   });
 });

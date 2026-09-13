@@ -1,5 +1,5 @@
-import { PRE_WEEK, REGULAR_WEEK, weekKey, type WeekRef } from "../nfl/calendar";
-import type { TeamId } from "../nfl/types";
+import { PRE_WEEK, REGULAR_WEEK, parseWeekKey, weekKey, type WeekRef } from "../nfl/calendar";
+import type { SeasonType, TeamId } from "../nfl/types";
 
 /**
  * The viewer's own picks along the week axis.
@@ -132,4 +132,45 @@ export function pruneAgreedPicks(pending: PendingPicks, server: PicksByWeek): Pe
     if ((server.get(key) ?? null) !== team) next.set(key, team);
   }
   return next.size === pending.size ? pending : next;
+}
+
+/**
+ * One phase's picks as THIS TAB believes them — server truth with the optimistic
+ * overlay laid on top.
+ *
+ * `committedWeek` is asked "which OTHER week holds this team", and its answer
+ * decides which chip a tap clears. Answered from server props ALONE it is stale
+ * in both directions for the round trip after a release: the released week still
+ * holds the team and the new one does not. A second tap landing in that window
+ * therefore clears a week that is already empty and leaves the team lit in two
+ * places until the server answers — the flash version of the bug the submit
+ * queue used to make permanent.
+ *
+ * Feeding the merged view in instead keeps the invariant painted rather than
+ * merely eventually consistent, and it stays a SINGLE other week by induction:
+ * every tap clears whichever week held the team before setting its own, so the
+ * overlay can never hand `committedWeek` two candidates. That is what lets
+ * `launchPick` keep one `releaseKey` and restore exactly it on failure.
+ *
+ * Phase-scoped on purpose. A team practised in the preseason is available again
+ * at Week 1 (`picks_team_once_per_phase` keys on `season_type`), so an overlay
+ * entry from the other phase must not touch this list.
+ */
+export function overlaidPhasePicks(
+  seasonType: SeasonType,
+  picks: readonly { week: number; teamId: TeamId }[],
+  pending: PendingPicks,
+): { week: number; teamId: TeamId }[] {
+  const byWeek = new Map<number, TeamId>(picks.map((p) => [p.week, p.teamId]));
+  for (const [key, team] of pending) {
+    const ref = parseWeekKey(key);
+    if (!ref || ref.seasonType !== seasonType) continue;
+    // An explicit null is "this tab believes this week is empty" and has to beat
+    // the server, exactly as it does in `pickForWeek`.
+    if (team === null) byWeek.delete(ref.week);
+    else byWeek.set(ref.week, team);
+  }
+  return [...byWeek]
+    .map(([week, teamId]) => ({ week, teamId }))
+    .sort((a, b) => a.week - b.week);
 }

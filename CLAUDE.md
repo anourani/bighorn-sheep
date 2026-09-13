@@ -633,6 +633,77 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The submit chain's key is built in ONE place, and for a while it was built in
+  two that disagreed.** `createPickQueues` (`src/components/picks/pick-queue.ts`)
+  closes over the chain map and exposes `tap` / `settle`; `MyPicksClient` holds
+  the store in `queuesRef` and can no longer index anything by hand. Before this,
+  `handleSelect` read and wrote the raw map under the BARE week key while
+  `launchPick` used `queueKey(entryNo, key)` — one map, two namespaces, added by
+  the entry-switcher commit, which rewrote only the settle side. **No migration;
+  a client bug against a schema and a server action that were both already
+  correct.** Five things:
+  - **Every symptom was silent, and the reported one was the least of them.** A
+    chain opened on the tap side was never settled, so after the FIRST pick in a
+    week `tapPick` saw `inFlight !== null` forever and every later tap returned
+    `submit: null`: no request, no error, no toast. The overlay was painted
+    regardless, and `pruneAgreedPicks` only retires entries the server AGREES
+    with — so a write that never happened never got agreement and shadowed
+    server truth for the life of the mounted screen. What that looked like from
+    outside was one team lit on two weeks; what it actually was is **no change
+    to any week saving after its first pick**, while the screen said it had.
+  - **The settle side read an empty chain for the same reason**, so `confirmed`
+    was `null` whatever had been tapped and a REFUSED pick blanked its week
+    rather than restoring the team the server still held. Two bugs, one key.
+  - **It also defeated 0017 in the direction nobody guarded.** The bare key is
+    shared across entries, so entry 2's first tap on a week entry 1 had already
+    touched went missing entirely — while the test named
+    `"keys submit chains by entry as well as week"` passed throughout, because it
+    asserted that `queueKey` existed and that `launchPick` called it and never
+    looked at `handleSelect`. A guard that names one spelling at one call site
+    cannot see a second call site spelling it differently;
+    `my-picks-client.test.ts` walks EVERY `queuesRef.current` access instead.
+  - **The database was never wrong.** `picks_team_once_per_phase` is
+    `unique (group_id, user_id, entry_no, season_type, team_id)` with `week`
+    deliberately absent, so two weeks holding one team is not representable —
+    the double selection was always a lie told by the overlay, and a reload
+    cleared it. Worth knowing before anyone goes looking for corrupt rows.
+  - **`handleSelect` takes `activeEntryNo` from the render and `launchPick`
+    captures it at launch; neither reads `activeEntryRef.current`.** The tap is
+    synchronous and every other value it uses comes off that same render, so the
+    ref would key the chain to one entry while the release was computed from
+    another — this bug's own shape, one level down. The ref exists for the async
+    settle, where `stillShowing` compares launch-time closure against it, and
+    that comparison is only meaningful because one side is each.
+
+- **`committedWeek` is asked over the OVERLAY now, not over server props alone.**
+  `phasePicks` is `overlaidPhasePicks(viewRef.seasonType, …, pendingPicks)`
+  (`src/lib/league/picks.ts`). Server props are a round trip behind a release —
+  they still show the freed week holding the team and the new week empty — so a
+  second tap landing in that window cleared a week that was already clear and
+  left the team lit on two chips until the server answered. The flash version of
+  the bug above, and it outlived the fix for it. Three things:
+  - **The merged view can only ever offer ONE other week, by induction**: every
+    tap clears whichever week held the team before setting its own. That is what
+    lets `launchPick` keep a single `releaseKey` and restore exactly it on
+    failure — a sweep that cleared several weeks would need the failure path to
+    restore all of them, and the one it missed would be a silent hole.
+  - **It is phase-scoped**, because a team practised in the preseason is
+    available again at Week 1; an overlay entry from the other phase must not
+    touch this list.
+  - **`usedByTeam` deliberately did NOT get the same treatment.** It lists only
+    picks whose game has KICKED OFF, and a released week's game by definition
+    has not, so it cannot name a stale week — and widening it would change what
+    the grid greys out, which is a different question from which chip a tap
+    clears.
+
+- **`submitPick`'s `release_failed` path revalidates now.** It is the one failure
+  branch that changed the database — the delete landed and the write did not —
+  and it used to return without `revalidatePath`, leaving the client on props
+  showing a pick that no longer existed. `launchPick`'s failure path restores the
+  released week by DROPPING its overlay entry, i.e. by falling back to exactly
+  those props, so the two compounded. The `releaseError` branch above it still
+  revalidates nothing, and should not: the delete failed there, so nothing moved.
+
 - **The admin Control Center has a fifth tab, Picks, and it is the only way to
   change somebody else's pick.** Week-first: a week selector, then every entry in
   the league with its pick for that week and a dropdown. `0019_admin_set_pick` is

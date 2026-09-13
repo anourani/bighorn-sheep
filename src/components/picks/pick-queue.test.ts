@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IDLE_QUEUE, settlePick, tapPick } from "./pick-queue";
+import { createPickQueues, IDLE_QUEUE, settlePick, tapPick } from "./pick-queue";
 
 describe("tapPick", () => {
   it("submits immediately from idle and seeds the revert baseline", () => {
@@ -145,5 +145,64 @@ describe("settlePick", () => {
       revert: null,
       surfaceError: false,
     });
+  });
+});
+
+/**
+ * The store that keys those chains. Its whole job is that a chain is addressed
+ * one way — by entry AND week — so the tap that opens it and the response that
+ * settles it cannot land in different slots. They did, for one release: the
+ * component keyed the map by week alone on the tap side and by `entry|week` on
+ * the settle side, and every one of the assertions below is a symptom that
+ * shipped because of it.
+ */
+describe("createPickQueues", () => {
+  it("frees a week's chain when its request settles, so the next tap is sent", () => {
+    // THE regression. With the two sides keyed differently the chain never
+    // settled, so this second tap returned `submit: null` and was silently
+    // dropped: no request, no error, and no toast — while the optimistic overlay
+    // painted it as saved for the life of the screen.
+    const queues = createPickQueues();
+    expect(queues.tap(1, "regular:3", "kc", null).submit).toBe("kc");
+    queues.settle(1, "regular:3", true);
+    expect(queues.tap(1, "regular:3", "sea", "kc").submit).toBe("sea");
+  });
+
+  it("reverts a refusal to the team the server confirmed, not to nothing", () => {
+    // The quieter half of the same mis-key: settle read an EMPTY chain, so
+    // `confirmed` was null whatever had been tapped, and a REFUSED pick blanked
+    // the week instead of restoring the team the server still held.
+    const queues = createPickQueues();
+    queues.tap(1, "regular:3", "kc", "buf");
+    expect(queues.settle(1, "regular:3", false).revert).toEqual({ to: "buf" });
+  });
+
+  it("keeps one chain per entry, so entry 2 is not blocked by entry 1's flight", () => {
+    // 0017's requirement, and the thing the shared bare key defeated from the
+    // other direction: entry 2's FIRST pick for the week went missing entirely.
+    const queues = createPickQueues();
+    queues.tap(1, "regular:3", "kc", null);
+    expect(queues.tap(2, "regular:3", "kc", null).submit).toBe("kc");
+  });
+
+  it("keeps one chain per week within an entry", () => {
+    const queues = createPickQueues();
+    queues.tap(1, "regular:2", "kc", null);
+    expect(queues.tap(1, "regular:3", "sea", null).submit).toBe("sea");
+  });
+
+  it("keeps the two phases' weeks apart", () => {
+    // "pre:3" and "regular:3" are different picks in different games.
+    const queues = createPickQueues();
+    queues.tap(1, "pre:3", "kc", null);
+    expect(queues.tap(1, "regular:3", "sea", null).submit).toBe("sea");
+  });
+
+  it("still single-flights one week: a tap mid-flight is queued, not sent", () => {
+    // The property the store must NOT lose while fixing the above.
+    const queues = createPickQueues();
+    queues.tap(1, "regular:3", "kc", null);
+    expect(queues.tap(1, "regular:3", "sea", null).submit).toBeNull();
+    expect(queues.settle(1, "regular:3", true).submit).toBe("sea");
   });
 });
