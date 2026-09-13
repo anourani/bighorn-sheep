@@ -447,11 +447,11 @@ function WeekCellView({ cell }: { cell: WeekCell }) {
 
   const team = getTeam(cell.teamId);
   const box = cell.result ? RESULT_BOX[cell.result] : "";
-  const resultLabel = cell.result ?? (cell.live ? "live" : "");
+  const resultLabel = cell.result ?? "";
 
   return (
     <span
-      className={cn("relative", TILE)}
+      className={TILE}
       title={
         team ? `${team.location} ${team.name}${resultLabel ? ` · ${resultLabel}` : ""}` : cell.teamId
       }
@@ -473,12 +473,6 @@ function WeekCellView({ cell }: { cell: WeekCell }) {
       <span className={cn("grid h-[42px] w-[42px] place-items-center rounded", box)}>
         <TeamLogo teamId={cell.teamId} size={34} />
       </span>
-      {cell.live ? (
-        <span className="absolute right-0.5 top-0.5 flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-pulse-live rounded-full bg-live" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-live" />
-        </span>
-      ) : null}
       <span className="sr-only">
         {team?.name ?? cell.teamId}
         {resultLabel ? `, ${resultLabel}` : ""}
