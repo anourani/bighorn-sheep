@@ -120,17 +120,17 @@ describe("cellFor — settled weeks", () => {
 describe("cellFor — the current week", () => {
   it("tints a win while its week is being played", () => {
     const m = member({ currentPick: { week: WEEK, teamId: "kc", gameId: "g1" } });
-    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "kc", result: "win", live: false });
+    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "kc", result: "win" });
   });
 
   it("tints a loss", () => {
     const m = member({ currentPick: { week: WEEK, teamId: "buf", gameId: "g1" } });
-    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "buf", result: "loss", live: false });
+    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "buf", result: "loss" });
   });
 
-  it("marks a game in progress as live and leaves it untinted", () => {
+  it("leaves a game in progress untinted", () => {
     const m = member({ currentPick: { week: WEEK, teamId: "sf", gameId: "g2" } });
-    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "sf", result: undefined, live: true });
+    expect(cell(m, WEEK)).toEqual({ kind: "team", teamId: "sf", result: undefined });
   });
 
   it("hides a rival's pick until that team's game kicks off", () => {
@@ -147,7 +147,6 @@ describe("cellFor — the current week", () => {
       kind: "team",
       teamId: "dal",
       result: undefined,
-      live: false,
     });
   });
 
