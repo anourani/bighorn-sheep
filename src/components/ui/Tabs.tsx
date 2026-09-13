@@ -20,6 +20,32 @@ import { nextTabIndex, panelId, tabId } from "./tabs";
  * `Drawer`'s fixed-height panel — so a short tab doesn't scroll at all and a
  * long one scrolls as one dialog rather than trapping a scrollbar inside a tab.
  *
+ * OVERFLOW IS NOW IMPOSSIBLE BY CONSTRUCTION rather than by measurement, and
+ * that is what `min-w-0` and `truncate` on the button are for. A flex item's
+ * default `min-width: auto` refuses to shrink below its content, so before this
+ * an over-long label pushed the whole bar past its container — and because the
+ * admin drawer renders this in `Drawer`'s header, a sibling of the page rather
+ * than something inside `main`'s clip, the overflow reached the DOCUMENT and
+ * scrolled the page sideways at 320px. `min-w-0` disables that floor so the
+ * items shrink; `truncate` then clips with an ellipsis. It is `overflow: hidden`
+ * and not `overflow-x-auto`, so the one-scroller rule above is untouched, and
+ * the accessible name is still the full label either way.
+ *
+ * That turns "one more tab and the page scrolls sideways" into "one more tab and
+ * a label gets an ellipsis". The label pairs in `AdminSettingsDrawer`'s `TABS`
+ * are still what keeps it from coming to that; this is the backstop, not the
+ * plan.
+ *
+ * `px-1 lg:px-3` is what keeps the backstop unused at five tabs, and below `lg`
+ * it is very nearly free: `flex-1` gives every tab the SAME width whatever its
+ * padding, so horizontal padding there changes no rendered box — it only decides
+ * the INTRINSIC width, i.e. the threshold at which a label starts truncating.
+ * Measured at 320 with the five real labels, where the bar is 273 and each tab
+ * gets 53: at `px-3` the widest ("League") is 65.2 and four of the five clip; at
+ * `px-2`, 57.2 and even "Roster" clears by 0.4; at `px-1`, 49.2 with 3.8 to
+ * spare. From `lg` the bar is capped and roomy, so it steps back to `px-3` and
+ * the padding becomes visible again.
+ *
  * The bar being a plain flow child DID change, and only inside `Drawer`, where
  * the admin panel pins it in the sticky header. Sticky is a pin, not a scroll
  * region, so the invariant above is untouched — but the reason it used to be a
@@ -93,7 +119,7 @@ export function Tabs<T extends string>({
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 whitespace-nowrap rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors",
+              "min-w-0 flex-1 truncate rounded-[6px] px-1 py-1.5 text-sm font-medium transition-colors lg:px-3",
               active ? "bg-white text-ink shadow-sm" : "text-ink-mute hover:text-ink",
             )}
           >

@@ -42,7 +42,7 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0011_admin_settings` → `0012_create_group_entry_deadline` →
 `0013_lock_membership_writes` → `0014_pick_consistency` →
 `0015_pick_and_buy_in_reminders` → `0016_profile_tour` → `0017_two_entries` →
-`0018_join_window`. (Note `0013` is TWO files — `0013_lock_membership_writes` and
+`0018_join_window` → `0019_admin_set_pick`. (Note `0013` is TWO files — `0013_lock_membership_writes` and
 `0013_remove_member` — which share a number and are ordered as written here.)
 
 **0013 and 0014 close two direct-write holes reachable with the anon key**, and
@@ -141,6 +141,52 @@ informative of the four symptoms. Replayable; no backfill. Four things:
 - **It does NOT retire `alignEntryDeadlines`.** 0012 fixes leagues at birth; the
   loader's align pass fixes the ones born earlier and re-aligns everything if
   the NFL moves the opener, which no create-time default can do.
+
+**0019 is what the Picks tab writes, and it must be applied to production by
+hand.** Until it is, every save on that tab reports "This needs a database update
+that hasn't been applied to Supabase yet" — `rpcErrorCode` reads PostgREST's
+`PGRST202` and says so, which is the one missing-migration symptom in this repo
+that names itself. Nothing else is affected: the tab still renders, the other
+four tabs are untouched, and no existing screen reads anything 0019 adds. Six
+things:
+
+- **It relaxes no policy, and that is the whole design.** The obvious fix is
+  adding `is_group_admin(group_id)` as a disjunct to the `picks` INSERT/UPDATE
+  policies, and it is wrong four ways: a policy is reachable from the browser
+  with the anon key, so relaxing one hands any admin session an unlogged write
+  endpoint; letting an admin write after kickoff means dropping the
+  `kickoff > now()` conjunct for them, which also lets an admin back-date THEIR
+  OWN pick once a game has finished; the relaxed branch would have to re-derive
+  0014's and 0017's consistency conjuncts; and
+  `docs/prd-rls-write-hardening.md` already ruled on this exact shape — "a new
+  definer RPC, not a relaxed policy". **The four `picks` policies are
+  untouched.**
+- **It REFUSES a team the entry has already used; it never releases the other
+  week.** `submitPick`'s delete-then-upsert release is safe because it only ever
+  frees the caller's own, un-kicked-off row. Neither half holds here: a
+  conflicting row in a started week has already been SCORED, so freeing it makes
+  that week a `no_pick`, which `recomputeSeason` counts as a loss and may
+  eliminate the member outright — in a week the admin was not even looking at.
+  A conflicting row in a future week is a plan RLS hides from the admin. Both
+  are silent, so the answer is `team_already_used`.
+- **It derives `game_id` FROM the team**, which is what makes 0014's and 0017's
+  consistency conjuncts true by construction rather than by a predicate someone
+  has to keep in step. The client never sends a game id and cannot.
+- **It is FENCED against a pre-0017 database.** Everything in it names
+  `picks.entry_no`, and a plpgsql body is not parsed for column existence at
+  CREATE time — so without the fence it would install happily and fail at its
+  first call with `42703`, which lands in the ladder's catch-all. The fence
+  raises in front of whoever is in the SQL editor instead. 0012's asymmetry.
+- **`pick_overrides` is `account_closures`' shape** — RLS on, a SELECT policy for
+  admins of the league, and deliberately NO insert/update/delete policies. The
+  absence is the enforcement: only the definer function writes it, and an admin
+  cannot edit or delete their own trail (verified — the writes are silent
+  no-ops). Nothing reads it in the app yet; it exists because this is the one
+  write where one person rewrites another person's game record.
+- **The RPC returns jsonb carrying `season` and `throughWeek`**, so the action
+  re-scores without a second round trip for the schedule — and so "the live
+  week" has ONE definition, computed off the database's clock rather than one
+  here and one in TypeScript that disagree either side of a kickoff.
 
 **0009 needs a second, separate statement.** Applying it publishes nothing; the
 landing page stays in its no-data state until a row is inserted into
@@ -586,6 +632,90 @@ reading, but only the first kind is the lesson.
 ---
 
 ## Things that are true now and weren't
+
+- **The admin Control Center has a fifth tab, Picks, and it is the only way to
+  change somebody else's pick.** Week-first: a week selector, then every entry in
+  the league with its pick for that week and a dropdown. `0019_admin_set_pick` is
+  the migration and **it must be applied by hand.** Eight things:
+  - **Only weeks that have ALREADY STARTED are offered, and that is what keeps
+    this feature free of any new READ path.** 0001's `"picks read own or
+    revealed"` hands another member's pick back once its game has kicked off, so
+    for a started week the admin is editing something they could already see.
+    Editing a FUTURE week would need a definer read over rivals' hidden picks —
+    a real privacy change, and the admin is also a player in this league. Out of
+    scope deliberately, not forgotten.
+  - **`startedWeeks` derives the list from KICKOFFS, never from
+    `resolveCurrentWeek`, and that is the likeliest regression in the whole
+    feature.** `resolveCurrentWeek` answers 1 during the preseason — by design,
+    so the pick screen has a week to draw — so a `1..currentWeek` range would
+    offer Week 1 as editable all summer, months before a ball is thrown and while
+    every player can still change their own Week 1 pick. Reading kickoffs answers
+    `[]` in the preseason by construction. There is a test asserting the two
+    numbers side by side, in the shape of `reminders.test.ts`'s `reminderWeek`
+    one.
+  - **The live week has a THIRD row state, and it is the reason `viewPickForWeek`
+    is a function rather than a ternary.** A member who picked a 4pm game reaches
+    the client with no readable pick — identical to a member who has not picked
+    at all. Drawing both as "No pick" invites an admin to overwrite a real pick
+    unseen, so `hiddenPickUserIds` (0017's `hidden_pick_member_ids`, already
+    loaded and until now discarded on the account page) tells them apart and a
+    hidden row gets a padlock and a DISABLED control. The UI is therefore
+    STRICTER than the RPC, which gates on the week alone — always the safe
+    direction.
+  - **The "already used" grey-out is knowingly incomplete.** `toMember` drops
+    picks for weeks after `currentWeek`, so a team an entry has booked for a
+    future week is invisible to the dropdown while `picks_team_once_per_phase`
+    still refuses it. The options grey out what is knowable and the RPC's
+    `team_already_used` is the authority for the rest; a hint under the list says
+    so, because a refusal with no explanation reads as a bug.
+  - **The tab bar needed a structural fix, not a fifth label.** Four tabs already
+    measured 82.4 / 70.7 / 60.9 / 66 at 320px against a 280px track — i.e. full —
+    and `Tabs` drew each option `flex-1 whitespace-nowrap px-3`, where a flex
+    item's `min-width: auto` refuses to shrink below its content. The bar is a
+    `Drawer` header sibling rather than something inside `main`'s clip, so the
+    overflow reached the DOCUMENT and scrolled the page sideways. `Tabs` now
+    carries **`min-w-0 truncate`** on the button, which turns "one more tab and
+    the page scrolls sideways" into "one more tab and a label gets an ellipsis";
+    `px-2 lg:px-3` reclaims 8px a tab where the pressure is, and "Members" gained
+    a `Roster` short form beside the two that already had one. `Tabs` has exactly
+    one real call site, so the primitive change is contained.
+  - **The desktop cap moved 620 → 700, and it is margin rather than a break.**
+    Measured in Chromium with the real Inter, "League Settings" is **113.8**
+    intrinsic at `px-3` — not the 125.2 this file recorded for four tabs, which
+    is Figma-vs-Chromium drift worth knowing about before trusting either number.
+    Each tab gets (cap−8)/5, so 620 would have left 8.6px and 700 leaves 24.6.
+    620 would NOT have clipped; 8.6px is simply the same thin margin the
+    four-tab note already called uncomfortable, and a sixth tab would erase it.
+    The cap is a function of the TAB COUNT, and there is a test asserting five
+    and no more for exactly that reason.
+  - **`px-1 lg:px-3` on the button is what keeps the ellipsis unused**, and below
+    `lg` it is nearly free: `flex-1` gives every tab the same rendered width
+    whatever its padding, so horizontal padding there decides only the INTRINSIC
+    width — i.e. when a label starts truncating. Measured at 320, where the bar
+    is 273 and each tab gets 53: at `px-3` the widest short label ("League") is
+    65.2 and four of five clip; at `px-2`, 57.2, and even "Roster" clears by
+    0.4; at `px-1`, 49.2 with 3.8 to spare.
+
+  Measured in Chromium at 320 / 360 / 375 / 393 / 430 / 768 / 1023 / 1024 / 1280
+  / 1440 with the build's own Inter: no tab truncates at any width, and
+  `document.scrollWidth <= innerWidth` at every one. Below `lg` the short labels
+  measure Roster 44.6 / Picks 38.3 / League 49.2 / Feed 35.2 / Mail 34.5 against
+  a 53px share at 320; from `lg` the long ones are Members 76.9 / Picks 54.3 /
+  League Settings 113.8 / Data Feed 81.2 / Emails 62.9 against 138.4.
+  - **The Picks tab costs ZERO extra queries.** `app/account/page.tsx` already
+    called `loadLeague` for admins and read only `members` off it; `games`,
+    `currentWeek`, `nowIso` and `hiddenPickUserIds` were fetched and thrown away.
+    They are folded server-side by `buildAdminPickData` rather than passed whole —
+    `games` is ~272 rows, and handing them to a client component would put them
+    in the RSC payload on every admin render for a tab most admins open rarely.
+  - **The rescore is best-effort and says so.** `setPickForMember` writes through
+    the RPC and then calls `recomputeSeason` with the service role, scoped to the
+    one league. If the service key is unreadable the action still returns `ok`
+    with `rescored: false` and the drawer prints "the standings will catch up on
+    the next feed check" — failing the action after a write that landed would
+    report "nothing happened" about a change that did, which is `release_failed`'s
+    lesson. `recomputeSeason` refolds weeks 1..throughWeek from scratch, so a
+    skipped rescore self-heals on the `*/5` cron.
 
 - **The scorer grouped picks by PERSON, not by entry, and with two entries in
   the league that was a wrong elimination waiting to happen.** `recomputeSeason`

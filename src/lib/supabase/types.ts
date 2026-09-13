@@ -143,6 +143,53 @@ export interface Database {
         Relationships: [];
       };
       /**
+       * 0019: who changed whose pick, from what, to what, and when.
+       *
+       * `account_closures`' shape (0010) — RLS on, a SELECT policy for admins of
+       * the league, and deliberately NO insert/update/delete policies at all.
+       * The absence is the enforcement: only `admin_set_pick` can write here.
+       *
+       * Nothing in the app reads it yet. It exists because this is the one write
+       * where one person silently rewrites another person's game record, so
+       * "my Week 6 pick changed" needs an answer.
+       *
+       * `from_team` / `to_team` are null on either side of the change: null-from
+       * means there was no pick, null-to means it was cleared.
+       */
+      pick_overrides: {
+        Row: {
+          id: string;
+          group_id: string;
+          user_id: string;
+          entry_no: number;
+          season: number;
+          season_type: "pre" | "regular" | "post";
+          week: number;
+          from_team: string | null;
+          from_result: string | null;
+          to_team: string | null;
+          /** The admin who made the change — `auth.uid()` at write time. */
+          admin_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          user_id: string;
+          entry_no?: number;
+          season: number;
+          season_type?: "pre" | "regular" | "post";
+          week: number;
+          from_team?: string | null;
+          from_result?: string | null;
+          to_team?: string | null;
+          admin_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["pick_overrides"]["Insert"]>;
+        Relationships: [];
+      };
+      /**
        * One row per reminder email, appended by the send job — see migration
        * 0015. RLS is on with NO policies, so this is unreadable with the anon
        * key and reachable only through `reminder_status_for_admin`; the writer
@@ -372,6 +419,38 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      /**
+       * 0019: an admin corrects any entry's pick for a week that has ALREADY
+       * STARTED. The one privileged write path into another member's picks —
+       * every `picks` RLS policy requires `user_id = auth.uid()` and an
+       * un-kicked-off game, so this is `security definer` and checks
+       * `is_group_admin` itself.
+       *
+       * `p_team_id` is NOT optional and null means CLEAR: a defaulted null would
+       * turn a dropped field into a deleted pick.
+       *
+       * Raises `not_authenticated`, `not_admin`, `bad_entry`, `bad_week`,
+       * `group_not_found`, `member_not_found`, `week_not_scheduled`,
+       * `week_not_started`, `no_game_for_team`, `team_already_used`.
+       *
+       * Returns jsonb carrying `season` and `throughWeek` so the caller can
+       * re-score without a second round trip for the schedule — and so "the live
+       * week" has one definition, computed off the database's clock. Typed
+       * loosely on `feed_status_for_admin`'s precedent: a hand-written row type
+       * here would be a second source of truth for a shape the database owns.
+       */
+      admin_set_pick: {
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          p_week: number;
+          /** Null clears the week's pick. */
+          p_team_id: string | null;
+          /** Defaulted in SQL, so omitting it still means entry 1. */
+          p_entry_no?: 1 | 2;
+        };
+        Returns: unknown;
+      };
       account_exists: { Args: { p_email: string }; Returns: boolean };
       /**
        * 0009: the published league's public board, for the signed-out landing

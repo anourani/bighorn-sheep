@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { isJoinOpen } from "@/lib/game/season";
 import type { AccountData } from "@/lib/league/load";
 import type { Member } from "@/lib/league/types";
+import type { AdminPickData } from "@/lib/league/admin-picks";
 
 /**
  * The account page.
@@ -50,6 +51,7 @@ import type { Member } from "@/lib/league/types";
 export function AccountClient({
   account,
   adminMembers,
+  adminPicks,
   now,
 }: {
   account: AccountData;
@@ -60,6 +62,13 @@ export function AccountClient({
    * it cannot disagree. See `app/account/page.tsx` for why it fails closed.
    */
   adminMembers: Member[] | null;
+  /**
+   * The Picks tab's payload, folded from data `loadLeague` already fetched for
+   * `adminMembers`. Null on exactly the same terms — it is not a second gate,
+   * and `admin` below deliberately keeps reading `adminMembers` so the card and
+   * the panel behind it cannot disagree about who is an admin.
+   */
+  adminPicks: AdminPickData | null;
   now: string;
 }) {
   const { viewer, leagues, activeGroupId } = account;
@@ -192,6 +201,7 @@ export function AccountClient({
           members={admin.members}
           appUrl={appUrl}
           phase={admin.league.phase}
+          picks={adminPicks}
         />
       ) : null}
     </>
