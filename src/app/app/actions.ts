@@ -374,10 +374,35 @@ export async function submitPick(input: {
       usedHistory = usedHistory.filter((h) => h.teamId !== input.teamId);
     }
 
+    /*
+     * The pick this write would REPLACE, and the game it is committed to.
+     *
+     * Looked up here rather than beside the write below, because `canPick` needs
+     * it: once your pick for this week has kicked off you are committed, and the
+     * week closes — every card, not just the one you took. That is a different
+     * question from the TARGET team's kickoff, which `canPick`'s `game` answers.
+     *
+     * One lookup covering both phases: `myPicks` and `games` are already scoped
+     * to `seasonType`, so the practice round locks on the same rule with no
+     * second branch. A pick whose fixture is missing from `games` counts as
+     * locked — `isExistingPickLocked` carries that reasoning.
+     */
+    const existing = myPicks.find((p) => p.week === week);
+    const existingGame = existing ? games.find((g) => g.id === existing.game_id) : undefined;
+
     const guard = canPick({
       member: { status: memberStatus, history: usedHistory },
       teamId: input.teamId,
       game: game ? { status: game.status, kickoff: game.kickoff } : null,
+      // `isExistingPickLocked` inside `canPick` does the deciding, including the
+      // fail-closed answer for a pick whose fixture is missing from `games`.
+      existingPick: existing
+        ? {
+            game: existingGame
+              ? { status: existingGame.status, kickoff: existingGame.kickoff }
+              : null,
+          }
+        : null,
       // Entry-window enforcement is a JOIN concern (join_by_invite), not a weekly
       // one: an enrolled member picks every week, locked per-game by kickoff. So
       // the entry gate is intentionally satisfied here.
@@ -434,9 +459,7 @@ export async function submitPick(input: {
      * The two-tab race this gives up on — both tabs seeing no row and both
      * inserting — is the one the 23505 handler below already existed for.
      */
-    const existing = myPicks.find((p) => p.week === week);
-
-    const { error } = existing
+    const { data: written, error } = existing
       ? await supabase
           .from("picks")
           .update({
@@ -446,6 +469,12 @@ export async function submitPick(input: {
             updated_at: now.toISOString(),
           })
           .eq("id", existing.id)
+          // `.select()` so the update REPORTS what it touched. Without it a
+          // refusal by RLS is indistinguishable from a success: a failing
+          // `using` clause filters the row out of an UPDATE rather than raising,
+          // so `error` is null, zero rows change, and the action returned `ok`
+          // over a pick that never moved. See the zero-row branch below.
+          .select("id")
       : await supabase.from("picks").insert({
           group_id: input.groupId,
           user_id: user.id,
@@ -504,6 +533,44 @@ export async function submitPick(input: {
       // hand back a stable one.
       console.error("[submitPick] write failed", error);
       return { ok: false, error: "unexpected_error" };
+    }
+
+    /*
+     * The update touched NOTHING, and said so with no error.
+     *
+     * RLS filters rows on UPDATE rather than raising: a row failing the policy's
+     * `using` clause is simply not in the scan. So this branch is the database
+     * declining the write, and the action used to report `ok` over it — the
+     * client painted the new team, `pruneAgreedPicks` never got agreement, and
+     * the pick silently reverted on the next props refresh.
+     *
+     * `"picks update own before kickoff"` has two predicates: `user_id =
+     * auth.uid()`, which necessarily holds because the row came out of
+     * `myPicks`, and the existing game's `kickoff > now() and status =
+     * 'scheduled'`. So the only thing that can filter it is the game-state test,
+     * and `pick_locked` is the honest answer rather than a catch-all.
+     *
+     * This is NOT a redundant backstop for the guard above. That test is
+     * `isKickedOff`, and RLS's is wider: `status = 'scheduled'` also excludes a
+     * POSTPONED game whose kickoff is still in the future, which `isKickedOff`
+     * calls open. So there is a real case the guard cannot see and only this
+     * catches — as well as the window where kickoff passes between our read of
+     * `games` and the write.
+     *
+     * Insert is not checked the same way: a refused INSERT violates `with check`,
+     * which DOES raise, and lands in the `error` branch above.
+     */
+    if (existing && written !== null && written.length === 0) {
+      console.error("[submitPick] update matched no rows — RLS refused it", {
+        pickId: existing.id,
+        week,
+      });
+      if (releasable) {
+        revalidatePath("/app");
+        revalidatePath("/app/standings");
+        return { ok: false, error: "release_failed" };
+      }
+      return { ok: false, error: "pick_locked" };
     }
 
     revalidatePath("/app");

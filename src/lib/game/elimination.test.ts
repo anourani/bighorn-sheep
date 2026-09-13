@@ -4,6 +4,7 @@ import type { GroupRules } from "../league/types";
 import {
   canPick,
   computeStatus,
+  isExistingPickLocked,
   countStrikes,
   evaluateTeamPick,
   evaluateWeek,
@@ -132,6 +133,9 @@ describe("computeStatus", () => {
 describe("canPick", () => {
   const base = {
     member: { status: "alive" as const, history: [{ teamId: "phi" }], currentPick: null },
+    // No pick for the target week yet — the ordinary first-pick case, and the
+    // shape every assertion below inherits unless it says otherwise.
+    existingPick: null,
     entryOpen: true,
     now: new Date("2025-09-07T12:00:00.000Z"),
   };
@@ -183,6 +187,121 @@ describe("canPick", () => {
       ok: false,
       reason: "no_game_for_team",
     });
+  });
+
+  /*
+   * THE FROZEN WEEK. Once this entry's pick for the target week has kicked off
+   * the member is committed, and no team in that week may be written — not the
+   * thirteen Sunday fixtures that have not played, and not the one they took.
+   *
+   * The bug: the guard tested only the TARGET team's game, so a Thursday-night
+   * pick locked while every other card stayed live. RLS refused those writes all
+   * along and reported no error (a failing `using` clause filters an UPDATE
+   * rather than raising), so the screen said the pick had saved.
+   */
+  const started = { status: "in_progress" as GameStatus, kickoff: scheduled.kickoff };
+
+  it("refuses to move a pick whose own game has kicked off", () => {
+    // The whole bug in one assertion: "kc" is free, its Sunday game is hours
+    // away, and the answer is still no.
+    expect(
+      canPick({ ...base, teamId: "kc", game: scheduled, existingPick: { game: started } }),
+    ).toEqual({ ok: false, reason: "pick_locked" });
+  });
+
+  it("still allows changing a pick that has NOT kicked off", () => {
+    // The regression to watch for. Changing an un-started pick is most of what
+    // the screen is for, and closing this would break picking ahead outright.
+    expect(
+      canPick({ ...base, teamId: "kc", game: scheduled, existingPick: { game: scheduled } }),
+    ).toEqual({ ok: true });
+  });
+
+  it("leaves the week open for a member who has not picked in it", () => {
+    // The case the freeze must not over-reach into: a game elsewhere in the week
+    // has started, but you are committed to nothing, so the slate is still yours.
+    // `existingPick` is about YOUR pick, never "has any game this week started".
+    expect(canPick({ ...base, teamId: "kc", game: scheduled, existingPick: null })).toEqual({
+      ok: true,
+    });
+  });
+
+  it("treats a pick whose fixture is missing as locked", () => {
+    // Fail CLOSED. A wrongly-frozen week costs an explained refusal; a wrongly
+    // open one rewrites a game record already in play.
+    expect(
+      canPick({ ...base, teamId: "kc", game: scheduled, existingPick: { game: null } }),
+    ).toEqual({ ok: false, reason: "pick_locked" });
+  });
+
+  it("reports pick_locked ahead of every team-level reason", () => {
+    // Precedence is the copy's problem, not the outcome's: when the week is
+    // frozen, "you've already used that team" / "that team isn't playing" /
+    // "that game has kicked off" all invite the player to go and try a
+    // different card, and every other card will fail identically.
+    const frozen = { ...base, existingPick: { game: started } };
+    expect(canPick({ ...frozen, teamId: "phi", game: scheduled }).ok).toBe(false);
+    expect(canPick({ ...frozen, teamId: "phi", game: scheduled })).toEqual({
+      ok: false,
+      reason: "pick_locked",
+    });
+    expect(canPick({ ...frozen, teamId: "kc", game: null })).toEqual({
+      ok: false,
+      reason: "pick_locked",
+    });
+    expect(canPick({ ...frozen, teamId: "kc", game: started })).toEqual({
+      ok: false,
+      reason: "pick_locked",
+    });
+  });
+
+  it("reports eliminated ahead of pick_locked", () => {
+    // Elimination is the larger fact: it closes every week, where a lock closes
+    // only this one.
+    expect(
+      canPick({
+        ...base,
+        member: { ...base.member, status: "eliminated" },
+        teamId: "kc",
+        game: scheduled,
+        existingPick: { game: started },
+      }),
+    ).toEqual({ ok: false, reason: "eliminated" });
+  });
+});
+
+describe("isExistingPickLocked", () => {
+  const now = new Date("2025-09-07T12:00:00.000Z");
+  const future = { status: "scheduled" as GameStatus, kickoff: "2025-09-07T17:00:00.000Z" };
+
+  it("says no when there is no pick at all", () => {
+    // A Thursday kickoff does not close a week you never picked.
+    expect(isExistingPickLocked(null, now)).toBe(false);
+  });
+
+  it("says no while the pick's game is still ahead", () => {
+    expect(isExistingPickLocked({ game: future }, now)).toBe(false);
+  });
+
+  it("says yes once the game is under way", () => {
+    expect(isExistingPickLocked({ game: { ...future, status: "in_progress" } }, now)).toBe(true);
+  });
+
+  it("says yes on a stale feed whose kickoff has simply passed", () => {
+    // `isKickedOff`'s own guard: still "scheduled", but the clock says otherwise.
+    expect(isExistingPickLocked({ game: future }, new Date("2025-09-07T17:30:00.000Z"))).toBe(true);
+  });
+
+  it("says yes when the pick's fixture is missing — fail closed", () => {
+    expect(isExistingPickLocked({ game: null }, now)).toBe(true);
+  });
+
+  it("calls a POSTPONED game with a future kickoff OPEN, which RLS does not", () => {
+    // Deliberate, and the reason `submitPick`'s zero-row check is not a
+    // redundant backstop for this function. RLS gates on `status = 'scheduled'`,
+    // so it refuses this row while `isKickedOff` lets it through — the one case
+    // the guard structurally cannot see, caught at the write instead.
+    expect(isExistingPickLocked({ game: { ...future, status: "postponed" } }, now)).toBe(false);
   });
 });
 
@@ -279,6 +398,7 @@ describe("preseason results never reach the regular-season fold", () => {
       member: { status: "alive", history: [] },
       teamId: "kc",
       game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
+      existingPick: null,
       entryOpen: true,
       now: new Date("2026-09-10T00:00:00.000Z"),
     });
@@ -289,6 +409,7 @@ describe("preseason results never reach the regular-season fold", () => {
       member: { status: "alive", history: [{ teamId: "kc" }] },
       teamId: "kc",
       game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
+      existingPick: null,
       entryOpen: true,
       now: new Date("2026-09-10T00:00:00.000Z"),
     });

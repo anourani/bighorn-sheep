@@ -21,10 +21,18 @@ export interface WritabilityInput {
   viewingFuture: boolean;
   /** The status of the ENTRY being played, not of the person playing it. */
   entryStatus: Member["status"];
+  /**
+   * The entry's EXISTING pick for the week on screen has kicked off.
+   *
+   * Read off server truth rather than the optimistic overlay: an overlay entry
+   * is by definition a pick whose game has not started, so reading it would let
+   * an in-flight value unlock a week the server still holds locked.
+   */
+  pickLocked: boolean;
 }
 
 /**
- * Two independent gates, and both have to open.
+ * Three independent gates, and all of them have to open.
  *
  * THE WEEK: the live week and everything after it. Stated as a positive rather
  * than as `!viewingPast`, even though the two are identical today —
@@ -40,10 +48,23 @@ export interface WritabilityInput {
  * an error line. The grid has to agree with the guard, or it is offering
  * something the server will refuse.
  *
+ * THE PICK: once your pick for this week has kicked off, you are committed, and
+ * the WHOLE week closes — not just the card you picked. The per-card kickoff
+ * test below cannot express this: a Thursday-night pick locks while the Sunday
+ * games are still hours away, so every other card in that week stayed in colour
+ * with an enabled radio and invited a tap that rewrote a pick already in play.
+ * The database refused it all along — RLS `"picks update own before kickoff"`
+ * gates the EXISTING row's game — but a failing `using` clause FILTERS a row on
+ * UPDATE rather than raising, so the write matched nothing, reported no error,
+ * and the screen said it had saved. This gate is what stops the offer being made.
+ *
  * Per-game locks stay the surface's own job — `buildGridCards` refuses a card
- * whose kickoff has passed — so this is a week-and-entry gate, not a pick gate.
+ * whose own kickoff has passed, which is what closes the started game's two
+ * teams in a week you have NOT picked yet. So this is a week-entry-and-pick
+ * gate; the card gate remains beneath it.
  */
 export function isEntryWritable(input: WritabilityInput): boolean {
   if (input.entryStatus === "eliminated") return false;
+  if (input.pickLocked) return false;
   return input.isCurrent || input.viewingFuture;
 }
