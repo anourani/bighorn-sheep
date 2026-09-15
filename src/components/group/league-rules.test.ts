@@ -46,14 +46,14 @@ describe("the rules dialog's shape", () => {
 
   /*
    * `list-decimal` is load-bearing, not decoration. Tailwind's preflight sets
-   * `list-style: none` on every ol and ul, so dropping it renders seven
+   * `list-style: none` on every ol and ul, so dropping it renders eight
    * unnumbered paragraphs — which reads as a copy bug and sends the next person
    * looking in the wrong file entirely.
    */
   it("numbers the rules with an ordered list that actually shows markers", async () => {
     const src = await code(MODAL);
     expect(src).toContain("list-decimal");
-    expect(src.match(/<li>/g) ?? []).toHaveLength(7);
+    expect(src.match(/<li>/g) ?? []).toHaveLength(8);
   });
 
   /*
@@ -92,6 +92,12 @@ describe("the rules dialog's shape", () => {
     expect(rules).not.toContain("group.rules");
     expect(rules).not.toContain("tieRule");
     expect(rules).not.toContain("eliminationType");
+    // The two-entry rule states the buy-in is owed per entry and deliberately
+    // does NOT name the figure: `LeagueDues` and `AddEntryCta` both print it
+    // from `buyInCents`, and a derived amount in here is the same trade this
+    // block already refused for the tie and elimination clauses.
+    expect(rules).not.toContain("buyInCents");
+    expect(rules).not.toContain("formatMoney");
     // The tiles, outside that slice, still do.
     expect(src).toContain("group.rules.tieRule");
   });

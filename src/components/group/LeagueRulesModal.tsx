@@ -25,7 +25,7 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
  * The league's rules, in full, for everyone — as opposed to `AdminSettingsDrawer`,
  * which is the admin's control panel behind the gear.
  *
- * THE SEVEN RULES ARE FIXED COPY, and that is a decision rather than an
+ * THE EIGHT RULES ARE FIXED COPY, and that is a decision rather than an
  * oversight. They were written by the commissioner and they assert this
  * league's settings outright: single elimination, and a tie counting as a loss.
  * The previous version generated those two clauses from `group.rules` so the
@@ -80,7 +80,11 @@ export function LeagueRulesModal({
               pick loses or the game ends in a tie, you&apos;re out.
             </li>
             <li>
-              You can only pick each team once per season. Your picks are your own. They
+              You can have up to two entries in this league. Each entry plays its own picks and
+              its own run at the season, and the league buy-in is due for every entry you create.
+            </li>
+            <li>
+              Each entry can only use a team once per season. Your picks are your own. They
               don&apos;t affect what anyone else is allowed to pick.
             </li>
             <li>
