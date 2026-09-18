@@ -34,6 +34,12 @@ export function PublicStandings({ data }: { data: PublicLeagueData }) {
    * `games` to the current week, which is all `rankMembers` reads — it only
    * ever asks the index for `currentWeek`, the same invariant `cellFor`'s
    * three-branch split rests on.
+   *
+   * That invariant survived ranking gaining a SETTLED-week basis, and only
+   * because `historySignals` reads `member.history` rather than the index. Had
+   * it looked a week up instead, every lookup here would have returned
+   * undefined and this board would have bucketed the whole league as
+   * un-started while /app/standings looked perfectly correct.
    */
   const ranked = useMemo(
     () =>

@@ -22,11 +22,16 @@ export function StandingsClient({ data }: { data: LeagueData }) {
   const [rulesOpen, setRulesOpen] = useState(false);
 
   /*
-   * The live week decides the order now, so ranking needs the same game index,
-   * rules and clock the grid reads — see `rankMembers`. `hiddenPickUserIds` is
-   * not optional in spirit: without it a rival whose pick is locked but not yet
-   * revealed reaches the client as nothing at all, and would sort as though
-   * they had not picked.
+   * Ranking needs the same game index, rules and clock the grid reads — see
+   * `rankMembers`, which decides for itself WHICH week the order comes off.
+   *
+   * It is not simply the live week: for the first days of a week nearly every
+   * pick in it is still padlocked, so the board keeps the last settled week's
+   * order until the first team is revealed. Nothing about an unrevealed pick —
+   * not even whether one exists — is allowed to move a row.
+   *
+   * `hiddenPickUserIds` is therefore read only once the live week IS the ranked
+   * week; the grid below reads it in every phase, for the padlock.
    */
   const ranked = useMemo(
     () =>
@@ -116,8 +121,13 @@ export function StandingsClient({ data }: { data: LeagueData }) {
     });
     // The practice week and the practice game index, never the regular ones.
     // Everyone here is forced alive, so the eliminated tier is inert and the
-    // whole table orders on how the current PRACTICE week is going, then on
+    // whole table orders on how the ranked PRACTICE week is going, then on
     // uncapped practice losses.
+    //
+    // The reveal gate applies here unchanged, off the practice history. One
+    // consequence worth knowing: a practice week before a member's
+    // `scoredFromWeek` leaves no history entry, so it reads as no pick — which
+    // agrees with `cellFor` drawing that cell empty rather than missed.
     return rankMembers(merged, {
       currentWeek: practice.currentWeek,
       gameForTeam: practiceIdx.gameForTeam,
