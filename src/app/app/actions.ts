@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { canPick } from "@/lib/game/elimination";
+import { isAfterElimination } from "@/lib/league/post-elimination";
 import { resolveCurrentWeek, resolvePickWeek, seasonPhase } from "@/lib/game/season";
 import { recomputeSeason, rowToGame } from "@/lib/game/score";
 import { FINAL_WEEK, REGULAR_WEEKS } from "@/lib/nfl/calendar";
@@ -280,16 +281,21 @@ export async function submitPick(input: {
     // `myPicks`, so scoping it once scopes all of them.
     const myPicks = (allMyPicks ?? []).filter((p) => (p.entry_no ?? 1) === entryNo);
 
-    // Which week is live, whether this member may pick at all, and which teams
-    // they have already spent — all three answered per phase.
+    // Which week is live and which teams this entry has already spent — both
+    // answered per phase.
     //
-    // Practice and the real league cannot reach each other in either direction.
-    // A regular-season elimination can't block practice, because `memberStatus`
-    // below is not read for a 'pre' pick; and a practice loss can't touch the real
-    // league, because nothing about practice is stored — `group_members.status` is
-    // written only by `recomputeSeason`, which filters to `season_type = 'regular'`.
+    // NOT whether this member may pick at all. `membership.status` is
+    // deliberately not read here: an eliminated entry keeps picking for the
+    // weeks after it went out, and those rows are its own private game. What
+    // keeps them off the standings and out of every other member's browser is
+    // 0020's SQL (`entry_out_before_week`), not a refusal on this path — see
+    // `lib/league/post-elimination.ts`. The scorer never counts them either:
+    // `computeStatus` stops folding at the elimination week.
+    //
+    // Practice and the real league cannot reach each other in either direction:
+    // nothing about practice is stored — `group_members.status` is written only
+    // by `recomputeSeason`, which filters to `season_type = 'regular'`.
     let week: number;
-    let memberStatus = membership.status;
     let usedHistory: { teamId: string }[];
 
     if (seasonType === "pre") {
@@ -321,14 +327,9 @@ export async function submitPick(input: {
       if (!resolved.ok) return { ok: false, error: resolved.error };
       week = resolved.week;
       const me = practice.members[membership.id];
-      // NOTHING ELIMINATES IN PRACTICE, so the guard's status test is satisfied
-      // outright — same shape as the `entryOpen: true` below it, and for the same
-      // kind of reason: the condition is answered by the round's rules rather than
-      // by this member's record. `PracticeMember` has no `status` to read.
-      //
-      // This is the whole fix for the bug where a losing preseason pick refused
-      // every later practice pick with "You're eliminated, so picks are closed."
-      memberStatus = "alive";
+      // NOTHING ELIMINATES IN PRACTICE, and nothing eliminates on this path
+      // any more either — `canPick` has no status test. `PracticeMember` has no
+      // `status` to read, which is now the same shape as the regular branch.
       usedHistory = practiceUsedTeams(me, { excludeWeek: week });
     } else {
       // REGULAR_WEEKS, deliberately not the weeks present in `games`: an unloaded
@@ -391,7 +392,7 @@ export async function submitPick(input: {
     const existingGame = existing ? games.find((g) => g.id === existing.game_id) : undefined;
 
     const guard = canPick({
-      member: { status: memberStatus, history: usedHistory },
+      member: { history: usedHistory },
       teamId: input.teamId,
       game: game ? { status: game.status, kickoff: game.kickoff } : null,
       // `isExistingPickLocked` inside `canPick` does the deciding, including the
@@ -1139,6 +1140,37 @@ export async function setPickForMember(input: {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "not_authenticated" };
+
+    /*
+     * A week AFTER the entry was eliminated is not the league's to correct.
+     *
+     * An eliminated entry keeps picking for itself, and 0020 hides those rows
+     * from every other reader — the admin included — so the drawer draws such
+     * a week as "Out" with a disabled control (`viewPickForWeek`). This is the
+     * same refusal on the server, because a disabled control is not a gate:
+     * a hand-rolled call naming that week would otherwise overwrite, or clear,
+     * a pick the admin cannot even see. `admin_set_pick` itself is untouched
+     * (its 0019 body is long, and the row it would write is one only its
+     * owner can read back), so the check lives here, on the same predicate as
+     * every other consumer.
+     *
+     * `select("*")`, never a named column, on the repo's standing rule: a
+     * missing column raises 42703 and would take the whole tab down.
+     */
+    const { data: targetRows, error: targetError } = await supabase
+      .from("group_members")
+      .select("*")
+      .eq("group_id", input.groupId)
+      .eq("user_id", input.userId);
+    if (targetError) {
+      console.error("[setPickForMember] membership read failed", targetError);
+      return { ok: false, error: "pick_update_failed" };
+    }
+    const target = (targetRows ?? []).find((m) => (m.entry_no ?? 1) === entryNo);
+    if (!target) return { ok: false, error: "member_not_found" };
+    if (isAfterElimination({ status: target.status, eliminatedWeek: target.eliminated_week }, input.week)) {
+      return { ok: false, error: "member_eliminated" };
+    }
 
     const { data, error } = await supabase.rpc("admin_set_pick", {
       p_group_id: input.groupId,

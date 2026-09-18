@@ -147,8 +147,17 @@ export function isExistingPickLocked(
  * server-side (never trusted to the greyed-out UI).
  */
 export interface PickGuardInput {
-  /** Only the fields the guard actually needs — status and used-team history. */
-  member: { status: Member["status"]; history: { teamId: TeamId }[] };
+  /**
+   * Only the field the guard actually needs — the used-team history.
+   *
+   * No `status`, and its absence is deliberate. An eliminated entry may keep
+   * picking: the weeks after it went out are its own private game, drawn on
+   * its picks page and nowhere else (0020 is the privacy boundary — see
+   * `lib/league/post-elimination.ts`). The guard used to refuse
+   * `reason: "eliminated"` first, ahead of everything; there is no such reason
+   * any more, and nothing here reads the entry's status.
+   */
+  member: { history: { teamId: TeamId }[] };
   teamId: TeamId;
   /** The game the team plays in the target week. */
   game: Pick<Game, "status" | "kickoff"> | null;
@@ -172,7 +181,6 @@ export interface PickGuardInput {
 }
 
 export type PickRejection =
-  | "eliminated"
   | "pick_locked" // your pick for this week has kicked off — you are committed
   | "team_already_used"
   | "game_kicked_off"
@@ -181,7 +189,6 @@ export type PickRejection =
 
 export function canPick(input: PickGuardInput): { ok: true } | { ok: false; reason: PickRejection } {
   const { member, teamId, game, existingPick, entryOpen, now } = input;
-  if (member.status === "eliminated") return { ok: false, reason: "eliminated" };
   if (!entryOpen) return { ok: false, reason: "entry_closed" };
   // Ahead of the tests below it, because this is a fact about the member's own
   // record rather than about the team they just tapped: a bye or a spent team

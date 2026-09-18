@@ -112,7 +112,8 @@ from unnest(array['account_exists','create_group','join_by_invite',
                   'close_own_account','set_group_name','set_group_rules',
                   'set_member_preseason','record_feed_sync','feed_status_for_admin',
                   'reminder_due','reminder_status_for_admin','record_reminder_send',
-                  'add_entry','hidden_pick_member_ids','admin_set_pick']) f
+                  'add_entry','hidden_pick_member_ids','admin_set_pick',
+                  'entry_out_before_week']) f
 union all
 select 'table: ' || t,
        case when exists (select 1 from information_schema.tables

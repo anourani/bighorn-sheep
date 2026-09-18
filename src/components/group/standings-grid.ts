@@ -1,6 +1,7 @@
 import type { Game, TeamId } from "../../lib/nfl/types";
 import type { GroupRules, Member } from "../../lib/league/types";
 import { viewCurrentPick } from "../../lib/league/view";
+import { isAfterElimination } from "../../lib/league/post-elimination";
 
 /**
  * The standings table's pure half: what each cell shows, and where the scroller
@@ -84,15 +85,17 @@ export function cellFor(
    * agrees: `computeStatus` stops folding at elimination, so those weeks are
    * not counted against them either.
    *
-   * `eliminatedWeek != null` is load-bearing. It is optional on `Member`, and a
-   * row marked eliminated with no week recorded must fall through and draw its
-   * history rather than blank the entire season.
+   * `isAfterElimination` is the one predicate, shared with `toMember`, the
+   * public mapper and the admin Picks tab, and it carries the `eliminatedWeek
+   * != null` guard: a row marked eliminated with no week recorded falls
+   * through and draws its history rather than blanking the entire season.
+   *
+   * Since 0020 this is mostly a formality — the loader already drops those
+   * picks before they reach `history`, and the database refuses them to anyone
+   * but their owner. It stays because a cell is the last line, and a blank
+   * after the elimination week is what the board promises.
    */
-  if (
-    member.status === "eliminated" &&
-    member.eliminatedWeek != null &&
-    week > member.eliminatedWeek
-  ) {
+  if (isAfterElimination(member, week)) {
     return { kind: "empty" };
   }
 

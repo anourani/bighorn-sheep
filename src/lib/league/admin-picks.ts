@@ -1,5 +1,6 @@
 import type { Member } from "./types";
 import type { TeamId } from "../nfl/types";
+import { isAfterElimination } from "./post-elimination";
 
 /**
  * The rules behind the admin Control Center's Picks tab (migration 0019).
@@ -129,16 +130,27 @@ export function buildAdminPickData(input: {
 /**
  * What the admin may see about one entry's pick in one week.
  *
- * THREE states, and the third is the whole reason this is a function rather than
- * a ternary at the call site. RLS hands another member's pick back only once its
- * game has kicked off — so in the LIVE week, a member who has picked a 4pm game
- * is indistinguishable from a member who has not picked at all, and both would
- * render "No pick". An admin overwriting a pick they cannot see is not a
- * correction, so `hidden` is drawn with a padlock and its control is disabled.
+ * FOUR states, and the last two are the whole reason this is a function rather
+ * than a ternary at the call site. RLS hands another member's pick back only
+ * once its game has kicked off — so in the LIVE week, a member who has picked a
+ * 4pm game is indistinguishable from a member who has not picked at all, and
+ * both would render "No pick". An admin overwriting a pick they cannot see is
+ * not a correction, so `hidden` is drawn with a padlock and its control is
+ * disabled.
+ *
+ * `out` is the same shape one step further. An eliminated entry keeps picking
+ * for the weeks after it went out, and those picks are its own: 0020 hides
+ * them from every other member's reads, the admin's included, so here too the
+ * row would read "No pick" over a pick that exists. Drawn as "Out" with a
+ * disabled control, and tested FIRST — before the current-week branch — so a
+ * dead entry's live-week row cannot fall through to the padlock or to "No
+ * pick" and invite a blind overwrite. The elimination week itself is still
+ * editable: correcting the losing pick is the repair this tab exists for.
  */
 export type AdminPickView =
   | { kind: "team"; teamId: TeamId; result: "win" | "loss" | "push" | "pending" | null }
   | { kind: "hidden" }
+  | { kind: "out"; eliminatedWeek: number }
   | { kind: "none" };
 
 export function viewPickForWeek(input: {
@@ -148,6 +160,12 @@ export function viewPickForWeek(input: {
   hiddenMemberIds: readonly string[];
 }): AdminPickView {
   const { member, week, currentWeek, hiddenMemberIds } = input;
+
+  if (isAfterElimination(member, week)) {
+    // `eliminatedWeek` is non-null whenever the predicate holds; restated for
+    // the type rather than asserted.
+    return { kind: "out", eliminatedWeek: member.eliminatedWeek ?? week };
+  }
 
   if (week === currentWeek) {
     const pick = member.currentPick;
@@ -205,15 +223,18 @@ export function usedTeamsForEntry(member: Member, exceptWeek: number): TeamId[] 
  * the RPC's on purpose.
  *
  * `admin_set_pick` gates on the WEEK having started; this also refuses a row
- * whose pick is hidden. The repo's rule is only that the UI must never offer
- * what the database would refuse, so being stricter is always legal — and here
- * it is the difference between a correction and a blind overwrite.
+ * whose pick is hidden, and a row for a week after the entry was eliminated.
+ * The repo's rule is only that the UI must never offer what the database would
+ * refuse, so being stricter is always legal — and here it is the difference
+ * between a correction and a blind overwrite. `setPickForMember` refuses the
+ * `out` case a second time on the server (`member_eliminated`), because a UI
+ * gate alone is not a gate.
  */
 export function canAdminEditPick(
   view: AdminPickView,
   week: number,
   started: readonly number[],
 ): boolean {
-  if (view.kind === "hidden") return false;
+  if (view.kind === "hidden" || view.kind === "out") return false;
   return started.includes(week);
 }

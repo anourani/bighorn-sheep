@@ -11,6 +11,7 @@ import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "@/lib/game/se
 import { FINAL_WEEK } from "@/lib/nfl/calendar";
 import { buildGameIndex } from "./games";
 import { entryKey, groupPicksByEntry } from "./entry-key";
+import { isAfterElimination } from "./post-elimination";
 import { derivePractice, type PracticeState } from "./practice";
 import { formatDisplayName } from "./name";
 import { mapPublicSnapshot, type PublicLeagueData } from "./public";
@@ -245,7 +246,23 @@ function toMember(row: MemberRow, profile: ProfileName | undefined, picks: PickR
   // Every PAST pick joins history now, resolved or not. It used to be dropped
   // when nothing would resolve it, and a dropped pick is drawn as a week that
   // was never picked at all — a red missed-pick tile since that landed.
+  //
+  // A pick AFTER THIS ENTRY'S ELIMINATION is dropped too, and this is the one
+  // filter here that IS about privacy — the viewer's own. An eliminated entry
+  // keeps picking for the weeks after it went out, and those rows are its own
+  // private game: they belong on its picks page (`viewerEntries[].picks`, which
+  // is built from the same rows and is NOT filtered) and never on a standings
+  // row, its own included. Another member's post-elimination rows never arrive
+  // at all — 0020's `"picks read own or revealed"` refuses them in SQL — so
+  // this line only ever bites on the viewer's own eliminated entry. Belt and
+  // braces behind the database, on the same predicate.
   for (const p of picks) {
+    // Spelled out field by field: the row is snake_case and the helper reads
+    // `eliminatedWeek`, so handing it the row whole would typecheck (the field
+    // is optional) and silently never filter. There is a source-text test.
+    if (isAfterElimination({ status: row.status, eliminatedWeek: row.eliminated_week }, p.week)) {
+      continue;
+    }
     if (p.week === currentWeek) {
       currentPick = { week: p.week, teamId: p.team_id, gameId: p.game_id };
     } else if (p.week < currentWeek) {

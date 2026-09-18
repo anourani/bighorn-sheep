@@ -58,7 +58,9 @@ export function buildGridCards(input: {
   selectedTeam: TeamId | null;
   /**
    * Whether this week may be WRITTEN to — false on a week already played, and
-   * false for every week once the ENTRY is eliminated.
+   * false once the entry's own pick for it has kicked off. NOT false for an
+   * eliminated entry: a knocked-out entry keeps picking, privately, and its
+   * grid stays live.
    *
    * Named before picking ahead existed, when "writable" and "the live week"
    * were the same set. They are not any more: every week from the live one

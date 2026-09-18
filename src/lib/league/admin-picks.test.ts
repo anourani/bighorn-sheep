@@ -198,6 +198,54 @@ describe("viewPickForWeek", () => {
     });
   });
 
+  /*
+   * AN ELIMINATED ENTRY'S LATER WEEKS ARE ITS OWN. It keeps picking after it
+   * goes out, and 0020 hides those rows from every other reader — the admin
+   * included — so without this branch the row would read "No pick" over a
+   * pick that exists and invite the same blind overwrite `hidden` prevents.
+   */
+  it("is `out` for a week after the entry was eliminated, whatever else it holds", () => {
+    const m = member({
+      id: "m-dead",
+      status: "eliminated",
+      eliminatedWeek: 3,
+      history: [{ week: 5, teamId: "kc", result: "win" }],
+      currentPick: { week: 6, teamId: "sf", gameId: "g6" },
+    });
+    expect(viewPickForWeek({ member: m, week: 5, currentWeek: 6, hiddenMemberIds })).toEqual({
+      kind: "out",
+      eliminatedWeek: 3,
+    });
+    expect(viewPickForWeek({ member: m, week: 6, currentWeek: 6, hiddenMemberIds })).toEqual({
+      kind: "out",
+      eliminatedWeek: 3,
+    });
+  });
+
+  it("wins over the hidden flag in the live week — a dead entry never gets a padlock", () => {
+    const m = member({ id: "m-hidden", status: "eliminated", eliminatedWeek: 2, currentPick: null });
+    expect(viewPickForWeek({ member: m, week: 6, currentWeek: 6, hiddenMemberIds }).kind).toBe("out");
+  });
+
+  it("still shows the elimination week itself and everything before it", () => {
+    // Correcting the losing pick is the repair this tab exists for.
+    const m = member({
+      id: "m-dead",
+      status: "eliminated",
+      eliminatedWeek: 3,
+      history: [
+        { week: 2, teamId: "gb", result: "win" },
+        { week: 3, teamId: "kc", result: "loss" },
+      ],
+    });
+    expect(viewPickForWeek({ member: m, week: 3, currentWeek: 6, hiddenMemberIds })).toEqual({
+      kind: "team",
+      teamId: "kc",
+      result: "loss",
+    });
+    expect(viewPickForWeek({ member: m, week: 2, currentWeek: 6, hiddenMemberIds }).kind).toBe("team");
+  });
+
   it("ignores a currentPick belonging to a different week", () => {
     // Defensive: `toMember` only ever sets currentPick for `currentWeek`, but a
     // stale prop must not paint week 6's team into week 5's row.
@@ -248,6 +296,10 @@ describe("usedTeamsForEntry", () => {
 describe("canAdminEditPick", () => {
   it("refuses a hidden pick even in a started week — the UI is stricter than the RPC", () => {
     expect(canAdminEditPick({ kind: "hidden" }, 6, [1, 2, 3, 4, 5, 6])).toBe(false);
+  });
+
+  it("refuses a week after the entry was eliminated, started or not", () => {
+    expect(canAdminEditPick({ kind: "out", eliminatedWeek: 3 }, 5, [1, 2, 3, 4, 5, 6])).toBe(false);
   });
 
   it("refuses a week that has not started", () => {

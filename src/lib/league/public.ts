@@ -4,6 +4,7 @@ import { evaluateTeamPick } from "../game/elimination";
 import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "../game/season";
 import { countdown } from "../time";
 import { buildGameIndex } from "./games";
+import { isAfterElimination } from "./post-elimination";
 import { survivorCounts, type HeadcountInput } from "./view";
 import type { GroupRules, HistoryPick, Member } from "./types";
 
@@ -110,14 +111,22 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
   const currentWeek = resolveCurrentWeek({ phase, now, games: allGames, finalWeek: FINAL_WEEK });
 
   // 5. Members. Every pick in the payload is already revealed — the SQL dropped
-  //    the rest — so this splits by week alone and never re-derives privacy.
+  //    the rest — so this splits by week alone and never re-derives the kickoff
+  //    privacy rule. The ONE privacy filter it does repeat is elimination: a
+  //    pick after the member's `eliminated_week` is dropped, the same test
+  //    0020's `public_league_snapshot` applies in SQL. The SQL is the boundary
+  //    (the anon key ships in the bundle); this is the mapper declining to undo
+  //    it, on a database one migration behind the code.
   const members: Member[] = raw.members.filter(isRecord).map((m) => {
     const rawPicks = Array.isArray(m.picks) ? m.picks.filter(isRecord) : [];
     const history: HistoryPick[] = [];
     let currentPick: Member["currentPick"] = null;
+    const status: Member["status"] = m.status === "eliminated" ? "eliminated" : "alive";
+    const eliminatedWeek = typeof m.eliminated_week === "number" ? m.eliminated_week : null;
 
     for (const p of rawPicks as unknown as RawPick[]) {
       if (typeof p.week !== "number" || typeof p.team_id !== "string") continue;
+      if (isAfterElimination({ status, eliminatedWeek }, p.week)) continue;
       if (p.week === currentWeek) {
         currentPick = { week: p.week, teamId: p.team_id as TeamId, gameId: p.game_id };
         continue;
@@ -178,9 +187,9 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
       buyInPaidAt: null,
       showPreseason: false,
       role: m.role === "admin" ? "admin" : "player",
-      status: m.status === "eliminated" ? "eliminated" : "alive",
+      status,
       strikes: typeof m.strikes === "number" ? m.strikes : 0,
-      eliminatedWeek: typeof m.eliminated_week === "number" ? m.eliminated_week : null,
+      eliminatedWeek,
       history,
       currentPick,
     };
