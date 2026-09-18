@@ -42,7 +42,7 @@ Migrations must run in order: `0001_init` → `0002_join_by_invite` →
 `0011_admin_settings` → `0012_create_group_entry_deadline` →
 `0013_lock_membership_writes` → `0014_pick_consistency` →
 `0015_pick_and_buy_in_reminders` → `0016_profile_tour` → `0017_two_entries` →
-`0018_join_window` → `0019_admin_set_pick`. (Note `0013` is TWO files — `0013_lock_membership_writes` and
+`0018_join_window` → `0019_admin_set_pick` → `0020_picks_after_elimination`. (Note `0013` is TWO files — `0013_lock_membership_writes` and
 `0013_remove_member` — which share a number and are ordered as written here.)
 
 **0013 and 0014 close two direct-write holes reachable with the anon key**, and
@@ -633,6 +633,84 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **An ELIMINATED entry keeps picking, and nobody else can see what it picks.**
+  A knocked-out entry used to get an inert grid and a red "You're eliminated, so
+  picks are closed." It now picks week to week exactly as a living entry does,
+  and those picks are drawn on its own picks page — the week strip chips and
+  the hero — and nowhere else. `0020_picks_after_elimination` is the migration
+  and **it must be applied to production by hand.** Until it is, the app half
+  is LIVE and the privacy half is NOT: an eliminated entry can pick, and its
+  post-elimination picks reach every other member's browser once their games
+  kick off (the standings still blank them, but the rows are in the payload).
+  Apply 0020 before telling anyone the feature exists. Eight things:
+  - **The rule is one predicate, spelled twice on purpose.** "After
+    elimination" is `status = 'eliminated' AND eliminated_week IS NOT NULL AND
+    week > eliminated_week`, regular season only. In SQL it is
+    `entry_out_before_week` (0020); in TypeScript it is `isAfterElimination`
+    (`src/lib/league/post-elimination.ts`, a leaf), and that module's test reads
+    the migration file to keep the two aligned. The elimination week ITSELF is
+    not "after": the losing pick is the record of how the entry went out and
+    stays on the board. A null `eliminated_week` hides nothing on either side,
+    which is `cellFor`'s standing guard promoted to a rule.
+  - **The privacy boundary is SQL, for 0009's reason.** The anon key ships in
+    the bundle, so a filter in `load.ts` alone would be theatre. 0020 rewrites
+    three things: 0001's `"picks read own or revealed"` (the "revealed" branch
+    gains `and not entry_out_before_week(...)`; the own-row branch is
+    untouched, which is what still draws your picks on your own page), 0017's
+    `hidden_pick_member_ids` (no padlock for a dead entry — "has picked" is
+    itself a fact the league is not supposed to have), and 0017's
+    `public_league_snapshot` (the anonymous board, in both its `visible` and
+    `hidden` CTEs). The four `picks` write policies are NOT touched: they never
+    tested status, 0014 says so, and it is still true that a post-elimination
+    pick confers no advantage — `computeStatus` stops folding at the
+    elimination week, so no strike, no status and no standings row can move.
+  - **The client filters too, and only ever bites on the viewer's OWN row.**
+    `toMember` (`load.ts`) and `mapPublicSnapshot` (`public.ts`) both skip
+    post-elimination picks before they reach `Member.history` /
+    `currentPick`; `cellFor` keeps its blank as the last line. Another member's
+    rows never arrive once 0020 is applied, so what this guards is the
+    eliminated viewer's own standings row on a database one migration behind,
+    plus every consumer of `Member` that is not the grid (`rankMembers`, the
+    admin tab). `viewerEntries[].picks` is built from the same rows and is
+    deliberately NOT filtered — that list IS the picks page.
+  - **The gate came out of THREE places together, and re-adding it to any one
+    of them deletes the feature.** `canPick` has no `"eliminated"` reason and
+    its `member` input has no `status` field; `isEntryWritable` has no
+    `entryStatus`; `submitPick` no longer reads `membership.status` at all.
+    The shapes changed, not just the branches, so a call site cannot re-add the
+    test without changing a type. The old "the pick screen reads the ENTRY's
+    status" entry below is kept as history and says so.
+  - **The notice is NEUTRAL copy beside the week-state lines, not the red
+    `pickNotice` slot.** "This entry is out of the league. Keep picking for fun
+    — these picks stay here on your picks page and never appear on the
+    standings." A live grid is not a refusal, so it gets the `viewingPast` /
+    `viewingFuture` treatment; `pickNotice` is `pickError` alone now. Gated on
+    `!viewingPast && !viewingPractice` — a played week has its own line, and
+    practice never eliminated anyone.
+  - **The admin Picks tab LOCKS those weeks, and the RPC does not.** After
+    0020 an admin cannot READ a dead entry's later pick, so the row would have
+    read "No pick" over a pick that exists — the blind-overwrite shape
+    `hidden` already guards against. `viewPickForWeek` returns
+    `{ kind: "out" }` FIRST, before the live-week branch, so it beats the
+    padlock; the cell prints "Out since Week N" and `canAdminEditPick` disables
+    the control. `setPickForMember` refuses the same case server-side
+    (`member_eliminated`), reading the target's membership row with
+    `select("*")`, because a disabled control is not a gate. `admin_set_pick`
+    (0019) is deliberately NOT re-pasted with a status test: its body is long
+    and hand-applied, the action already refuses, and the row it would write is
+    one only its owner can read back. The elimination week and everything
+    before it stay editable — correcting the losing pick is the repair the tab
+    exists for.
+  - **Reminders already got this right.** `reminder_due`'s pick branch requires
+    `gm.status = 'alive'`, so a player picking for fun is not emailed to pick.
+    Unchanged.
+  - **The scorer is untouched, and one consequence is worth knowing.**
+    `recomputeSeason` still writes `picks.result` / `locked_at` for
+    post-elimination rows (only their owner can read them, and the chip colour
+    derives from `games` anyway), and `picks_team_once_per_phase` still binds
+    the eliminated entry — a team spent before going out cannot be spent again
+    after. That is the constraint, not a policy, so it was never optional.
+
 - **A week FREEZES once your pick in it has kicked off, and the database had been
   refusing that write SILENTLY the whole time.** The grid gated each card on its
   OWN game's kickoff, so a Thursday-night pick locked while all thirteen Sunday
@@ -685,7 +763,8 @@ reading, but only the first kind is the lesson.
   - **It does NOT touch the admin Picks tab.** `setPickForMember` goes through
     0019's definer RPC and deliberately edits weeks that have already started;
     it calls neither `canPick` nor `submitPick`. Freezing it would delete the
-    feature.
+    feature. (It does refuse a week after the entry's elimination since 0020 —
+    a different fact, covered by that entry.)
 
 - **The submit chain's key is built in ONE place, and for a while it was built in
   two that disagreed.** `createPickQueues` (`src/components/picks/pick-queue.ts`)
@@ -778,7 +857,8 @@ reading, but only the first kind is the lesson.
     `[]` in the preseason by construction. There is a test asserting the two
     numbers side by side, in the shape of `reminders.test.ts`'s `reminderWeek`
     one.
-  - **The live week has a THIRD row state, and it is the reason `viewPickForWeek`
+  - **The live week has a THIRD row state (and since 0020 a FOURTH, `out`, for a
+    week after the entry's elimination — see that entry), and it is the reason `viewPickForWeek`
     is a function rather than a ternary.** A member who picked a 4pm game reaches
     the client with no readable pick — identical to a member who has not picked
     at all. Drawing both as "No pick" invites an admin to overwrite a real pick
@@ -938,28 +1018,17 @@ reading, but only the first kind is the lesson.
     members are forced `status: "alive"` so the eliminated-in-this-week branch
     cannot fire for them. Unchanged, still rare, still accepted.
 
-- **The pick screen reads the ENTRY's status now, so an eliminated player gets a
-  locked grid instead of a live-looking lie.** `canPick` has refused an
-  eliminated member since it was written (`reason: "eliminated"`) and so has
-  `submitPick` — but the screen read the week and nothing else, so a knocked-out
-  player was handed 32 selectable cards, tapped one, watched it paint
-  optimistically and watched it snap back under an error line. Four things:
-  - **`ViewerEntry.status` is PER ENTRY**, off the membership row, which is the
-    whole point: one person's two entries go out independently, and a status
-    read off the person would close both screens the moment either fell. It
-    comes from `memberRows`, already a `select("*")`, so it names no new column
-    and risks no `42703`.
-  - **`interactive: false` is what draws it locked**, and no new card state was
-    needed: `buildGridCards` already makes every card unselectable and gates the
-    "Locked" label behind kickoff, which is the same treatment a week already
-    played gets.
-  - **The notice is a STANDING line, not a tap-driven one.** It renders in
-    `pickError`'s slot from `PICK_ERROR.eliminated` — the same string
-    `submitPick` would have produced — because an inert grid with no explanation
-    reads as a bug. `pickError` wins when both apply; it is the newer fact.
-  - **The gate is a pure module** (`writability.ts`) for this repo's usual
-    reason: vitest runs in the Node environment with no jsdom, so a pure module
-    is the only shape these rules can be pinned in.
+- **HISTORY — the pick screen used to read the ENTRY's status and lock the grid
+  for an eliminated player.** SUPERSEDED by the entry at the top of this
+  section: an eliminated entry keeps picking now, and `canPick`,
+  `isEntryWritable` and `submitPick` no longer read status at all. What this
+  entry established and what survives of it: `ViewerEntry.status` is still PER
+  ENTRY, off the membership row (`select("*")`, no `42703` risk), and it is
+  what the neutral "out of the league" line reads; `writability.ts` is still
+  the pure gate both pick surfaces read, now on two conditions rather than
+  three. The lesson that outlived the rule: the screen has to agree with the
+  guard or it offers what the server refuses — which is why the status test
+  came out of all three places in one change rather than one.
 
 - **`groups` carries TWO Week 1 deadlines now, and telling them apart is the
   whole of `0018_join_window`.** `entry_closes_at` is the FIRST kickoff of Week 1

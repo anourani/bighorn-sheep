@@ -187,6 +187,51 @@ describe("mapPublicSnapshot", () => {
     if (out?.headcount.kind === "preseason") expect(out.headcount.joined).toBe(2);
   });
 
+  it("drops an eliminated member's picks for the weeks after they went out", () => {
+    // 0020's `public_league_snapshot` refuses these in SQL. This pins the mapper
+    // against undoing that on a database one migration behind the code: an
+    // eliminated entry keeps picking privately, and none of it may reach the
+    // anonymous board — not the history, not the live week's currentPick.
+    const out = mapPublicSnapshot(
+      snapshot({
+        members: [
+          member({
+            id: "m2",
+            status: "eliminated",
+            eliminated_week: 3,
+            picks: [
+              { week: 2, team_id: "phi", game_id: "g2", result: "win" },
+              { week: 3, team_id: "phi", game_id: "g3", result: "loss" },
+              { week: 5, team_id: "nyg", game_id: "g5", result: "win" },
+              { week: 6, team_id: "phi", game_id: "g6", result: null },
+            ],
+          }),
+        ],
+      }),
+      new Date(NOW),
+    );
+    const m = out!.members[0]!;
+    expect(m.history.map((h) => h.week)).toEqual([2, 3]);
+    expect(m.currentPick).toBeNull();
+  });
+
+  it("keeps everything when the elimination week is unknown", () => {
+    const out = mapPublicSnapshot(
+      snapshot({
+        members: [
+          member({
+            id: "m2",
+            status: "eliminated",
+            eliminated_week: null,
+            picks: [{ week: 5, team_id: "nyg", game_id: "g5", result: "win" }],
+          }),
+        ],
+      }),
+      new Date(NOW),
+    );
+    expect(out!.members[0]!.history.map((h) => h.week)).toEqual([5]);
+  });
+
   it("counts the living and the dead in the season headcount", () => {
     const out = mapPublicSnapshot(
       snapshot({

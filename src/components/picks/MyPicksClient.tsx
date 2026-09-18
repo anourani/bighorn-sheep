@@ -57,7 +57,6 @@ const ENTRY_CHOICES = ["1", "2"] as const;
 const PICK_ERROR: Record<string, string> = {
   team_already_used: "You've already used that team.",
   game_kicked_off: "That game has kicked off — pick locked.",
-  eliminated: "You're eliminated, so picks are closed.",
   // Deliberately not "its game has kicked off": RLS also refuses a POSTPONED
   // game whose kickoff is still ahead, so that sentence would be false in the
   // one case only the server catches. The refusal is the fact; the cause is on
@@ -325,31 +324,35 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
   const writable = isEntryWritable({
     isCurrent,
     viewingFuture,
-    entryStatus: activeEntry.status,
     pickLocked,
   });
   /*
-   * The line above the grid: one slot, two sources.
+   * Whether the entry on screen has gone out of the league.
    *
-   * An eliminated entry gets a STANDING notice rather than waiting for a tap to
-   * produce one — the grid below is drawn inert for it, and an inert grid with
-   * no explanation reads as a bug. It reuses `PICK_ERROR`'s own copy rather
-   * than a second string, because the two have to say the same thing: this is
-   * the state `submitPick` would report, said before a tap is spent finding it.
-   *
-   * A FROZEN WEEK is deliberately NOT routed here, even though it also draws an
-   * inert grid. This slot is the refusal treatment — red rule, wash and ink —
-   * and a locked pick is the ordinary weekly cycle rather than bad news. Its
-   * explanation sits with the other week-state lines above the grid, where
-   * `viewingPast` and `viewingFuture` already say what a week is doing.
-   * `PICK_ERROR.pick_locked` still exists, for the race where kickoff passes
-   * between paint and tap.
-   *
-   * `pickError` wins when both apply. It is the newer fact, and it answers
-   * something the player just did.
+   * It does NOT feed `writable`, and that is the feature: a knocked-out entry
+   * keeps picking week to week for its own sake. What it feeds is one neutral
+   * line above the grid (below), so nobody mistakes those picks for ones that
+   * count. Everything that HIDES them — the standings, the admin Picks tab,
+   * other members' browsers — is 0020's SQL and `lib/league/post-elimination.ts`,
+   * not this screen. Per ENTRY, off the membership row: one of a player's two
+   * runs ending leaves the other's line unchanged.
    */
-  const pickNotice =
-    pickError ?? (activeEntry.status === "eliminated" ? PICK_ERROR.eliminated : null);
+  const entryOut = activeEntry.status === "eliminated";
+  /*
+   * The line above the grid: the refusal slot, red rule, wash and ink.
+   *
+   * Only a tap-driven refusal lands here now. This used to also carry a
+   * STANDING "You're eliminated, so picks are closed." for an eliminated entry,
+   * beside an inert grid; the grid is live for that entry today and its
+   * explanation is the neutral `entryOut` line with the other week-state copy.
+   *
+   * A FROZEN WEEK is deliberately NOT routed here either, even though it draws
+   * an inert grid. Being locked in is the ordinary weekly cycle rather than
+   * bad news, so its explanation sits with `viewingPast` and `viewingFuture`
+   * above the grid. `PICK_ERROR.pick_locked` still exists, for the race where
+   * kickoff passes between paint and tap.
+   */
+  const pickNotice = pickError;
   // The pick for the week the strip names — not the phase's live week, which
   // left the banner contradicting the schedule underneath it.
   const pickTeam = pickForWeek(viewRef, serverPicks, pendingPicks);
@@ -671,8 +674,7 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
         weekFinalKickoff={viewDeadline}
       />
 
-      {/* Both the tap-driven error and the standing eliminated notice — see
-          `pickNotice`, which decides between them. */}
+      {/* The tap-driven refusal — see `pickNotice`. */}
       {pickNotice ? (
         <div className="mt-4 flex items-start gap-2 rounded-control border border-out/30 bg-out-wash px-3 py-2.5 text-sm text-[#8A2C2C]">
           <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
@@ -701,6 +703,19 @@ export function MyPicksClient({ data }: { data: LeagueData }) {
             <span className="font-semibold text-ink-soft">{viewName}</span> has already
             been played — you&apos;re looking back at it. Picks are open for{" "}
             {liveName} and every week after it.
+          </p>
+        ) : null}
+
+        {/* An eliminated entry keeps picking, and this is the only place that
+            says what those picks are: its own. Neutral copy beside the other
+            week-state lines rather than the red `pickNotice` slot, because a
+            live grid is not a refusal. `!viewingPast` because a played week
+            already has its line; `!viewingPractice` because practice never
+            eliminated anyone and its own line says so. */}
+        {entryOut && !viewingPast && !viewingPractice ? (
+          <p className="mb-2.5 text-xs text-ink-mute">
+            This entry is out of the league. Keep picking for fun — these picks stay
+            here on your picks page and never appear on the standings.
           </p>
         ) : null}
 

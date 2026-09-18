@@ -132,7 +132,7 @@ describe("computeStatus", () => {
 
 describe("canPick", () => {
   const base = {
-    member: { status: "alive" as const, history: [{ teamId: "phi" }], currentPick: null },
+    member: { history: [{ teamId: "phi" }] },
     // No pick for the target week yet — the ordinary first-pick case, and the
     // shape every assertion below inherits unless it says otherwise.
     existingPick: null,
@@ -169,10 +169,16 @@ describe("canPick", () => {
     ).toEqual({ ok: false, reason: "game_kicked_off" });
   });
 
-  it("rejects an eliminated member", () => {
-    expect(
-      canPick({ ...base, member: { ...base.member, status: "eliminated" }, teamId: "kc", game: scheduled }),
-    ).toEqual({ ok: false, reason: "eliminated" });
+  it("has no status test — an eliminated entry picks on the same terms", () => {
+    // The guard used to refuse `reason: "eliminated"` ahead of everything. An
+    // eliminated entry now keeps picking, privately: the weeks after it went
+    // out are hidden from everyone else by 0020's SQL and
+    // `lib/league/post-elimination.ts`, not by a refusal here. The input shape
+    // no longer carries a status at all, so a call site cannot re-add the test
+    // by accident.
+    const member = { history: [{ teamId: "phi" }] };
+    expect(canPick({ ...base, member, teamId: "kc", game: scheduled })).toEqual({ ok: true });
+    expect("status" in member).toBe(false);
   });
 
   it("rejects when entry has closed", () => {
@@ -255,18 +261,17 @@ describe("canPick", () => {
     });
   });
 
-  it("reports eliminated ahead of pick_locked", () => {
-    // Elimination is the larger fact: it closes every week, where a lock closes
-    // only this one.
+  it("still locks a kicked-off week for an eliminated entry", () => {
+    // Elimination no longer closes anything, but the lock still does: a
+    // knocked-out entry's committed pick is as frozen as anyone else's.
     expect(
       canPick({
         ...base,
-        member: { ...base.member, status: "eliminated" },
         teamId: "kc",
         game: scheduled,
         existingPick: { game: started },
       }),
-    ).toEqual({ ok: false, reason: "eliminated" });
+    ).toEqual({ ok: false, reason: "pick_locked" });
   });
 });
 
@@ -395,7 +400,7 @@ describe("preseason results never reach the regular-season fold", () => {
     // The regular-season guard is handed regular-season history only, so a team
     // spent in preseason simply isn't in the used list.
     const guard = canPick({
-      member: { status: "alive", history: [] },
+      member: { history: [] },
       teamId: "kc",
       game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
       existingPick: null,
@@ -406,7 +411,7 @@ describe("preseason results never reach the regular-season fold", () => {
 
     // Whereas within one phase, a used team stays used.
     const samePhase = canPick({
-      member: { status: "alive", history: [{ teamId: "kc" }] },
+      member: { history: [{ teamId: "kc" }] },
       teamId: "kc",
       game: game({ home: "kc", away: "phi", status: "scheduled", kickoff: "2026-09-13T17:00:00.000Z" }),
       existingPick: null,

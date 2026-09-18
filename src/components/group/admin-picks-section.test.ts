@@ -96,6 +96,23 @@ describe("the Picks tab's reads", () => {
   });
 
   /**
+   * The same regression one step further. An eliminated entry keeps picking for
+   * the weeks after it went out, and 0020 hides those rows from the admin's
+   * reads — so without its own branch the row would read "No pick" over a pick
+   * that exists. `canAdminEditPick` disables the control for `out`; this pins
+   * that the cell says so rather than drawing the blank.
+   */
+  it("draws an eliminated entry's later weeks as Out, not as No pick", async () => {
+    const src = await code(DRAWER);
+    const cell = src.slice(src.indexOf("function PickCell("));
+    expect(cell).toContain('view.kind === "out"');
+    expect(cell).toContain("Out since Week");
+    // The out branch has to run BEFORE the "No pick" fallback, or it is dead.
+    expect(cell.indexOf('view.kind === "out"')).toBeLessThan(cell.indexOf("shown === null"));
+    expect(src).toContain("member_eliminated:");
+  });
+
+  /**
    * Options come from the WEEK's teams, never from `TEAMS` wholesale. A team on
    * a bye is not in that week's games, so offering all 32 would let the UI make
    * a choice the RPC answers `no_game_for_team` for — the standing rule that a

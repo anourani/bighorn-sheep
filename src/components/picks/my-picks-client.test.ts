@@ -184,3 +184,35 @@ describe("the frozen week", () => {
     expect(src).toContain("viewingFuture && !pickLocked");
   });
 });
+
+describe("the eliminated entry", () => {
+  /*
+   * An eliminated entry keeps picking, privately. The screen used to draw an
+   * inert grid and a red "You're eliminated, so picks are closed." for it, and
+   * both are gone together with the guard they mirrored. What hides those
+   * picks from everyone else is 0020's SQL and `lib/league/post-elimination.ts`;
+   * nothing on this screen may close the grid on status again, or the feature
+   * is deleted in one plausible-looking line.
+   */
+  it("hands no entry status to the write gate", async () => {
+    const src = await code(CLIENT);
+    const start = src.indexOf("isEntryWritable({");
+    expect(start, "isEntryWritable should still gate the screen").toBeGreaterThan(0);
+    expect(src.slice(start, src.indexOf("})", start))).not.toContain("entryStatus");
+  });
+
+  it("has no eliminated refusal copy left to reach for", async () => {
+    const src = await code(CLIENT);
+    expect(src).not.toMatch(/\beliminated:/);
+    expect(src).not.toContain("PICK_ERROR.eliminated");
+  });
+
+  it("explains the private picks in a neutral line, not the red refusal slot", async () => {
+    const src = await code(CLIENT);
+    const start = src.indexOf("const pickNotice =");
+    expect(start).toBeGreaterThan(0);
+    expect(src.slice(start, src.indexOf(";", start))).not.toContain("eliminated");
+    expect(src).toContain("entryOut && !viewingPast && !viewingPractice");
+    expect(src).toContain("never appear on the standings");
+  });
+});

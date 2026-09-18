@@ -72,6 +72,10 @@ const ADMIN_ERROR_COPY: Record<string, string> = {
   not_admin: "Only an admin can change that.",
   not_authenticated: "Your session expired — sign in again.",
   member_not_found: "That member is no longer in the league.",
+  // 0020. An eliminated entry keeps picking after it goes out, and those picks
+  // are its own — never the league's to correct. The week it went out and
+  // everything before it stay editable; this fires for the weeks after.
+  member_eliminated: "That entry was eliminated before this week, so its later picks are its own.",
   group_not_found: "That league is gone.",
   entry_closed: "Entry has closed — the roster is locked for the season.",
   cannot_remove_self: "You can't remove yourself.",
@@ -1500,6 +1504,19 @@ function PickCell({ view, shown }: { view: AdminPickView; shown: TeamId | null }
       <span className="flex items-center gap-1.5 text-xs text-ink-mute lg:justify-self-start">
         <LockIcon className="h-3.5 w-3.5 shrink-0" />
         Hidden until kickoff
+      </span>
+    );
+  }
+
+  // A week after the entry went out. It may well hold a pick — an eliminated
+  // entry keeps picking for itself — but that pick is its own and 0020 keeps
+  // it from every other reader, this admin included. Not "No pick", which
+  // would invite an overwrite of something that exists; "Out", with the
+  // control disabled by `canAdminEditPick`.
+  if (view.kind === "out") {
+    return (
+      <span className="text-xs text-ink-mute lg:justify-self-start">
+        Out since Week {view.eliminatedWeek}
       </span>
     );
   }
