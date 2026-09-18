@@ -129,58 +129,177 @@ export function pickSignals(
   return { bucket, revealedTeam };
 }
 
-/** What `rankMembers` needs to read the league's current week. */
+/** What `rankMembers` needs to read the league's live week. */
 export interface RankContext {
   currentWeek: number;
   gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
   rules: GroupRules;
   now: Date;
   /**
-   * user_ids whose current-week pick is locked but not yet revealed. Under RLS
-   * such a pick reaches the client as nothing but this flag, so without it a
-   * rival who has picked is indistinguishable from one who has not — and would
-   * sort into the wrong bucket.
+   * Membership ids whose current-week pick is locked but not yet revealed.
+   * Under RLS such a pick reaches the client as nothing but this flag, so
+   * without it a rival who has picked is indistinguishable from one who has
+   * not.
+   *
+   * It is read ONLY when the live week is the ranked week — i.e. once at least
+   * one living member's pick in it has been revealed. Before that it is not
+   * consulted at all, and that absence IS the privacy rule: it is what stops a
+   * row moving the moment somebody locks in. See `rankMembers`.
    */
   hiddenPickUserIds?: readonly string[];
+}
+
+/** The resting state: nothing to read for the ranked week. */
+const NO_PICK_SIGNAL: PickSignals = { bucket: "none", revealedTeam: null };
+
+/**
+ * `pickSignals` for a week that is already SETTLED, derived from
+ * `member.history` and nothing else.
+ *
+ * It must never reach for `gameForTeam`, and that is not tidiness: the landing
+ * page's snapshot narrows `games` to the live week ALONE, so an index lookup
+ * for an older week returns undefined there and would bucket the whole league
+ * as un-started while the signed-in table looked fine. `cellFor`'s past-week
+ * branch reads `history` for exactly this reason, and this is the ordering's
+ * half of the same rule.
+ *
+ * A history entry is public by construction — a pick only reaches `history`
+ * once RLS has released it — so everything here is already drawn in the table.
+ *
+ * `"pending"` (a past pick whose game never produced a result) lands in
+ * `picked`, exactly as `pickSignals` sends a final carrying no score: the pick
+ * is in and the outcome is unknown, and calling it a win would promote it above
+ * people who genuinely won. `"push"` lands in `won` because `historyResult` has
+ * already folded the league's tie rule in, so a push reaching here SURVIVED.
+ */
+export function historySignals(member: Member, week: number): PickSignals {
+  const h = member.history.find((x) => x.week === week);
+  if (!h) return NO_PICK_SIGNAL;
+  const bucket: PickBucket =
+    h.result === "loss" ? "lost" : h.result === "pending" ? "picked" : "won";
+  return { bucket, revealedTeam: h.teamId };
+}
+
+/**
+ * The most recent week before `currentWeek` that any living member has a pick
+ * in — the last week whose picks the league may see.
+ *
+ * The `< currentWeek` guard is load-bearing on the anonymous board:
+ * `mapPublicSnapshot` splits picks on `week === currentWeek` with no upper
+ * bound, so without it a stray non-past row could decide the whole order.
+ */
+function lastSettledWeek(members: readonly Member[], currentWeek: number): number | null {
+  let best: number | null = null;
+  for (const m of members) {
+    if (m.status !== "alive") continue;
+    for (const h of m.history) {
+      if (h.week < currentWeek && (best === null || h.week > best)) best = h.week;
+    }
+  }
+  return best;
+}
+
+/*
+ * How many LIVING members went with each revealed team.
+ *
+ * Counted over the living alone, because only they are clustered — folding the
+ * dead in would let an eliminated member's pick decide the order of a bundle
+ * they are not in.
+ *
+ * A team's game has one status, so everyone backing it lands in one bucket and
+ * a league-wide count and a per-bucket count agree. Counting once is simpler
+ * and says the same thing.
+ */
+function countBackers(
+  members: readonly Member[],
+  signals: ReadonlyMap<string, PickSignals>,
+): Map<TeamId, number> {
+  const backers = new Map<TeamId, number>();
+  for (const m of members) {
+    if (m.status !== "alive") continue;
+    const t = signals.get(m.id)?.revealedTeam;
+    if (t) backers.set(t, (backers.get(t) ?? 0) + 1);
+  }
+  return backers;
+}
+
+/**
+ * Bundle order inside one bucket: biggest bundle first, equal bundles by team
+ * id, and a row with no revealed team after every bundle.
+ *
+ * Extracted rather than inlined because the ranked week and the settled-week
+ * tiebreak below it compare bundles the same way, and two copies of this would
+ * drift.
+ */
+function compareBundle(
+  at: TeamId | null,
+  bt: TeamId | null,
+  backers: ReadonlyMap<TeamId, number>,
+): number {
+  if (at === bt) return 0;
+  // A hidden pick has no bundle to join, so it sits after every bundle in its
+  // bucket rather than being scattered among them.
+  if (at === null) return 1;
+  if (bt === null) return -1;
+  const ac = backers.get(at) ?? 0;
+  const bc = backers.get(bt) ?? 0;
+  if (ac !== bc) return bc - ac;
+  // Two bundles the same size. Ordered by team id so the table is stable week
+  // to week and between viewers — a member key here would let one player
+  // joining or leaving reshuffle bundles that did not change.
+  return at.localeCompare(bt);
 }
 
 /**
  * Standings order.
  *
- * The living come first, grouped by how their CURRENT week is going: won, then
- * in progress, then picked-but-not-started, then no pick yet, then lost. That
- * is a table you read top-down as the week resolves — the people who are
- * through rise, the people still playing sit under them, and the people who
- * just went out fall to the bottom of the living block. Fewer strikes, then
- * name, then id break every tie inside a bucket, so the order stays total and
- * stable rather than depending on the input array.
- *
- * Below every living member come the eliminated, ordered by elimination week
+ * The living come first, grouped by how the RANKED week is going: won, then in
+ * progress, then picked-but-not-started, then no pick yet, then lost. Below
+ * every living member come the eliminated, ordered by elimination week
  * DESCENDING — most recent first. That is the freeze the standings depend on:
  * the living block only ever shrinks, each new casualty stacks onto the top of
- * the dead block, and nobody already out ever moves again. Scroll far enough
- * down in week 15 and you are reading the league's history backwards, ending on
- * whoever went out first. It also means a member eliminated THIS week (the
- * highest possible elimination week) sits directly beneath the living, so the
- * "losers last" rule and the freeze agree rather than compete.
+ * the dead block, and nobody already out ever moves again. It also means a
+ * member eliminated THIS week (the highest possible elimination week) sits
+ * directly beneath the living, so the "losers last" rule and the freeze agree
+ * rather than compete. The dead are NOT clustered by team: their order is a
+ * positional guarantee, and any secondary key would break it the week a team's
+ * backers happened to shift.
  *
- * The dead are NOT clustered by team. Their order is a positional guarantee —
- * a row that never moves again — and any secondary key would break it the week
- * a team's backers happened to shift.
+ * THE RANKED WEEK IS NOT ALWAYS THE LIVE ONE, and that is this function's whole
+ * privacy rule. `resolveWeekFromKickoffs` advances `currentWeek` the instant
+ * that week's EARLIEST kickoff passes, so for the first several days of a week
+ * almost every pick in it is still padlocked. Ranking on it then put every
+ * living row into `picked` or `none` — two buckets derived from nothing but
+ * unrevealed state — which threw away last week's bundles, re-sorted the table
+ * alphabetically, and moved a row every time somebody locked in. Watching the
+ * order across reloads was a side channel onto who had picked and when.
+ *
+ * So the ranked week is `currentWeek` only once at least one LIVING member's
+ * pick in it has been revealed. Until then it is the last SETTLED week — the
+ * most recent week whose picks the league may already see — and the board is
+ * completely still: no row moves as picks come in, including the rows of people
+ * who have not picked at all. The first revealed team flips the basis, and that
+ * revealed pick rises to the top exactly as it should.
  *
  * Inside a bucket, everyone who picked the SAME revealed team is bundled
- * together, and the bundles run biggest first: five Raiders backers, then four
- * Rams, then two Saints. The week reads as the league's consensus rather than
- * as an alphabetical list — you can see at a glance what most of the room did
- * and who went their own way. Members whose team is still hidden carry no
- * cluster and sit after the bundles in their bucket, since there is nothing to
- * bundle them by.
+ * together, biggest bundle first: five Raiders backers, then four Rams, then two
+ * Saints. The week reads as the league's consensus rather than as an
+ * alphabetical list. That clustering outranks strikes deliberately — a bundle
+ * broken up by strike count is not a bundle. Members whose team is still hidden
+ * carry no cluster and sit after the bundles in their bucket.
  *
- * That clustering outranks strikes deliberately: a bundle broken up by strike
- * count is not a bundle. Strikes, name and id still break every tie inside one.
+ * Two rows still padlocked in the ranked week then fall back to the SETTLED
+ * week's bundles before strikes. That leaks nothing — a settled week's logos are
+ * drawn in the table already — and it is what stops one Thursday-night reveal
+ * scrambling the other thirty rows. It is one step back, never a chain, and it
+ * never splits a live bundle: it is reached only when both rows' ranked-week
+ * team is null.
  *
- * Buckets and clusters are both derived with an empty viewer id, so every
- * player sees the same order — see `pickSignals`.
+ * Fewer strikes, then name, then entry, then id break every remaining tie, so
+ * the order stays total and stable rather than depending on the input array.
+ *
+ * Buckets and clusters are both derived with an empty viewer id, so every player
+ * sees the same order — see `pickSignals`.
  *
  * Lives here, not in StandingsClient, because the landing page ranks the same
  * members and importing the client component to reach it would drag
@@ -189,57 +308,70 @@ export interface RankContext {
  */
 export function rankMembers(members: readonly Member[], ctx: RankContext): RankedMemberView[] {
   const hiddenSet = new Set(ctx.hiddenPickUserIds ?? []);
-  // Derived once per member rather than inside the comparator, which would call
-  // it O(n log n) times — and `viewCurrentPick` walks the game index on every
-  // call.
-  const signals = new Map<string, PickSignals>(
+  /*
+   * Derived once per member rather than inside the comparator, which would call
+   * it O(n log n) times — and `viewCurrentPick` walks the game index on every
+   * call.
+   *
+   * This pass runs whether or not the live week ends up being the ranked one,
+   * because it is also what answers "has anything been revealed yet".
+   */
+  const live = new Map<string, PickSignals>(
     members.map((m) => [
       m.id,
       pickSignals(m, ctx.currentWeek, ctx.gameForTeam, ctx.rules, ctx.now, hiddenSet),
     ]),
   );
+  // Living members only, matching `countBackers`: a dead entry's post-elimination
+  // picks are stripped from every other viewer's payload by 0020, so scanning the
+  // same set keeps the two facts from drifting apart.
+  const anyRevealed = members.some((m) => m.status === "alive" && live.get(m.id)?.revealedTeam);
+
+  const settledWeek = lastSettledWeek(members, ctx.currentWeek);
+  const settled =
+    settledWeek === null
+      ? null
+      : new Map<string, PickSignals>(members.map((m) => [m.id, historySignals(m, settledWeek)]));
 
   /*
-   * How many LIVING members went with each revealed team.
-   *
-   * Counted over the living alone, because only they are clustered — folding
-   * the dead in would let an eliminated member's pick decide the order of a
-   * bundle they are not in.
-   *
-   * A team's game has one status, so everyone backing it lands in one bucket
-   * and a league-wide count and a per-bucket count agree. Counting once is
-   * simpler and says the same thing.
+   * Both null is Week 1 before its first kickoff, and the whole preseason with
+   * it: nothing revealed anywhere, so every living row reads `none` and the
+   * table falls through to strikes and name. Flat and still, which is the same
+   * rule applied consistently rather than a special case.
    */
-  const backers = new Map<TeamId, number>();
-  for (const m of members) {
-    if (m.status !== "alive") continue;
-    const t = signals.get(m.id)?.revealedTeam;
-    if (t) backers.set(t, (backers.get(t) ?? 0) + 1);
-  }
+  const primary = (anyRevealed ? live : settled) ?? new Map<string, PickSignals>();
+  const stabiliser = anyRevealed ? settled : null;
+
+  const backers = countBackers(members, primary);
+  const settledBackers = stabiliser ? countBackers(members, stabiliser) : null;
 
   const ordered = [...members].sort((a, b) => {
     if (a.status !== b.status) return a.status === "alive" ? -1 : 1;
     if (a.status === "alive") {
-      const as = signals.get(a.id);
-      const bs = signals.get(b.id);
-      const ab = as ? PICK_BUCKET[as.bucket] : 0;
-      const bb = bs ? PICK_BUCKET[bs.bucket] : 0;
+      const as = primary.get(a.id) ?? NO_PICK_SIGNAL;
+      const bs = primary.get(b.id) ?? NO_PICK_SIGNAL;
+      const ab = PICK_BUCKET[as.bucket];
+      const bb = PICK_BUCKET[bs.bucket];
       if (ab !== bb) return ab - bb;
 
-      const at = as?.revealedTeam ?? null;
-      const bt = bs?.revealedTeam ?? null;
-      if (at !== bt) {
-        // A hidden pick has no bundle to join, so it sits after every bundle in
-        // its bucket rather than being scattered among them.
-        if (at === null) return 1;
-        if (bt === null) return -1;
-        const ac = backers.get(at) ?? 0;
-        const bc = backers.get(bt) ?? 0;
-        if (ac !== bc) return bc - ac;
-        // Two bundles the same size. Ordered by team id so the table is stable
-        // week to week and between viewers — a member key here would let one
-        // player joining or leaving reshuffle bundles that did not change.
-        return at.localeCompare(bt);
+      const at = as.revealedTeam;
+      const bt = bs.revealedTeam;
+      const bundle = compareBundle(at, bt, backers);
+      if (bundle !== 0) return bundle;
+
+      /*
+       * Reached only when the two rows share a ranked-week team — so `at ===
+       * null` here means BOTH are padlocked, and there is nothing about the
+       * ranked week that could separate them. The settled week can, and using
+       * it splits no live bundle: a non-null `at` skips this entirely.
+       */
+      if (at === null && stabiliser && settledBackers) {
+        const prev = compareBundle(
+          stabiliser.get(a.id)?.revealedTeam ?? null,
+          stabiliser.get(b.id)?.revealedTeam ?? null,
+          settledBackers,
+        );
+        if (prev !== 0) return prev;
       }
 
       if (a.strikes !== b.strikes) return a.strikes - b.strikes;

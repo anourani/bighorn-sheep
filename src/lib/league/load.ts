@@ -494,8 +494,13 @@ export const loadLeague = cache(async (groupId?: string): Promise<LeagueLoad> =>
   // rather than being replaced by the practice table or a bare sentence. Skip it
   // there and a member who picked Week 1 early draws a hollow "No pick" circle:
   // RLS returns another member's un-kicked row to nobody, so this team-less flag
-  // is the ONLY thing that can produce their padlock, and `rankMembers` would
-  // bucket them `none` and sort them below people who have not picked at all.
+  // is the ONLY thing that can produce their padlock.
+  //
+  // The PADLOCK is the whole reason now. `rankMembers` also takes this flag, but
+  // it reads it only once the live week has a revealed pick — before that the
+  // order comes off the last settled week and an unrevealed pick moves no row,
+  // deliberately. So a missing flag here costs a padlock in every phase; it no
+  // longer costs a wrong row position.
   //
   // `public_league_snapshot` (0009) has always computed the same flag in every
   // phase, which is why the signed-out landing board already showed those

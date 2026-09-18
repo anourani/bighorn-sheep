@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Game, TeamId } from "../nfl/types";
-import type { GroupRules, Member, TeamRecord } from "./types";
+import type { GroupRules, HistoryPick, Member, TeamRecord } from "./types";
 import {
   countNoun,
+  historySignals,
   orderPickerTeams,
   rankMembers,
   statusLabel,
@@ -193,6 +194,23 @@ describe("rankMembers", () => {
   }
 
   /**
+   * A member whose pick in the week BEFORE the live one is already public —
+   * i.e. in `history`, which is the only place a settled week is ever read
+   * from. `over` is where a still-padlocked live pick goes on top.
+   */
+  function settled(
+    id: string,
+    teamId: TeamId,
+    result: HistoryPick["result"] = "win",
+    over: Partial<Member> = {},
+  ): Member {
+    return member(id, { history: [{ week: WEEK - 1, teamId, result }], ...over });
+  }
+
+  /** A live pick on a game that has NOT kicked off — real, and unreadable. */
+  const PADLOCKED = { week: WEEK, teamId: "dal" as TeamId, gameId: "g_dal" };
+
+  /**
    * The four game shapes the buckets read, one per matchup so `gameForTeam`
    * can answer per team without two members sharing a fixture.
    */
@@ -253,10 +271,15 @@ describe("rankMembers", () => {
     it("keys the hidden-pick flag on the entry, not the person", () => {
       // A padlock belongs to the entry that picked. Flagging `u1` would light
       // both rows, telling the league that an entry which has not picked has.
+      //
+      // `z` is here to make the LIVE week the ranked one — its Chiefs game has
+      // finished, so the league has seen a reveal. Without it the board would
+      // rank off the last settled week and never read the flag at all, which is
+      // the privacy rule and would make this assertion vacuous.
       const a = e1();
       const b = e2();
-      const ranked1 = ranked([a, b], ["m2"]);
-      expect(ranked1.map((r) => r.member.id)).toEqual(["m2", "m1"]);
+      const ranked1 = ranked([a, b, picked("z", "kc")], ["m2"]);
+      expect(ranked1.map((r) => r.member.id)).toEqual(["z", "m2", "m1"]);
     });
 
     it("orders a full tie by entry rather than by a random id", () => {
@@ -330,7 +353,12 @@ describe("rankMembers", () => {
     // Under RLS a rival's un-kicked pick reaches the client as nothing but the
     // team-less flag. Without reading it, someone who HAS picked sorts below
     // someone who hasn't.
-    expect(ids([member("no-pick"), member("hidden")], ["hidden"])).toEqual(["hidden", "no-pick"]);
+    //
+    // `revealed` is what makes the live week the ranked week — the flag is read
+    // only there, so without it this would assert nothing but alphabetical order.
+    expect(
+      ids([member("no-pick"), member("hidden"), picked("revealed", "kc")], ["hidden"]),
+    ).toEqual(["revealed", "hidden", "no-pick"]);
   });
 
   it("ranks everyone off the same reveal, so two viewers see one order", () => {
@@ -405,12 +433,16 @@ describe("rankMembers", () => {
     // through the row order — neighbours would be neighbours BECAUSE they share
     // a pick, which is the fact the padlock is hiding. So these three sort on
     // name, not into a bundle ahead of the solo pick.
+    //
+    // `anchor` holds the ranked week on the live one (its game has finished);
+    // the other three are all still padlocked.
     const out = ids([
       picked("z-dal", "dal", { name: "Zoe Z." }),
       picked("a-phi", "phi", { name: "Ada A." }),
       picked("m-dal", "dal", { name: "Mia M." }),
+      picked("anchor", "kc", { name: "Aaa A." }),
     ]);
-    expect(out).toEqual(["a-phi", "m-dal", "z-dal"]);
+    expect(out).toEqual(["anchor", "a-phi", "m-dal", "z-dal"]);
   });
 
   it("puts hidden picks after every bundle in their bucket", () => {
@@ -582,6 +614,175 @@ describe("rankMembers", () => {
       now: NOW,
     });
     expect(new Set(asked)).toEqual(new Set([WEEK]));
+  });
+
+  /*
+   * THE RANKED WEEK. `resolveWeekFromKickoffs` advances `currentWeek` the
+   * instant that week's EARLIEST kickoff passes, so for the first days of a week
+   * nearly every pick in it is still padlocked. Ranking on it then sorted the
+   * whole living block into `picked` and `none` — two buckets derived from
+   * nothing but unrevealed state — which threw away last week's bundles and
+   * moved a row every time somebody locked in.
+   */
+  describe("the ranked week", () => {
+    it("keeps the settled week's order while every live pick is still padlocked", () => {
+      /*
+       * Week 6 is live and nothing in it is revealed (dal/phi is still
+       * scheduled), so the board must read exactly as week 5 left it: three
+       * Raiders backers, then two Chiefs, then the lone Rams.
+       *
+       * `no-pick-lv` is the point of the test. It has not picked at all and
+       * sits THIRD, in the middle of the table, because week 5 put it there —
+       * not at the bottom, which is where the live week's `none` bucket used to
+       * send it and where its absence from the padlock list would advertise it.
+       */
+      const ms = [
+        settled("no-pick-lv", "lv"),
+        settled("lar-1", "lar", "win", { currentPick: PADLOCKED }),
+        settled("kc-1", "kc", "win", { currentPick: PADLOCKED }),
+        settled("lv-1", "lv", "win", { currentPick: PADLOCKED }),
+        settled("kc-2", "kc", "win", { currentPick: PADLOCKED }),
+        settled("lv-2", "lv", "win", { currentPick: PADLOCKED }),
+      ];
+      expect(ids(ms, ["lar-1", "kc-1", "lv-1", "kc-2", "lv-2"])).toEqual([
+        "lv-1",
+        "lv-2",
+        "no-pick-lv",
+        "kc-1",
+        "kc-2",
+        "lar-1",
+      ]);
+    });
+
+    it("does not move a row when a rival locks in a hidden pick", () => {
+      // The regression the whole rule exists for. Rank the same league twice —
+      // once before "b" has picked, once after, padlock flag and all — and the
+      // two orders must be identical. Anything else is a side channel onto who
+      // has picked and when, readable by diffing the table across reloads.
+      const before = [settled("a", "kc"), settled("b", "kc"), settled("c", "lv")];
+      const after = [
+        settled("a", "kc"),
+        settled("b", "kc", "win", { currentPick: PADLOCKED }),
+        settled("c", "lv"),
+      ];
+      expect(ids(after, ["b"])).toEqual(ids(before));
+    });
+
+    it("switches to the live week as soon as one team is revealed", () => {
+      // "early" backed a team whose game has finished. That single reveal flips
+      // the basis, and it leads whatever last week said — where week 5 had it
+      // alone on the Rams, below both Raiders backers.
+      const ms = [
+        settled("late-a", "lv", "win", { currentPick: PADLOCKED }),
+        settled("late-b", "lv", "win", { currentPick: PADLOCKED }),
+        settled("early", "lar", "win", {
+          currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" },
+        }),
+      ];
+      expect(ids(ms, ["late-a", "late-b"])).toEqual(["early", "late-a", "late-b"]);
+    });
+
+    it("keeps the settled week's bundles among the rows still padlocked", () => {
+      /*
+       * One Thursday-night reveal must not scramble the thirty rows behind it.
+       * Below "early" the padlocked rows keep week 5's clustering — the two
+       * Raiders backers together, ahead of the lone Packers one — rather than
+       * collapsing into one alphabetical block, which would read
+       * "early, a-gb, m-lv, z-lv".
+       *
+       * This leaks nothing: week 5's logos are already drawn in the table.
+       */
+      const ms = [
+        settled("early", "lar", "win", {
+          currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" },
+        }),
+        settled("z-lv", "lv", "win", { name: "Zoe Z.", currentPick: PADLOCKED }),
+        settled("a-gb", "gb", "win", { name: "Ada A.", currentPick: PADLOCKED }),
+        settled("m-lv", "lv", "win", { name: "Mia M.", currentPick: PADLOCKED }),
+      ];
+      expect(ids(ms, ["z-lv", "a-gb", "m-lv"])).toEqual(["early", "m-lv", "z-lv", "a-gb"]);
+    });
+
+    it("never splits a live bundle on the settled week", () => {
+      // The settled tiebreak is reached only when BOTH rows' ranked-week team is
+      // null. Two members revealed on the same team are one bundle, and last
+      // week must not reorder them out of it — name decides, as it always did.
+      const ms = [
+        settled("z-kc", "lv", "win", {
+          name: "Zoe Z.",
+          currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" },
+        }),
+        settled("a-kc", "gb", "win", {
+          name: "Ada A.",
+          currentPick: { week: WEEK, teamId: "kc", gameId: "g_kc" },
+        }),
+      ];
+      expect(ids(ms)).toEqual(["a-kc", "z-kc"]);
+    });
+
+    it("never asks the game index for a settled week", () => {
+      // The landing page ships games for the live week ALONE, so the settled
+      // basis has to come off `history`. A lookup for week 5 there returns
+      // undefined and would bucket the whole league as un-started while
+      // /app/standings looked perfectly correct.
+      const asked: number[] = [];
+      rankMembers([settled("a", "kc", "win", { currentPick: PADLOCKED }), settled("b", "lv")], {
+        currentWeek: WEEK,
+        gameForTeam: (week, teamId) => {
+          asked.push(week);
+          return gameForTeam(week, teamId);
+        },
+        rules: RULES,
+        now: NOW,
+        hiddenPickUserIds: ["a"],
+      });
+      expect(new Set(asked)).toEqual(new Set([WEEK]));
+    });
+
+    it("orders flat when nothing is revealed and there is no settled week", () => {
+      // Week 1 before its first kickoff, which is the whole preseason too: no
+      // settled week to fall back to and nothing revealed. Having picked must
+      // not float anybody up, so a picker and a non-picker interleave on name.
+      const ms = [
+        member("z-clean", { name: "Zoe Z." }),
+        member("a-one", { name: "Ada A.", strikes: 1, currentPick: PADLOCKED }),
+        member("m-clean", { name: "Mia M.", currentPick: PADLOCKED }),
+      ];
+      expect(ids(ms, ["a-one", "m-clean"])).toEqual(["m-clean", "z-clean", "a-one"]);
+    });
+  });
+
+  /*
+   * The settled-week basis itself. It reads `history` and NEVER `gameForTeam` —
+   * see the landing-page test above for what that invariant is protecting.
+   */
+  describe("historySignals", () => {
+    const withHistory = (result: HistoryPick["result"]) =>
+      member("x", { history: [{ week: 5, teamId: "kc", result }] });
+
+    it("reads a settled win, push and loss off history alone", () => {
+      // A push reaching here SURVIVED — `historyResult` has already folded the
+      // league's tie rule in — so it ranks with the winners.
+      expect(historySignals(withHistory("win"), 5)).toEqual({ bucket: "won", revealedTeam: "kc" });
+      expect(historySignals(withHistory("push"), 5)).toEqual({ bucket: "won", revealedTeam: "kc" });
+      expect(historySignals(withHistory("loss"), 5)).toEqual({ bucket: "lost", revealedTeam: "kc" });
+    });
+
+    it("ranks a settled week that never resolved as a pick that is simply in", () => {
+      // A postponed or unscored game. Calling it a win would promote it above
+      // people who genuinely won; dropping the team would lose the bundle.
+      expect(historySignals(withHistory("pending"), 5)).toEqual({
+        bucket: "picked",
+        revealedTeam: "kc",
+      });
+    });
+
+    it("reads a week the member has no entry for as no pick", () => {
+      expect(historySignals(withHistory("win"), 4)).toEqual({
+        bucket: "none",
+        revealedTeam: null,
+      });
+    });
   });
 });
 

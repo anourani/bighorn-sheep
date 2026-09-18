@@ -1642,16 +1642,55 @@ reading, but only the first kind is the lesson.
   (`StandingsClient`) and the anonymous landing board (`PublicStandings`) all
   render it, so anything changed there lands on all three at once. Figma: sample
   `3971:95276`, row `3956:89448`, header `3986:112647`, live-week header
-  `3971:90737`, tile atoms `3956:88721`. Thirteen things:
+  `3971:90737`, tile atoms `3956:88721`. Fifteen things (the count read
+  thirteen against fourteen bullets before the ranked-week entry was added;
+  it is accurate now):
   - **`rankMembers` takes a `RankContext` now, and rank is a fact about the
-    LEAGUE rather than about the viewer.** The living sort on four keys in this
-    order: bucket, then team bundle, then strikes, then name/id. The buckets are
-    how their current week is going — won, live, picked, no pick, lost.
-    `pickSignals` derives all of it through `viewCurrentPick` with an **empty
-    viewer id**, so nobody's own pick counts as revealed early. Pass a real one
-    and your row would sort on information no other row was sorted on, and two
-    players looking at the same table would see different orders. It is the one
-    place in the app that deliberately declines the viewer's own privilege.
+    LEAGUE rather than about the viewer.** The living sort on five keys in this
+    order: bucket, then team bundle, then the SETTLED week's bundle, then
+    strikes, then name/entry/id. The buckets are how the RANKED week is going —
+    won, live, picked, no pick, lost. `pickSignals` derives all of it through
+    `viewCurrentPick` with an **empty viewer id**, so nobody's own pick counts as
+    revealed early. Pass a real one and your row would sort on information no
+    other row was sorted on, and two players looking at the same table would see
+    different orders. It is the one place in the app that deliberately declines
+    the viewer's own privilege.
+  - **THE RANKED WEEK IS NOT ALWAYS THE LIVE ONE, and that is the table's
+    privacy rule.** `resolveWeekFromKickoffs` advances `currentWeek` the instant
+    that week's EARLIEST kickoff passes, so for the first days of a week almost
+    every pick in it is still padlocked — and ranking on it put the whole living
+    block into `picked` and `none`, two buckets derived from nothing but
+    unrevealed state. Last week's bundles were thrown away, the table re-sorted
+    alphabetically, and a row moved every time somebody locked in: diffing the
+    order across reloads told you who had picked and when. So the ranked week is
+    `currentWeek` only once at least one LIVING member's pick in it has been
+    revealed; until then it is the last SETTLED week and the board is completely
+    still — no row moves as picks arrive, **including the rows of people who have
+    not picked at all**. Five things:
+    - **A settled week is read from `member.history`, never from
+      `gameForTeam`.** `historySignals` is the whole of it, and that is what
+      keeps the landing page correct — see the `gameForTeam` bullet below. A
+      history entry is public by construction: a pick only reaches `history`
+      once RLS has released it.
+    - **Two rows still padlocked fall back to the SETTLED week's bundles before
+      strikes.** That is the fourth sort key, and it leaks nothing — a settled
+      week's logos are already drawn in the table. It stops one Thursday-night
+      reveal scrambling the other thirty rows. One step back, never a chain, and
+      it is reached only when both rows' ranked-week team is null, so it can
+      never split a live bundle.
+    - **Nothing revealed and no settled week is Week 1 before its first kickoff,
+      and the whole preseason with it.** Every living row reads `none` and the
+      table falls through to strikes and name. Flat and still — the same rule
+      applied consistently, not a special case, and deliberately NOT the old
+      behaviour where having picked floated you above people who had not.
+    - **The reveal scan counts LIVING members only**, matching `countBackers`.
+      0020 strips a dead entry's post-elimination picks from every other
+      viewer's payload, so they could not flip the basis anyway; scanning one
+      set keeps the two facts from drifting.
+    - **`lastSettledWeek` guards on `h.week < currentWeek`**, which matters only
+      on the anonymous board: `mapPublicSnapshot` splits picks on
+      `week === currentWeek` with no upper bound, so without it a stray non-past
+      row could decide the whole order.
   - **Inside a bucket, everyone on the same REVEALED team is bundled, biggest
     bundle first.** Five Raiders backers, then four Rams, then two Saints — so
     the week reads as the league's consensus rather than as an alphabetical
@@ -1672,11 +1711,15 @@ reading, but only the first kind is the lesson.
       still the first key. (A team's game has one status, so everyone backing it
       lands in one bucket anyway — a league-wide count and a per-bucket count
       agree, and counting once is simpler.)
-  - **A hidden pick sorts as `picked`, and that needs `hiddenPickUserIds`.**
-    Under RLS a rival's un-kicked pick reaches the client as nothing but the
-    team-less flag, so without reading it someone who HAS picked buckets as
-    someone who has not. Nothing leaks which team — "has selected a team" is
-    exactly what the bucket means, and the bundle key is null for them.
+  - **A hidden pick sorts as `picked`, and that needs `hiddenPickUserIds` —
+    but ONLY once the live week is the ranked week.** Under RLS a rival's
+    un-kicked pick reaches the client as nothing but the team-less flag, so
+    without reading it someone who HAS picked buckets as someone who has not.
+    Nothing leaks which team — "has selected a team" is exactly what the bucket
+    means, and the bundle key is null for them. Before the first reveal the flag
+    is not read at all, and **that absence is the fix**: it is what stops a row
+    moving the moment somebody locks in. `load.ts` still fetches it in every
+    phase, for the padlock `cellFor` draws.
   - **The eliminated block is frozen, and that is the feature.** Dead members
     stay below every living one, ordered by `eliminatedWeek` descending. The
     living block only shrinks, each new casualty stacks onto the TOP of the dead
@@ -1725,11 +1768,16 @@ reading, but only the first kind is the lesson.
     `bg-live` / `animate-pulse-live` survive and are NOT dead: `Pill`'s own copy
     of that dot is still drawn by the admin drawer's feed-health badge.
   - **`gameForTeam` is still consulted ONLY for `week === currentWeek`**, in
-    `cellFor` and now in `rankMembers` too. The landing page narrows its `games`
-    payload to that single week on the strength of it, so a lookup for any other
-    week returns undefined THERE while the signed-in app — which holds the whole
+    `cellFor` and in `rankMembers`. The landing page narrows its `games` payload
+    to that single week on the strength of it, so a lookup for any other week
+    returns undefined THERE while the signed-in app — which holds the whole
     season — carries on looking correct. Both modules have a test asserting which
-    weeks the index is asked for.
+    weeks the index is asked for. **This survived ranking gaining a settled-week
+    basis, and only because `historySignals` reads `history` instead.** Had it
+    looked a week up in the index, the landing board would have bucketed the
+    entire league as un-started while /app/standings looked perfectly healthy —
+    the same shape of failure as widening a `select()` before its migration
+    lands, and equally silent.
   - **Rows are zebra-striped off the RENDERED index, and the viewer's row takes
     `ink-wash` INSTEAD of its stripe.** One class from one ternary: every fill
     lands in tailwind-merge's single background-colour group, so emitting two
