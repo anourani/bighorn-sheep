@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- The browser-tab favicon: a plain accent disc. Static art cannot import
+       `src/lib/accent.ts`, so this hex is a hand-copy; `palette.test.ts` fails
+       if it drifts. `public/favicon.ico` is rendered from this file. -->
+  <circle cx="32" cy="32" r="32" fill="#FC5F38"/>
+</svg>

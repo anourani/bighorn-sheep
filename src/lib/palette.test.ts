@@ -134,7 +134,8 @@ describe("the hand-copied static assets stay in step", () => {
   const read = (path: string) => readFileSync(new URL(path, PUBLIC_DIR), "utf8");
 
   const RENDERED_FROM: Record<string, string[]> = {
-    "icons/icon.svg": ["favicon.ico", "icons/icon-192.png", "icons/icon-512.png"],
+    "icons/favicon.svg": ["favicon.ico"],
+    "icons/icon.svg": ["icons/icon-192.png", "icons/icon-512.png"],
     "icons/icon-maskable.svg": ["icons/maskable-512.png", "icons/apple-touch-icon.png"],
   };
 
@@ -146,11 +147,22 @@ describe("the hand-copied static assets stay in step", () => {
     ).toContain(`"theme_color": "${ACCENT}"`);
   });
 
-  // Both SVGs carry the same three hexes: the gradient's two stops (the accent
+  // The favicon is a bare disc: one fill, the accent straight. It is the
+  // browser tab's icon; `icon.svg` below is the installed app's.
+  it("keeps icons/favicon.svg on the accent", () => {
+    expect(
+      read("icons/favicon.svg"),
+      "public/icons/favicon.svg has drifted off ACCENT. Re-render public/favicon.ico " +
+        "from it too — see src/lib/accent.ts.",
+    ).toContain(`fill="${ACCENT}"`);
+  });
+
+  // The app-icon SVGs carry the same three hexes: the gradient's two stops (the accent
   // and `brand.DEFAULT`, mirroring `bg-brand-sheen`) and the tick, which is the
-  // accent straight. `icon.svg` is round-cornered and is the browser favicon;
+  // accent straight. `icon.svg` is round-cornered for the installed app;
   // `icon-maskable.svg` is squared off for a maskable icon's safe zone.
   for (const [svg, rasters] of Object.entries(RENDERED_FROM)) {
+    if (svg === "icons/favicon.svg") continue;
     it(`keeps ${svg} on the accent`, () => {
       const source = read(svg);
       const stale =
