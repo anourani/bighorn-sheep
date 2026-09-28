@@ -17,18 +17,20 @@
  *   - `public/manifest.webmanifest` — `theme_color`.
  *   - `public/icons/icon.svg` — the app mark. Its gradient stops mirror
  *     `bg-brand-sheen`: this value, then its 18% tint toward white
- *     (`brand.DEFAULT`); the tick takes this value straight. Used only as the
- *     browser favicon — the in-app mark is `BrandMark.tsx`, a `bg-brand-sheen`
+ *     (`brand.DEFAULT`); the tick takes this value straight. Source of the
+ *     installed-app icons — the in-app mark is `BrandMark.tsx`, a `bg-brand-sheen`
  *     gradient that follows the token on its own.
+ *   - `public/icons/favicon.svg` — the browser-tab favicon: a plain disc of
+ *     this value, nothing else.
  *   - `public/icons/icon-maskable.svg` — the same art squared off (no corner
  *     radius) with the shield inset into a maskable icon's safe zone.
  *
- * Five rasters are RENDERED from those two SVGs and must be regenerated with
+ * Five rasters are RENDERED from those SVGs and must be regenerated with
  * them — they are not separate artwork:
  *
- *   from `icon.svg`          → `public/favicon.ico` (48, a PNG despite the
- *                              extension), `icons/icon-192.png`,
- *                              `icons/icon-512.png`
+ *   from `favicon.svg`       → `public/favicon.ico` (48, a PNG despite the
+ *                              extension)
+ *   from `icon.svg`          → `icons/icon-192.png`, `icons/icon-512.png`
  *   from `icon-maskable.svg` → `icons/maskable-512.png`,
  *                              `icons/apple-touch-icon.png` (180, no alpha)
  *
