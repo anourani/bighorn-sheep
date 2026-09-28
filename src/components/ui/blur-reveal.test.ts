@@ -10,11 +10,13 @@ import {
   blockStarts,
   cascadeStarts,
   HERO_DURATION_MS,
-  LANDING_BLOCKS,
+  groupStarts,
   LANDING_DURATION_MS,
-  LANDING_GAP_MS,
-  LANDING_LEAD_MS,
+  LANDING_GROUPS,
+  LANDING_PAUSE_MS,
+  LANDING_STAGGER_MS,
   landingEndMs,
+  landingStarts,
   revealDelay,
   settleMs,
   splitWords,
@@ -136,10 +138,6 @@ describe("blockStarts", () => {
     expect(blockStarts([5, 1, 1], 1000)).toEqual([1000, 2280, 3480]);
   });
 
-  it("takes a tighter gap when one is passed", () => {
-    expect(blockStarts([1, 1], 0, BLUR_DURATION_MS, 100)[1]).toBe(settleMs() + 100);
-  });
-
   // Splitting the board in two is what the page used to do, and it pushed the
   // last block a further 1.2s out — one settle plus one gap per extra block.
   it("costs a settle and a gap for every block the page is split into", () => {
@@ -176,28 +174,53 @@ describe("blockStarts", () => {
   });
 });
 
+describe("groupStarts", () => {
+  it("staggers blocks within a group off each other's START", () => {
+    expect(groupStarts([[1, 1, 1]], 100, 150)).toEqual([[100, 250, 400]]);
+  });
+
+  // The pause is measured from the latest-landing piece, including a block's
+  // internal word spread — not from the group's last block's first word.
+  it("pauses after the group's latest piece has landed", () => {
+    const [, second] = groupStarts([[1, 5], [1]], 0, 10, 300);
+    expect(second![0]).toBe(10 + 4 * BLUR_STEP_MS + settleMs() + 300);
+  });
+
+  it("is empty for no groups", () => {
+    expect(groupStarts([])).toEqual([]);
+  });
+});
+
 describe("the home page sequence", () => {
   const page = readFileSync(join(__dirname, "../../app/page.tsx"), "utf8");
 
-  // Title (500ms), description, headcount, standings — each a settle (420ms)
-  // plus a 300ms gap after the one above.
-  it("sequences the home page's four blocks", () => {
-    expect(
-      blockStarts([...LANDING_BLOCKS], LANDING_LEAD_MS, LANDING_DURATION_MS, LANDING_GAP_MS),
-    ).toEqual([500, 1300, 2020, 2740]);
+  // 500ms pause; label, title, description 150ms apart; the description lands
+  // at 800 + 420, then a 500ms pause; headcount and standings 150ms apart.
+  it("runs two groups with a pause before each", () => {
+    expect(landingStarts()).toEqual([
+      [500, 650, 800],
+      [1720, 1870],
+    ]);
+  });
+
+  it("staggers within a group faster than it pauses between groups", () => {
+    expect(LANDING_STAGGER_MS).toBeLessThan(LANDING_PAUSE_MS);
   });
 
   // The budget: every animation on the page has formally ENDED, not merely
   // settled, inside 3.6s.
   it("finishes inside 3.6s", () => {
-    expect(landingEndMs()).toBe(3490);
+    expect(landingEndMs()).toBe(2620);
     expect(landingEndMs()).toBeLessThan(3600);
   });
 
-  it("reveals the headcount and the standings as separate blocks", () => {
-    expect(LANDING_BLOCKS).toHaveLength(4);
-    expect(page).toMatch(/headcountAt/);
-    expect(page).toMatch(/standingsAt/);
+  it("puts the headcount and the standings in their own group", () => {
+    expect(LANDING_GROUPS).toHaveLength(2);
+    expect(LANDING_GROUPS[1]).toHaveLength(2);
+    expect(page).toMatch(/delayMs=\{labelAt\}/);
+    expect(page).toMatch(/delayMs=\{titleAt\}/);
+    expect(page).toMatch(/\$\{headcountAt\}ms/);
+    expect(page).toMatch(/\$\{standingsAt\}ms/);
   });
 
   // `--blur-ms` is a class literal in the page and cannot import the constant.
@@ -205,12 +228,13 @@ describe("the home page sequence", () => {
     expect(page).toContain(`[--blur-ms:${LANDING_DURATION_MS}ms]`);
   });
 
-  // The title block's slot count must match the words that render.
-  it("counts the title's words from the page's own literals", () => {
+  // The label's and title's slot counts must match the words that render.
+  it("counts the label's and title's words from the page's own literals", () => {
     const eyebrow = page.match(/const EYEBROW = "([^"]+)"/)?.[1];
     const headline = page.match(/const HEADLINE = "([^"]+)"/)?.[1];
     expect(eyebrow && headline).toBeTruthy();
-    expect(LANDING_BLOCKS[0]).toBe(wordCount(eyebrow!) + wordCount(headline!));
+    expect(LANDING_GROUPS[0][0]).toBe(wordCount(eyebrow!));
+    expect(LANDING_GROUPS[0][1]).toBe(wordCount(headline!));
   });
 });
 

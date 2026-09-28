@@ -3,12 +3,7 @@ import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
 import {
   BLUR_REVEAL_CLASS,
-  LANDING_BLOCKS,
-  LANDING_DURATION_MS,
-  LANDING_GAP_MS,
-  LANDING_LEAD_MS,
-  blockStarts,
-  wordCount,
+  landingStarts,
 } from "@/components/ui/blur-reveal";
 import { Headcount } from "@/components/app/Headcount";
 import { PublicStandings } from "@/components/landing/PublicStandings";
@@ -57,31 +52,29 @@ export default async function LandingPage() {
   // broken, so treat it the same as no league at all.
   const board = league && league.members.length > 0 ? league : null;
 
-  /* The page arrives one block at a time: the title holds for
-     `LANDING_LEAD_MS` (500ms), then each block below waits for the one above
-     it to land and `LANDING_GAP_MS` more. `blockStarts` does that arithmetic
-     — see its note on why "land" is measured from the easing's 98% point
-     rather than the animation's formal end. The pace, and the 3.6s budget it
-     is held to, are documented beside the constants in `blur-reveal.ts`.
+  /* The page arrives in TWO GROUPS with a pause before each:
 
-     The title is the only block that cascades internally; the other three are
-     one piece each, so each resolves as a whole. Four blocks: the headcount
-     and the standings table arrive separately, headcount first. When no
-     league is published `board` is null and the last two never render —
-     their starts are computed anyway, and cost nothing.
+       500ms pause
+       group 1: label -> title -> description, 150ms apart
+       500ms pause once the description has landed
+       group 2: headcount -> standings, 150ms apart
 
-     `LANDING_BLOCKS` is the source of the counts so the budget test measures
-     the sequence that actually renders; `blur-reveal.test.ts` reads this file
-     and pins its title count to `EYEBROW` and `HEADLINE` above.
+     Within a group each block starts a fixed step after the one before it
+     STARTS, so the group reads as one quick motion; the pause is measured from
+     when the group's last piece LANDS (the easing's 98% point, not its formal
+     end). The numbers, the arithmetic (`groupStarts`) and the 3.6s budget they
+     are held to all live in `blur-reveal.ts`, and `LANDING_GROUPS` there
+     carries the word counts — `blur-reveal.test.ts` reads this file and pins
+     them to `EYEBROW` and `HEADLINE` above.
 
-     The `= 0` defaults are unreachable (`blockStarts` returns one entry per
-     count) and satisfy `noUncheckedIndexedAccess`. */
-  const [titleAt = 0, copyAt = 0, headcountAt = 0, standingsAt = 0] = blockStarts(
-    [...LANDING_BLOCKS],
-    LANDING_LEAD_MS,
-    LANDING_DURATION_MS,
-    LANDING_GAP_MS,
-  );
+     When no league is published `board` is null and group 2 never renders —
+     its starts are computed anyway, and cost nothing.
+
+     The `= 0` defaults are unreachable (`landingStarts` returns the shape of
+     `LANDING_GROUPS`) and satisfy `noUncheckedIndexedAccess`. */
+  const [intro = [], outro = []] = landingStarts();
+  const [labelAt = 0, titleAt = 0, copyAt = 0] = intro;
+  const [headcountAt = 0, standingsAt = 0] = outro;
 
   return (
     // `max-w-frame`, the same cap the app shell takes, so this page resolves to
@@ -144,18 +137,17 @@ export default async function LandingPage() {
               ignored and the title block sits 8px taller than the design. As a
               block it sets its own line box, which is the other half of this:
               1.1 on a phone (18px), `leading-none` on desktop (16px). */}
-          {/* The eyebrow and the heading are ONE cascade, not two: five words a
-              `BLUR_STEP_MS` apart, so "Welcome to" has not finished resolving
-              before "Last" begins. The heading's first word simply takes the
-              slot after the eyebrow's last, which is all either element needs to
-              know about the other. Both carry the same `delayMs`, so the whole
-              title moves together when `LEAD_MS` changes.
+          {/* The eyebrow and the heading are two steps of group 1, not one
+              cascade: each cascades its own words `BLUR_STEP_MS` apart, and the
+              heading starts `LANDING_STAGGER_MS` after the eyebrow does — so
+              "Welcome to" is still resolving as "Last" begins, but reads as its
+              own beat.
 
               Nothing replays here. The text is a literal and the page is static,
               so this runs once, off server-rendered markup, and `BlurReveal`
               itself adds no JS to the route. */}
           <Label className="block text-base leading-[1.1] sm:leading-none">
-            <BlurReveal text={EYEBROW} start={0} delayMs={titleAt} />
+            <BlurReveal text={EYEBROW} start={0} delayMs={labelAt} />
           </Label>
           {/*
             64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
@@ -178,7 +170,7 @@ export default async function LandingPage() {
             specifies −2px at both 64px and 88px, so it does not scale.
           */}
           <h1 className="text-[clamp(3.5rem,3rem_+_4vw,5.5rem)] font-semibold leading-none tracking-[-2px] text-black">
-            <BlurReveal text={HEADLINE} start={wordCount(EYEBROW)} delayMs={titleAt} />
+            <BlurReveal text={HEADLINE} start={0} delayMs={titleAt} />
           </h1>
         </section>
 
@@ -218,11 +210,12 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          /* The headcount and the table are SEPARATE blocks of the sequence,
-             headcount first. They were one block for a while, to keep the grid
-             from reading as part of the description above it and to save a
-             step's worth of time; the tighter landing pace pays for that step
-             now, and the table arriving after the tally is the order you read
+          /* The headcount and the table are group 2 of the sequence: two
+             blocks, headcount first, `LANDING_STAGGER_MS` apart, after a pause
+             that separates them from the description above. They were one
+             block for a while, to keep the grid from reading as part of the
+             description; the pause between the groups does that job now, and
+             the table arriving just after the tally is the order you read
              them in.
 
              Each reveal sits on the element that already holds its content —

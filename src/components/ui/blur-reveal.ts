@@ -150,16 +150,21 @@ export const BLUR_SETTLE_FRACTION = 0.56;
 export const BLOCK_GAP_MS = 500;
 
 /**
- * The home page's pace, which is faster than the default on every axis. The
- * page is four blocks now (title, description, headcount, standings) and must
- * be completely still — every animation formally ENDED, not merely settled —
- * inside 3.6s. At the default 1250ms / 500ms gap / 1000ms lead the same four
- * blocks would not finish until 6.9s.
+ * The home page's pace. The page arrives in TWO GROUPS, each a quick internal
+ * sequence, with a real pause between them:
  *
- * Duration and gap were cut by the same factor (0.6) so the rhythm between
- * "a block moving" and "the page resting" keeps the proportions it had; only
- * the lead was halved outright. `landingEndMs()` below is what the test
- * asserts against the 3.6s budget.
+ *   pause (`LANDING_LEAD_MS`)
+ *   group 1: label -> title -> description, `LANDING_STAGGER_MS` apart
+ *   pause (`LANDING_PAUSE_MS`, after the description has landed)
+ *   group 2: headcount -> standings, `LANDING_STAGGER_MS` apart
+ *
+ * Inside a group a block starts a fixed step after the previous block STARTS,
+ * so they overlap into one motion; between groups the next waits for the last
+ * piece to LAND (see `BLUR_SETTLE_FRACTION`) and then the pause. `groupStarts`
+ * below is that arithmetic.
+ *
+ * Budget: everything formally ENDED, not merely settled, inside 3.6s.
+ * `landingEndMs()` is what the test asserts against it.
  *
  * The duration reaches the CSS as `[--blur-ms:750ms]` on the page's `main`,
  * which is a class literal and cannot import this — `blur-reveal.test.ts`
@@ -167,18 +172,40 @@ export const BLOCK_GAP_MS = 500;
  */
 export const LANDING_LEAD_MS = 500;
 export const LANDING_DURATION_MS = 750;
-export const LANDING_GAP_MS = 300;
+export const LANDING_STAGGER_MS = 150;
+export const LANDING_PAUSE_MS = 500;
 
-/** Slots in each of the home page's blocks, in order: the five-word title
- *  ("Welcome to" + "Last Man Standing"), then the description, the headcount
- *  and the standings table, one piece each. */
-export const LANDING_BLOCKS = [5, 1, 1, 1] as const;
+/**
+ * Slots in each block, grouped. Group 1: the label ("Welcome to", two words),
+ * the title ("Last Man Standing", three) and the description (one piece).
+ * Group 2: the headcount and the standings table, one piece each.
+ */
+export const LANDING_GROUPS = [
+  [2, 3, 1],
+  [1, 1],
+] as const;
+
+/** Every block's start in the landing sequence, in the shape of `LANDING_GROUPS`. */
+export function landingStarts(): number[][] {
+  return groupStarts(
+    LANDING_GROUPS.map((g) => [...g]),
+    LANDING_LEAD_MS,
+    LANDING_STAGGER_MS,
+    LANDING_PAUSE_MS,
+    LANDING_DURATION_MS,
+  );
+}
 
 /** When the home page's last animation formally ends. */
 export function landingEndMs(): number {
-  const starts = blockStarts([...LANDING_BLOCKS], LANDING_LEAD_MS, LANDING_DURATION_MS, LANDING_GAP_MS);
-  const lastCount = LANDING_BLOCKS.at(-1) ?? 1;
-  return starts.at(-1)! + (lastCount - 1) * BLUR_STEP_MS + LANDING_DURATION_MS;
+  const starts = landingStarts();
+  let end = 0;
+  LANDING_GROUPS.forEach((group, g) =>
+    group.forEach((count, b) => {
+      end = Math.max(end, starts[g]![b]! + (count - 1) * BLUR_STEP_MS + LANDING_DURATION_MS);
+    }),
+  );
+  return end;
 }
 
 /** When a piece starting now will have visually landed. */
@@ -192,27 +219,56 @@ export function settleMs(durationMs: number = BLUR_DURATION_MS): number {
  * piece has landed — not after its first, and not after the previous block's
  * animation formally ends (see `BLUR_SETTLE_FRACTION`).
  *
- * `firstStartMs` is the lead before anything moves. The home page holds
- * `LANDING_LEAD_MS`.
+ * `firstStartMs` is the lead before anything moves. (The home page no longer
+ * uses this; it sequences two groups with `groupStarts` below.)
  *
  * `durationMs` is only needed by a surface that re-paces itself with
  * `--blur-ms`; every block in one sequence is assumed to share a duration,
  * which is true of the only caller and is what the property's inheritance
- * gives you anyway. `gapMs` likewise defaults to `BLOCK_GAP_MS` and is only
- * passed by a surface that wants a tighter sequence.
+ * gives you anyway.
  */
 export function blockStarts(
   counts: number[],
   firstStartMs = 0,
   durationMs: number = BLUR_DURATION_MS,
-  gapMs: number = BLOCK_GAP_MS,
 ): number[] {
   const starts: number[] = [];
   let next = firstStartMs;
   for (const count of counts) {
     starts.push(next);
     const lastPiece = next + Math.max(0, count - 1) * BLUR_STEP_MS;
-    next = lastPiece + settleMs(durationMs) + gapMs;
+    next = lastPiece + settleMs(durationMs) + BLOCK_GAP_MS;
   }
   return starts;
+}
+
+/**
+ * Block starts for a sequence of GROUPS, in milliseconds.
+ *
+ * Within a group, each block starts `staggerMs` after the previous block's
+ * start — a quick overlapping run, not a wait for anything to land. The next
+ * group starts `pauseMs` after the latest-landing piece of the group before it
+ * (a block's last word, not its first). `firstStartMs` is the lead.
+ *
+ * `[[2, 3, 1], [1, 1]]`, 500, 150, 500 at 750ms -> `[[500, 650, 800], [1720, 1870]]`.
+ */
+export function groupStarts(
+  groups: number[][],
+  firstStartMs = 0,
+  staggerMs: number = BLUR_STEP_MS,
+  pauseMs: number = BLOCK_GAP_MS,
+  durationMs: number = BLUR_DURATION_MS,
+): number[][] {
+  const out: number[][] = [];
+  let next = firstStartMs;
+  for (const group of groups) {
+    const starts = group.map((_, i) => next + i * staggerMs);
+    out.push(starts);
+    if (group.length === 0) continue;
+    const landed = Math.max(
+      ...group.map((count, i) => starts[i]! + Math.max(0, count - 1) * BLUR_STEP_MS + settleMs(durationMs)),
+    );
+    next = landed + pauseMs;
+  }
+  return out;
 }
