@@ -1,7 +1,15 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
-import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
+import {
+  BLUR_REVEAL_CLASS,
+  LANDING_BLOCKS,
+  LANDING_DURATION_MS,
+  LANDING_GAP_MS,
+  LANDING_LEAD_MS,
+  blockStarts,
+  wordCount,
+} from "@/components/ui/blur-reveal";
 import { Headcount } from "@/components/app/Headcount";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
@@ -32,16 +40,6 @@ const EYEBROW = "Welcome to";
 const HEADLINE = "Last Man Standing";
 
 /**
- * How long the page holds still before anything moves.
- *
- * It is a real cost — for one second a visitor sees the header and an empty
- * column — and it is deliberate: the pause is what makes the title read as
- * arriving rather than as having always been there. Everything below is timed
- * off it, so this single number shifts the whole page.
- */
-const LEAD_MS = 1000;
-
-/**
  * The public landing page (the canonical root). Signed-in visitors are
  * redirected to /app by middleware; everyone else gets the league's current
  * standing plus the two ways in.
@@ -59,22 +57,30 @@ export default async function LandingPage() {
   // broken, so treat it the same as no league at all.
   const board = league && league.members.length > 0 ? league : null;
 
-  /* The page arrives one block at a time: the title holds for `LEAD_MS`, then
-     each block below waits for the one above it to land and half a second more.
-     `blockStarts` does that arithmetic — see its note on why "land" is measured
-     from the easing's 98% point rather than the animation's formal end.
+  /* The page arrives one block at a time: the title holds for
+     `LANDING_LEAD_MS` (500ms), then each block below waits for the one above
+     it to land and `LANDING_GAP_MS` more. `blockStarts` does that arithmetic
+     — see its note on why "land" is measured from the easing's 98% point
+     rather than the animation's formal end. The pace, and the 3.6s budget it
+     is held to, are documented beside the constants in `blur-reveal.ts`.
 
-     The title is the only block that cascades internally; the other two are
-     one piece each, so each resolves as a whole. Three blocks, not four: the
-     headcount and the standings table animate together. When no league is
-     published `board` is null and the third never renders — its start is
-     computed anyway, and costs nothing.
+     The title is the only block that cascades internally; the other three are
+     one piece each, so each resolves as a whole. Four blocks: the headcount
+     and the standings table arrive separately, headcount first. When no
+     league is published `board` is null and the last two never render —
+     their starts are computed anyway, and cost nothing.
+
+     `LANDING_BLOCKS` is the source of the counts so the budget test measures
+     the sequence that actually renders; `blur-reveal.test.ts` reads this file
+     and pins its title count to `EYEBROW` and `HEADLINE` above.
 
      The `= 0` defaults are unreachable (`blockStarts` returns one entry per
      count) and satisfy `noUncheckedIndexedAccess`. */
-  const [titleAt = 0, copyAt = 0, boardAt = 0] = blockStarts(
-    [wordCount(EYEBROW) + wordCount(HEADLINE), 1, 1],
-    LEAD_MS,
+  const [titleAt = 0, copyAt = 0, headcountAt = 0, standingsAt = 0] = blockStarts(
+    [...LANDING_BLOCKS],
+    LANDING_LEAD_MS,
+    LANDING_DURATION_MS,
+    LANDING_GAP_MS,
   );
 
   return (
@@ -120,8 +126,11 @@ export default async function LandingPage() {
           `position: sticky` cells inside StandingsGrid's own horizontal
           scroller. `clip` clips without scrolling, so their scrollport is
           untouched. What gets clipped is a blurred, near-transparent edge
-          mid-animation; the settled page is 1:1. */}
-      <main className="flex-1 overflow-x-clip">
+          mid-animation; the settled page is 1:1.
+
+          `[--blur-ms:750ms]` re-paces every `blur-in` under it to
+          `LANDING_DURATION_MS`; `blur-reveal.test.ts` asserts the two agree. */}
+      <main className="flex-1 overflow-x-clip [--blur-ms:750ms]">
         {/* Both mock-ups now inset the title block by 16px, so the heading
             lines up with the brand name above it and the sections below rather
             than hanging left of everything. Both steps are mobile/desktop
@@ -209,29 +218,30 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          /* The headcount and the table are ONE block of the sequence, not
-             two. They are one thought — the week's tally and the board that
-             tally is read off — and revealing them apart made the grid look
-             like it belonged to the description above it. It also cost 1.2s: as
-             separate blocks the page did not finish until 5.93s.
+          /* The headcount and the table are SEPARATE blocks of the sequence,
+             headcount first. They were one block for a while, to keep the grid
+             from reading as part of the description above it and to save a
+             step's worth of time; the tighter landing pace pays for that step
+             now, and the table arriving after the tally is the order you read
+             them in.
 
-             Hence a wrapper rather than the fragment that was here. It also
-             does the job the headcount section cannot do for itself: `Headcount`
-             is shared with the signed-in standings page and takes only
-             `headcount` and `className`, and widening a shared component's props for one
-             host's animation is the wrong trade when a block box does the same
-             job. The wrapper must stay full-width and padding-free — both
-             children bleed with `-mx-4` against the `px-4` on their own
-             sections, and a wrapper that inset or shrank either one would
-             break that. */
-          <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
+             Each reveal sits on the element that already holds its content —
+             the headcount's inset wrapper and the standings section — rather
+             than on `Headcount` itself, which is shared with the signed-in
+             standings page and takes only `headcount` and `className`. Both
+             boxes are full-width and keep their own `px-4`, which is what the
+             `-mx-4` bleeds inside them cancel against. */
+          <>
             {/* The inset is a WRAPPER now, not a `className`. `Headcount`'s
                 root is the card itself — a fill and a radius — so `px-4` passed
                 to it would pad the inside of that card rather than sit it in
                 from the page. This page's `main` carries no padding of its own,
                 so each section supplies its own 16px; the card takes the
                 vertical seam and the wrapper takes the horizontal one. */}
-            <div className="px-4 pb-2 sm:py-3">
+            <div
+              className={cn("px-4 pb-2 sm:py-3", BLUR_REVEAL_CLASS)}
+              style={{ animationDelay: `${headcountAt}ms` }}
+            >
               <Headcount headcount={board.headcount} />
             </div>
             {/* The design drops the "League" eyebrow that used to sit here: the
@@ -250,10 +260,13 @@ export default async function LandingPage() {
                 `main` on `flex-1`, so on a viewport taller than the page main
                 absorbs the slack and the real gap is larger. With a populated
                 table the page outgrows the viewport and this is what shows. */}
-            <section className="px-4 pb-[200px] sm:pt-5">
+            <section
+              className={cn("px-4 pb-[200px] sm:pt-5", BLUR_REVEAL_CLASS)}
+              style={{ animationDelay: `${standingsAt}ms` }}
+            >
               <PublicStandings data={board} />
             </section>
-          </div>
+          </>
         ) : null}
       </main>
     </div>

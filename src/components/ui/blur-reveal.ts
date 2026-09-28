@@ -149,6 +149,38 @@ export const BLUR_SETTLE_FRACTION = 0.56;
 /** The wait between one block landing and the next one starting. */
 export const BLOCK_GAP_MS = 500;
 
+/**
+ * The home page's pace, which is faster than the default on every axis. The
+ * page is four blocks now (title, description, headcount, standings) and must
+ * be completely still — every animation formally ENDED, not merely settled —
+ * inside 3.6s. At the default 1250ms / 500ms gap / 1000ms lead the same four
+ * blocks would not finish until 6.9s.
+ *
+ * Duration and gap were cut by the same factor (0.6) so the rhythm between
+ * "a block moving" and "the page resting" keeps the proportions it had; only
+ * the lead was halved outright. `landingEndMs()` below is what the test
+ * asserts against the 3.6s budget.
+ *
+ * The duration reaches the CSS as `[--blur-ms:750ms]` on the page's `main`,
+ * which is a class literal and cannot import this — `blur-reveal.test.ts`
+ * reads `src/app/page.tsx` and asserts the two still agree.
+ */
+export const LANDING_LEAD_MS = 500;
+export const LANDING_DURATION_MS = 750;
+export const LANDING_GAP_MS = 300;
+
+/** Slots in each of the home page's blocks, in order: the five-word title
+ *  ("Welcome to" + "Last Man Standing"), then the description, the headcount
+ *  and the standings table, one piece each. */
+export const LANDING_BLOCKS = [5, 1, 1, 1] as const;
+
+/** When the home page's last animation formally ends. */
+export function landingEndMs(): number {
+  const starts = blockStarts([...LANDING_BLOCKS], LANDING_LEAD_MS, LANDING_DURATION_MS, LANDING_GAP_MS);
+  const lastCount = LANDING_BLOCKS.at(-1) ?? 1;
+  return starts.at(-1)! + (lastCount - 1) * BLUR_STEP_MS + LANDING_DURATION_MS;
+}
+
 /** When a piece starting now will have visually landed. */
 export function settleMs(durationMs: number = BLUR_DURATION_MS): number {
   return Math.round(durationMs * BLUR_SETTLE_FRACTION);
@@ -160,24 +192,27 @@ export function settleMs(durationMs: number = BLUR_DURATION_MS): number {
  * piece has landed — not after its first, and not after the previous block's
  * animation formally ends (see `BLUR_SETTLE_FRACTION`).
  *
- * `firstStartMs` is the lead before anything moves. The home page holds 1s.
+ * `firstStartMs` is the lead before anything moves. The home page holds
+ * `LANDING_LEAD_MS`.
  *
  * `durationMs` is only needed by a surface that re-paces itself with
  * `--blur-ms`; every block in one sequence is assumed to share a duration,
  * which is true of the only caller and is what the property's inheritance
- * gives you anyway.
+ * gives you anyway. `gapMs` likewise defaults to `BLOCK_GAP_MS` and is only
+ * passed by a surface that wants a tighter sequence.
  */
 export function blockStarts(
   counts: number[],
   firstStartMs = 0,
   durationMs: number = BLUR_DURATION_MS,
+  gapMs: number = BLOCK_GAP_MS,
 ): number[] {
   const starts: number[] = [];
   let next = firstStartMs;
   for (const count of counts) {
     starts.push(next);
     const lastPiece = next + Math.max(0, count - 1) * BLUR_STEP_MS;
-    next = lastPiece + settleMs(durationMs) + BLOCK_GAP_MS;
+    next = lastPiece + settleMs(durationMs) + gapMs;
   }
   return starts;
 }

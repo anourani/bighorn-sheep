@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BLOCK_GAP_MS,
@@ -8,6 +10,11 @@ import {
   blockStarts,
   cascadeStarts,
   HERO_DURATION_MS,
+  LANDING_BLOCKS,
+  LANDING_DURATION_MS,
+  LANDING_GAP_MS,
+  LANDING_LEAD_MS,
+  landingEndMs,
   revealDelay,
   settleMs,
   splitWords,
@@ -123,10 +130,14 @@ describe("settleMs", () => {
 });
 
 describe("blockStarts", () => {
-  // The home page, exactly: a five-word title after a 1s hold, then the
-  // description, then the headcount and standings table as ONE block.
-  it("sequences the home page's three blocks", () => {
+  // The default pace, spelled out: a five-word title after a 1s hold, then
+  // two one-piece blocks.
+  it("sequences blocks at the default pace", () => {
     expect(blockStarts([5, 1, 1], 1000)).toEqual([1000, 2280, 3480]);
+  });
+
+  it("takes a tighter gap when one is passed", () => {
+    expect(blockStarts([1, 1], 0, BLUR_DURATION_MS, 100)[1]).toBe(settleMs() + 100);
   });
 
   // Splitting the board in two is what the page used to do, and it pushed the
@@ -162,6 +173,44 @@ describe("blockStarts", () => {
     const slow = blockStarts([1, 1], 0);
     const fast = blockStarts([1, 1], 0, HERO_DURATION_MS);
     expect(fast[1]).toBeLessThan(slow[1]!);
+  });
+});
+
+describe("the home page sequence", () => {
+  const page = readFileSync(join(__dirname, "../../app/page.tsx"), "utf8");
+
+  // Title (500ms), description, headcount, standings — each a settle (420ms)
+  // plus a 300ms gap after the one above.
+  it("sequences the home page's four blocks", () => {
+    expect(
+      blockStarts([...LANDING_BLOCKS], LANDING_LEAD_MS, LANDING_DURATION_MS, LANDING_GAP_MS),
+    ).toEqual([500, 1300, 2020, 2740]);
+  });
+
+  // The budget: every animation on the page has formally ENDED, not merely
+  // settled, inside 3.6s.
+  it("finishes inside 3.6s", () => {
+    expect(landingEndMs()).toBe(3490);
+    expect(landingEndMs()).toBeLessThan(3600);
+  });
+
+  it("reveals the headcount and the standings as separate blocks", () => {
+    expect(LANDING_BLOCKS).toHaveLength(4);
+    expect(page).toMatch(/headcountAt/);
+    expect(page).toMatch(/standingsAt/);
+  });
+
+  // `--blur-ms` is a class literal in the page and cannot import the constant.
+  it("paces the page's CSS at LANDING_DURATION_MS", () => {
+    expect(page).toContain(`[--blur-ms:${LANDING_DURATION_MS}ms]`);
+  });
+
+  // The title block's slot count must match the words that render.
+  it("counts the title's words from the page's own literals", () => {
+    const eyebrow = page.match(/const EYEBROW = "([^"]+)"/)?.[1];
+    const headline = page.match(/const HEADLINE = "([^"]+)"/)?.[1];
+    expect(eyebrow && headline).toBeTruthy();
+    expect(LANDING_BLOCKS[0]).toBe(wordCount(eyebrow!) + wordCount(headline!));
   });
 });
 
