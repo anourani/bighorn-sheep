@@ -1,7 +1,10 @@
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LeaguePitch } from "@/components/landing/LeaguePitch";
 import { BlurReveal } from "@/components/ui/BlurReveal";
-import { BLUR_REVEAL_CLASS, blockStarts, wordCount } from "@/components/ui/blur-reveal";
+import {
+  BLUR_REVEAL_CLASS,
+  landingStarts,
+} from "@/components/ui/blur-reveal";
 import { Headcount } from "@/components/app/Headcount";
 import { PublicStandings } from "@/components/landing/PublicStandings";
 import { Label } from "@/components/ui/Label";
@@ -32,16 +35,6 @@ const EYEBROW = "Welcome to";
 const HEADLINE = "Last Man Standing";
 
 /**
- * How long the page holds still before anything moves.
- *
- * It is a real cost — for one second a visitor sees the header and an empty
- * column — and it is deliberate: the pause is what makes the title read as
- * arriving rather than as having always been there. Everything below is timed
- * off it, so this single number shifts the whole page.
- */
-const LEAD_MS = 1000;
-
-/**
  * The public landing page (the canonical root). Signed-in visitors are
  * redirected to /app by middleware; everyone else gets the league's current
  * standing plus the two ways in.
@@ -59,23 +52,29 @@ export default async function LandingPage() {
   // broken, so treat it the same as no league at all.
   const board = league && league.members.length > 0 ? league : null;
 
-  /* The page arrives one block at a time: the title holds for `LEAD_MS`, then
-     each block below waits for the one above it to land and half a second more.
-     `blockStarts` does that arithmetic — see its note on why "land" is measured
-     from the easing's 98% point rather than the animation's formal end.
+  /* The page arrives in TWO GROUPS with a pause before each:
 
-     The title is the only block that cascades internally; the other two are
-     one piece each, so each resolves as a whole. Three blocks, not four: the
-     headcount and the standings table animate together. When no league is
-     published `board` is null and the third never renders — its start is
-     computed anyway, and costs nothing.
+       500ms pause
+       group 1: label -> title -> description, 150ms apart
+       500ms pause once the description has landed
+       group 2: headcount -> standings, 150ms apart
 
-     The `= 0` defaults are unreachable (`blockStarts` returns one entry per
-     count) and satisfy `noUncheckedIndexedAccess`. */
-  const [titleAt = 0, copyAt = 0, boardAt = 0] = blockStarts(
-    [wordCount(EYEBROW) + wordCount(HEADLINE), 1, 1],
-    LEAD_MS,
-  );
+     Within a group each block starts a fixed step after the one before it
+     STARTS, so the group reads as one quick motion; the pause is measured from
+     when the group's last piece LANDS (the easing's 98% point, not its formal
+     end). The numbers, the arithmetic (`groupStarts`) and the 3.6s budget they
+     are held to all live in `blur-reveal.ts`, and `LANDING_GROUPS` there
+     carries the word counts — `blur-reveal.test.ts` reads this file and pins
+     them to `EYEBROW` and `HEADLINE` above.
+
+     When no league is published `board` is null and group 2 never renders —
+     its starts are computed anyway, and cost nothing.
+
+     The `= 0` defaults are unreachable (`landingStarts` returns the shape of
+     `LANDING_GROUPS`) and satisfy `noUncheckedIndexedAccess`. */
+  const [intro = [], outro = []] = landingStarts();
+  const [labelAt = 0, titleAt = 0, copyAt = 0] = intro;
+  const [headcountAt = 0, standingsAt = 0] = outro;
 
   return (
     // `max-w-frame`, the same cap the app shell takes, so this page resolves to
@@ -120,8 +119,11 @@ export default async function LandingPage() {
           `position: sticky` cells inside StandingsGrid's own horizontal
           scroller. `clip` clips without scrolling, so their scrollport is
           untouched. What gets clipped is a blurred, near-transparent edge
-          mid-animation; the settled page is 1:1. */}
-      <main className="flex-1 overflow-x-clip">
+          mid-animation; the settled page is 1:1.
+
+          `[--blur-ms:750ms]` re-paces every `blur-in` under it to
+          `LANDING_DURATION_MS`; `blur-reveal.test.ts` asserts the two agree. */}
+      <main className="flex-1 overflow-x-clip [--blur-ms:750ms]">
         {/* Both mock-ups now inset the title block by 16px, so the heading
             lines up with the brand name above it and the sections below rather
             than hanging left of everything. Both steps are mobile/desktop
@@ -135,18 +137,17 @@ export default async function LandingPage() {
               ignored and the title block sits 8px taller than the design. As a
               block it sets its own line box, which is the other half of this:
               1.1 on a phone (18px), `leading-none` on desktop (16px). */}
-          {/* The eyebrow and the heading are ONE cascade, not two: five words a
-              `BLUR_STEP_MS` apart, so "Welcome to" has not finished resolving
-              before "Last" begins. The heading's first word simply takes the
-              slot after the eyebrow's last, which is all either element needs to
-              know about the other. Both carry the same `delayMs`, so the whole
-              title moves together when `LEAD_MS` changes.
+          {/* The eyebrow and the heading are two steps of group 1, not one
+              cascade: each cascades its own words `BLUR_STEP_MS` apart, and the
+              heading starts `LANDING_STAGGER_MS` after the eyebrow does — so
+              "Welcome to" is still resolving as "Last" begins, but reads as its
+              own beat.
 
               Nothing replays here. The text is a literal and the page is static,
               so this runs once, off server-rendered markup, and `BlurReveal`
               itself adds no JS to the route. */}
           <Label className="block text-base leading-[1.1] sm:leading-none">
-            <BlurReveal text={EYEBROW} start={0} delayMs={titleAt} />
+            <BlurReveal text={EYEBROW} start={0} delayMs={labelAt} />
           </Label>
           {/*
             64px on a phone (H1 MOBILE), 88px at the shell's full width (H1
@@ -169,7 +170,7 @@ export default async function LandingPage() {
             specifies −2px at both 64px and 88px, so it does not scale.
           */}
           <h1 className="text-[clamp(3.5rem,3rem_+_4vw,5.5rem)] font-semibold leading-none tracking-[-2px] text-black">
-            <BlurReveal text={HEADLINE} start={wordCount(EYEBROW)} delayMs={titleAt} />
+            <BlurReveal text={HEADLINE} start={0} delayMs={titleAt} />
           </h1>
         </section>
 
@@ -209,29 +210,31 @@ export default async function LandingPage() {
         </section>
 
         {board ? (
-          /* The headcount and the table are ONE block of the sequence, not
-             two. They are one thought — the week's tally and the board that
-             tally is read off — and revealing them apart made the grid look
-             like it belonged to the description above it. It also cost 1.2s: as
-             separate blocks the page did not finish until 5.93s.
+          /* The headcount and the table are group 2 of the sequence: two
+             blocks, headcount first, `LANDING_STAGGER_MS` apart, after a pause
+             that separates them from the description above. They were one
+             block for a while, to keep the grid from reading as part of the
+             description; the pause between the groups does that job now, and
+             the table arriving just after the tally is the order you read
+             them in.
 
-             Hence a wrapper rather than the fragment that was here. It also
-             does the job the headcount section cannot do for itself: `Headcount`
-             is shared with the signed-in standings page and takes only
-             `headcount` and `className`, and widening a shared component's props for one
-             host's animation is the wrong trade when a block box does the same
-             job. The wrapper must stay full-width and padding-free — both
-             children bleed with `-mx-4` against the `px-4` on their own
-             sections, and a wrapper that inset or shrank either one would
-             break that. */
-          <div className={BLUR_REVEAL_CLASS} style={{ animationDelay: `${boardAt}ms` }}>
+             Each reveal sits on the element that already holds its content —
+             the headcount's inset wrapper and the standings section — rather
+             than on `Headcount` itself, which is shared with the signed-in
+             standings page and takes only `headcount` and `className`. Both
+             boxes are full-width and keep their own `px-4`, which is what the
+             `-mx-4` bleeds inside them cancel against. */
+          <>
             {/* The inset is a WRAPPER now, not a `className`. `Headcount`'s
                 root is the card itself — a fill and a radius — so `px-4` passed
                 to it would pad the inside of that card rather than sit it in
                 from the page. This page's `main` carries no padding of its own,
                 so each section supplies its own 16px; the card takes the
                 vertical seam and the wrapper takes the horizontal one. */}
-            <div className="px-4 pb-2 sm:py-3">
+            <div
+              className={cn("px-4 pb-2 sm:py-3", BLUR_REVEAL_CLASS)}
+              style={{ animationDelay: `${headcountAt}ms` }}
+            >
               <Headcount headcount={board.headcount} />
             </div>
             {/* The design drops the "League" eyebrow that used to sit here: the
@@ -250,10 +253,13 @@ export default async function LandingPage() {
                 `main` on `flex-1`, so on a viewport taller than the page main
                 absorbs the slack and the real gap is larger. With a populated
                 table the page outgrows the viewport and this is what shows. */}
-            <section className="px-4 pb-[200px] sm:pt-5">
+            <section
+              className={cn("px-4 pb-[200px] sm:pt-5", BLUR_REVEAL_CLASS)}
+              style={{ animationDelay: `${standingsAt}ms` }}
+            >
               <PublicStandings data={board} />
             </section>
-          </div>
+          </>
         ) : null}
       </main>
     </div>

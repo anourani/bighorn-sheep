@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BLOCK_GAP_MS,
@@ -8,6 +10,13 @@ import {
   blockStarts,
   cascadeStarts,
   HERO_DURATION_MS,
+  groupStarts,
+  LANDING_DURATION_MS,
+  LANDING_GROUPS,
+  LANDING_PAUSE_MS,
+  LANDING_STAGGER_MS,
+  landingEndMs,
+  landingStarts,
   revealDelay,
   settleMs,
   splitWords,
@@ -123,9 +132,9 @@ describe("settleMs", () => {
 });
 
 describe("blockStarts", () => {
-  // The home page, exactly: a five-word title after a 1s hold, then the
-  // description, then the headcount and standings table as ONE block.
-  it("sequences the home page's three blocks", () => {
+  // The default pace, spelled out: a five-word title after a 1s hold, then
+  // two one-piece blocks.
+  it("sequences blocks at the default pace", () => {
     expect(blockStarts([5, 1, 1], 1000)).toEqual([1000, 2280, 3480]);
   });
 
@@ -162,6 +171,70 @@ describe("blockStarts", () => {
     const slow = blockStarts([1, 1], 0);
     const fast = blockStarts([1, 1], 0, HERO_DURATION_MS);
     expect(fast[1]).toBeLessThan(slow[1]!);
+  });
+});
+
+describe("groupStarts", () => {
+  it("staggers blocks within a group off each other's START", () => {
+    expect(groupStarts([[1, 1, 1]], 100, 150)).toEqual([[100, 250, 400]]);
+  });
+
+  // The pause is measured from the latest-landing piece, including a block's
+  // internal word spread — not from the group's last block's first word.
+  it("pauses after the group's latest piece has landed", () => {
+    const [, second] = groupStarts([[1, 5], [1]], 0, 10, 300);
+    expect(second![0]).toBe(10 + 4 * BLUR_STEP_MS + settleMs() + 300);
+  });
+
+  it("is empty for no groups", () => {
+    expect(groupStarts([])).toEqual([]);
+  });
+});
+
+describe("the home page sequence", () => {
+  const page = readFileSync(join(__dirname, "../../app/page.tsx"), "utf8");
+
+  // 500ms pause; label, title, description 150ms apart; the description lands
+  // at 800 + 420, then a 500ms pause; headcount and standings 150ms apart.
+  it("runs two groups with a pause before each", () => {
+    expect(landingStarts()).toEqual([
+      [500, 650, 800],
+      [1720, 1870],
+    ]);
+  });
+
+  it("staggers within a group faster than it pauses between groups", () => {
+    expect(LANDING_STAGGER_MS).toBeLessThan(LANDING_PAUSE_MS);
+  });
+
+  // The budget: every animation on the page has formally ENDED, not merely
+  // settled, inside 3.6s.
+  it("finishes inside 3.6s", () => {
+    expect(landingEndMs()).toBe(2620);
+    expect(landingEndMs()).toBeLessThan(3600);
+  });
+
+  it("puts the headcount and the standings in their own group", () => {
+    expect(LANDING_GROUPS).toHaveLength(2);
+    expect(LANDING_GROUPS[1]).toHaveLength(2);
+    expect(page).toMatch(/delayMs=\{labelAt\}/);
+    expect(page).toMatch(/delayMs=\{titleAt\}/);
+    expect(page).toMatch(/\$\{headcountAt\}ms/);
+    expect(page).toMatch(/\$\{standingsAt\}ms/);
+  });
+
+  // `--blur-ms` is a class literal in the page and cannot import the constant.
+  it("paces the page's CSS at LANDING_DURATION_MS", () => {
+    expect(page).toContain(`[--blur-ms:${LANDING_DURATION_MS}ms]`);
+  });
+
+  // The label's and title's slot counts must match the words that render.
+  it("counts the label's and title's words from the page's own literals", () => {
+    const eyebrow = page.match(/const EYEBROW = "([^"]+)"/)?.[1];
+    const headline = page.match(/const HEADLINE = "([^"]+)"/)?.[1];
+    expect(eyebrow && headline).toBeTruthy();
+    expect(LANDING_GROUPS[0][0]).toBe(wordCount(eyebrow!));
+    expect(LANDING_GROUPS[0][1]).toBe(wordCount(headline!));
   });
 });
 

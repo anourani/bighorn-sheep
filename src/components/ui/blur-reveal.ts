@@ -149,6 +149,65 @@ export const BLUR_SETTLE_FRACTION = 0.56;
 /** The wait between one block landing and the next one starting. */
 export const BLOCK_GAP_MS = 500;
 
+/**
+ * The home page's pace. The page arrives in TWO GROUPS, each a quick internal
+ * sequence, with a real pause between them:
+ *
+ *   pause (`LANDING_LEAD_MS`)
+ *   group 1: label -> title -> description, `LANDING_STAGGER_MS` apart
+ *   pause (`LANDING_PAUSE_MS`, after the description has landed)
+ *   group 2: headcount -> standings, `LANDING_STAGGER_MS` apart
+ *
+ * Inside a group a block starts a fixed step after the previous block STARTS,
+ * so they overlap into one motion; between groups the next waits for the last
+ * piece to LAND (see `BLUR_SETTLE_FRACTION`) and then the pause. `groupStarts`
+ * below is that arithmetic.
+ *
+ * Budget: everything formally ENDED, not merely settled, inside 3.6s.
+ * `landingEndMs()` is what the test asserts against it.
+ *
+ * The duration reaches the CSS as `[--blur-ms:750ms]` on the page's `main`,
+ * which is a class literal and cannot import this — `blur-reveal.test.ts`
+ * reads `src/app/page.tsx` and asserts the two still agree.
+ */
+export const LANDING_LEAD_MS = 500;
+export const LANDING_DURATION_MS = 750;
+export const LANDING_STAGGER_MS = 150;
+export const LANDING_PAUSE_MS = 500;
+
+/**
+ * Slots in each block, grouped. Group 1: the label ("Welcome to", two words),
+ * the title ("Last Man Standing", three) and the description (one piece).
+ * Group 2: the headcount and the standings table, one piece each.
+ */
+export const LANDING_GROUPS = [
+  [2, 3, 1],
+  [1, 1],
+] as const;
+
+/** Every block's start in the landing sequence, in the shape of `LANDING_GROUPS`. */
+export function landingStarts(): number[][] {
+  return groupStarts(
+    LANDING_GROUPS.map((g) => [...g]),
+    LANDING_LEAD_MS,
+    LANDING_STAGGER_MS,
+    LANDING_PAUSE_MS,
+    LANDING_DURATION_MS,
+  );
+}
+
+/** When the home page's last animation formally ends. */
+export function landingEndMs(): number {
+  const starts = landingStarts();
+  let end = 0;
+  LANDING_GROUPS.forEach((group, g) =>
+    group.forEach((count, b) => {
+      end = Math.max(end, starts[g]![b]! + (count - 1) * BLUR_STEP_MS + LANDING_DURATION_MS);
+    }),
+  );
+  return end;
+}
+
 /** When a piece starting now will have visually landed. */
 export function settleMs(durationMs: number = BLUR_DURATION_MS): number {
   return Math.round(durationMs * BLUR_SETTLE_FRACTION);
@@ -160,7 +219,8 @@ export function settleMs(durationMs: number = BLUR_DURATION_MS): number {
  * piece has landed — not after its first, and not after the previous block's
  * animation formally ends (see `BLUR_SETTLE_FRACTION`).
  *
- * `firstStartMs` is the lead before anything moves. The home page holds 1s.
+ * `firstStartMs` is the lead before anything moves. (The home page no longer
+ * uses this; it sequences two groups with `groupStarts` below.)
  *
  * `durationMs` is only needed by a surface that re-paces itself with
  * `--blur-ms`; every block in one sequence is assumed to share a duration,
@@ -180,4 +240,35 @@ export function blockStarts(
     next = lastPiece + settleMs(durationMs) + BLOCK_GAP_MS;
   }
   return starts;
+}
+
+/**
+ * Block starts for a sequence of GROUPS, in milliseconds.
+ *
+ * Within a group, each block starts `staggerMs` after the previous block's
+ * start — a quick overlapping run, not a wait for anything to land. The next
+ * group starts `pauseMs` after the latest-landing piece of the group before it
+ * (a block's last word, not its first). `firstStartMs` is the lead.
+ *
+ * `[[2, 3, 1], [1, 1]]`, 500, 150, 500 at 750ms -> `[[500, 650, 800], [1720, 1870]]`.
+ */
+export function groupStarts(
+  groups: number[][],
+  firstStartMs = 0,
+  staggerMs: number = BLUR_STEP_MS,
+  pauseMs: number = BLOCK_GAP_MS,
+  durationMs: number = BLUR_DURATION_MS,
+): number[][] {
+  const out: number[][] = [];
+  let next = firstStartMs;
+  for (const group of groups) {
+    const starts = group.map((_, i) => next + i * staggerMs);
+    out.push(starts);
+    if (group.length === 0) continue;
+    const landed = Math.max(
+      ...group.map((count, i) => starts[i]! + Math.max(0, count - 1) * BLUR_STEP_MS + settleMs(durationMs)),
+    );
+    next = landed + pauseMs;
+  }
+  return out;
 }
