@@ -16,6 +16,15 @@ import type { Game } from "../nfl/types";
  * `eliminated_week` for the given season, folding weeks 1..throughWeek. By default
  * that covers EVERY group in the season — pass `opts.groupId` to scope it to one.
  *
+ * ONLY ROWS THAT CHANGED ARE WRITTEN. Each write is its own HTTP request, and the
+ * cron runs every five minutes all year, so rewriting every pick of every week on
+ * every run was tens of thousands of requests a day for a handful of players —
+ * nearly all writing back the value already there, and every one landing in
+ * Supabase's log ingestion. A row is compared against what was just read; when nothing has
+ * finished since the last run, nothing is written at all. `membersUpdated` still
+ * counts every member scored, written or not, so the Data Feed tab's number keeps
+ * meaning "players covered" rather than dropping to 0 between games.
+ *
  * ONE ENTRY AT A TIME. A `group_members` row IS an entry (0017), so a two-entry
  * player is folded twice and each fold reads only its own entry's picks — see
  * `groupPicksByEntry` below and the shared `entryKey` it keys on.
@@ -43,6 +52,18 @@ export function rowToGame(r: GameRow): Game {
     awayScore: r.away_score,
     statusDetail: r.status_detail ?? undefined,
   };
+}
+
+/**
+ * Two timestamps naming the same moment, or both null.
+ *
+ * Compared as instants rather than strings because one moment can come back
+ * spelled two ways (`+00:00` against `.000Z`), and a string test would call the
+ * row changed and write it anyway — quietly undoing the point of comparing.
+ */
+export function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  return new Date(a).getTime() === new Date(b).getTime();
 }
 
 export interface RecomputeOptions {
@@ -136,11 +157,22 @@ export async function recomputeSeason(
 
         if (pick && result !== "no_pick") {
           const locked = game && new Date(game.kickoff) <= now ? game.kickoff : null;
-          await supabase.from("picks").update({ result, locked_at: locked }).eq("id", pick.id);
+          if (pick.result !== result || !sameInstant(pick.locked_at, locked)) {
+            await supabase.from("picks").update({ result, locked_at: locked }).eq("id", pick.id);
+          }
         }
       }
 
       const status = computeStatus(rules, results, weeks);
+      if (
+        member.strikes === status.strikes &&
+        member.status === status.status &&
+        member.eliminated_week === status.eliminatedWeek
+      ) {
+        // Already correct: counted as scored, nothing written.
+        membersUpdated += 1;
+        continue;
+      }
       const { error } = await supabase
         .from("group_members")
         .update({
