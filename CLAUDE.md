@@ -633,6 +633,32 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The pick that won the league stays GREEN for the rest of the season.** Every
+  other settled win goes plain once its week passes; the champion's winning-week
+  tile keeps the win tint so the board shows at a glance when the league was
+  decided. `championOf` (`src/lib/league/champion.ts`, a leaf) derives it from
+  `status` / `eliminatedWeek` alone, and `StandingsGrid` passes the week into
+  `cellFor` for the champion's row only. **No migration.** Four things:
+  - **The winning week is the RUNNER-UP's elimination week**, not anything read
+    off the champion. Each entry "lasted until" its `eliminatedWeek` (alive =
+    forever); the champion lasted strictly longest, and the week the field
+    emptied behind them is the second-longest number. That is what keeps it
+    right after the winner plays on.
+  - **The winner can still be marked ELIMINATED, and that is known and
+    deliberately out of scope.** The scorer has no notion of a winner, so the
+    inaugural champion lost the week after winning and went out like anyone
+    else — the headcount read "0 still standing", and 0020 hides his later
+    picks from the league. The champion is still found (he lasted longest); what
+    a winner's post-win weeks should mean is a separate decision.
+  - **No champion is drawn unless one is certain**: two or more alive, a tie at
+    the top (a wipeout), a one-entry league, or an eliminated row with no week
+    recorded all answer null. A guessed winner in the board's loudest colour is
+    worse than none.
+  - **A win or a push in that week goes green; a loss stays red.** A champion
+    who survived the week on a spare strike took a strike, and the red tile is
+    the record of it. The tile's title and `sr-only` text say "won the league",
+    because the green alone only says "win".
+
 - **An ELIMINATED entry keeps picking, and nobody else can see what it picks.**
   A knocked-out entry used to get an inert grid and a red "You're eliminated, so
   picks are closed." It now picks week to week exactly as a living entry does,
@@ -1747,7 +1773,9 @@ reading, but only the first kind is the lesson.
     frozen table readable: a red tile is the week somebody took a strike, while
     green on every survived week would be a wall of colour saying nothing. A
     settled push reads untinted like a win — it survived — and a tie in a league
-    that counts ties as losses arrives in `history` as a loss already.
+    that counts ties as losses arrives in `history` as a loss already. **One
+    settled win stays green: the pick that won the league** — see the champion
+    entry in "Things that are true now and weren't".
   - **A win has a fill at all for the first time.** The old grid painted `""` for
     a win and washed only loss/push/live, so the legend had no swatch to explain.
   - **A game in progress carries NO marker, and `WeekCell` has no `live` field.**
