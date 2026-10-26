@@ -1498,6 +1498,20 @@ reading, but only the first kind is the lesson.
     `aspect-square`**, so the two cannot be handed different numbers — including
     on a track `minmax` has shrunk. Do not add a fixed row height; it would
     un-square exactly that case.
+  - **From `lg` with 15 or more entries the cubes are RECTANGLES, and that one
+    case does take a fixed height.** `STRETCH_MIN_COUNT` in `headcount-grid.ts`:
+    at 30 entries a row of 24px squares stopped ~60% of the way across the
+    968px card, so past the threshold every track is `1fr` and the tile keeps
+    only the cube's 24px HEIGHT. The server knows the count, so an `auto-fit`
+    template paints it before hydration — `auto-fit`, not `auto-fill`, because
+    only the former collapses empty tracks and lets the tiles grow into them.
+    Once a league overflows one row, `stretchColumns` BALANCES the rows (38 →
+    19 + 19, 75 → 3 × 25) rather than filling greedily: a short last row of
+    `1fr` tracks would otherwise draw one tile alone under a full row. That
+    balancing is JS-only; a browser without it keeps `auto-fit`'s greedy rows.
+    Phones draw squares at every count. Measured at 1440: 30 entries are 30
+    tiles of 30.3 x 24 flush to both edges; 14 are still 24px squares; 38 are
+    two rows of 19 at 49.1 x 24.
   - **`HeadcountGrid` is the only file that takes `"use client"`.** The label row
     stays a Server Component, which is what keeps `lib/league/view.ts` — and the
     whole ranking apparatus it imports — out of the landing page's client bundle.

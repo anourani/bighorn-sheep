@@ -7,6 +7,7 @@ import {
   columnsFor,
   cubeLayout,
   orphanRow,
+  stretchColumns,
 } from "./headcount-grid";
 
 describe("columnsFor", () => {
@@ -134,5 +135,35 @@ describe("the cube scales", () => {
     expect(columnsFor(333, 15, CUBE_GAP)).toBe(19);
     expect(columnsFor(333, 17, CUBE_GAP)).toBe(17);
     expect(cubeLayout(19, 333, CUBE_PHONE).size).toBe(17);
+  });
+});
+
+describe("stretchColumns", () => {
+  // 968: the desktop card's inner grid, where 37 cubes fit at 24px.
+  it("puts a league that fits on one full-width row", () => {
+    expect(stretchColumns(30, 968)).toBe(30);
+    expect(stretchColumns(15, 968)).toBe(15);
+    expect(stretchColumns(37, 968)).toBe(37);
+  });
+
+  it("balances the rows once a league overflows one", () => {
+    expect(stretchColumns(38, 968)).toBe(19);
+    expect(stretchColumns(75, 968)).toBe(25);
+  });
+
+  it("never asks for a tile narrower than the cube, nor for zero columns", () => {
+    for (let count = 1; count <= 300; count += 1) {
+      const columns = stretchColumns(count, 968);
+      expect(columns).toBeGreaterThanOrEqual(1);
+      expect(columns).toBeLessThanOrEqual(columnsFor(968, CUBE_DESKTOP.max, CUBE_GAP));
+    }
+  });
+
+  it("never leaves one tile alone on the last row", () => {
+    for (const width of [968, 990, 1000]) {
+      for (let count = 15; count <= 200; count += 1) {
+        expect(orphanRow(count, stretchColumns(count, width))).toBe(false);
+      }
+    }
   });
 });
