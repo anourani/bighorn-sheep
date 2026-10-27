@@ -69,12 +69,12 @@ describe("the signed-out pill's surface", () => {
 });
 
 describe("the signed-out pill's wrapper", () => {
-  it("is sticky at the top, at the same depth as the signed-in header", async () => {
+  it("sits in flow, unlike the sticky signed-in header", async () => {
+    // The user's call: the landing pill scrolls away with the page rather than
+    // riding over the standings table. `AppHeader` stays sticky on purpose.
     const src = await code(HEADER);
-    expect(src).toContain("sticky top-0 z-30");
-    // The signed-in equivalent lives on `AppHeader`, the positioning wrapper —
-    // `HeaderNav` draws the pill and owns no position of its own. This header
-    // is a single component, so it carries both jobs.
+    expect(src).not.toContain("sticky");
+    expect(src).not.toContain("fixed");
     expect(await code(APP_HEADER)).toContain("sticky top-0 z-30");
   });
 
@@ -86,24 +86,12 @@ describe("the signed-out pill's wrapper", () => {
     expect(await code(HEADER)).not.toContain("lg:");
   });
 
-  it("passes clicks through the dead band and catches them on the pill", async () => {
-    // The band spans the full shell while the pill draws about 366 of it, over
-    // a title, a pitch and a table that scrolls sideways. It used to be the only
-    // reason the dialogs were clickable too — they inherited `auto` from the
-    // pill — but `Modal` portals now and inherits from `body`, so this pair is
-    // about the dead band alone.
-    const src = await code(HEADER);
-    expect(src).toContain("pointer-events-none");
-    expect(src).toContain("pointer-events-auto");
-  });
-
-  it("clears the status bar on the pinned element, not the page wrapper", async () => {
+  it("clears the status bar on the header itself", async () => {
     // `/` is reachable inside the installed PWA — the manifest is
     // start_url:/app, scope:/, display:standalone, and middleware bounces a
-    // signed-out visitor off /app to here. `/app` puts this inset on its page
-    // wrapper, which would only clear the bar at scroll 0 for a sticky element.
-    // An arbitrary value fails silently if mistyped, and it shows nowhere but a
-    // standalone launch.
+    // signed-out visitor off /app to here, so the first thing in the document
+    // has to clear the bar. An arbitrary value fails silently if mistyped, and
+    // it shows nowhere but a standalone launch.
     expect(await code(HEADER)).toContain("pt-[env(safe-area-inset-top)]");
   });
 

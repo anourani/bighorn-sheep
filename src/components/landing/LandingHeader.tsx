@@ -30,50 +30,30 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  *   - The buttons are the design's SMALL control — 36px at 14px semibold with
  *     8px of side padding — not its 40px/16px nav button.
  *
- * It is sticky now, and that is a behaviour change rather than a restyle: this
- * header sat in flow for as long as it existed, on the argument that the page
- * is short. The page is not short — it carries the league's status band and the
- * whole standings table — and the design draws a floating pill, which only
- * reads as floating if something passes behind it.
+ * It sits in flow and scrolls away with the page. It was sticky for one
+ * redesign, on the argument that a floating pill only reads as floating if
+ * something passes behind it; the user's call was that the landing page reads
+ * better without chrome riding over the standings table, so it went back to
+ * where it lived for most of its life. The signed-in `AppHeader` is still
+ * sticky — the two diverge here on purpose.
  *
- * **`Modal` PORTALS to `document.body` now, and that retired three rules this
- * docblock used to carry.** Both button components still return a fragment of a
- * `<button>` and a `Modal`, but the dialog is no longer a DOM descendant of the
- * pill — it renders beside `Drawer` and `Toast` at the end of `body`. What that
- * changed, kept here because each one reads like a live constraint otherwise:
+ * **`Modal` PORTALS to `document.body`**, so the dialogs both buttons open are
+ * not DOM descendants of the pill — they render beside `Drawer` and `Toast` at
+ * the end of `body`. The shadow is a `box-shadow` rather than Figma's
+ * `drop-shadow` filter for the plainer reason `HeaderNav` gives: on an opaque
+ * rounded rectangle the two are indistinguishable, and a filter buys a stacking
+ * context for nothing. The test pins it.
  *
- *   - **The shadow stays a `box-shadow` anyway.** The old reason was that a
- *     `filter` makes its element a containing block for `fixed` descendants and
- *     would have pinned the login dialog inside this 58px pill. There is no
- *     fixed descendant to pin any more, so the surviving reason is the plainer
- *     one `HeaderNav` gives: on an opaque rounded rectangle the two are
- *     indistinguishable, and a filter buys a stacking context for nothing.
- *     The test still pins it.
- *   - **`pointer-events` no longer reaches the dialog by inheritance**, and does
- *     not need to: portalled, it inherits `auto` from `body`. The pair on this
- *     header is still load-bearing for the dead band itself (below), just not
- *     for the dialog — which is strictly more robust, since it used to depend on
- *     where in the tree the modal happened to sit.
- *   - Sticky plus a z-index still makes this header a stacking context, but the
- *     dialog is outside it now and compares in the root context like everything
- *     else. That removes the trap this bullet used to warn about.
+ * No `pointer-events` pair any more. It existed while the header was sticky and
+ * its full-width band floated over the title and the table; in flow, the band
+ * covers nothing but itself.
  *
- * The dead band is why the pointer-events pair is load-bearing at all, and it
- * is the same trade `AppHeader` documents: the band spans the full 1000px shell
- * while the pill draws about 366 of it, so the space beside it sits over the
- * title, the pitch copy and a table that scrolls sideways. `BottomTabBar` makes
- * the opposite call for the opposite reason — its dead band is ~28px at the
- * edge a thumb rests on, and a fall-through there spends a team.
- *
- * **The safe-area inset rides on this element, and `/app`'s answer does not
- * transfer.** The manifest is `start_url: "/app"`, `scope: "/"`, `display:
- * standalone`, and middleware bounces a signed-out visitor off `/app` to here —
- * so `/` is genuinely reachable inside the installed app, under the status bar,
- * with the root layout on `viewportFit: "cover"`. `/app` puts the inset on its
- * page WRAPPER, which works there because its header is not the pinned thing;
- * on a sticky element that would only clear the status bar at scroll 0 and ride
- * up under it afterwards. `PickStickyBar` is the precedent that transfers: the
- * inset goes on the pinned element itself. It must NOT also go on `page.tsx`'s
+ * **The safe-area inset rides on this element.** The manifest is
+ * `start_url: "/app"`, `scope: "/"`, `display: standalone`, and middleware
+ * bounces a signed-out visitor off `/app` to here — so `/` is genuinely
+ * reachable inside the installed app, under the status bar, with the root
+ * layout on `viewportFit: "cover"`. As the first thing in the document, the
+ * header is what has to clear the bar. It must NOT also go on `page.tsx`'s
  * wrapper — that counts it twice, the trap `--tab-bar-h` already documents.
  *
  * One thing is still deliberately not transcribed: the design's 4px backdrop
@@ -81,10 +61,9 @@ import { InviteCodeButton } from "@/components/landing/InviteCodeButton";
  * frame and both signed-in frames don't — so it reads as a leftover rather than
  * a decision. On the pill it would be dead CSS, since nothing shows through an
  * opaque white fill; on the band, which is where Figma actually puts it, it
- * would be the same containing-block bug as the filter above, because that
- * property captures `fixed` descendants by the same rule. And it would make
- * this the app's only frosted chrome, against a split CLAUDE.md records as
- * decided. Separation from the page comes from the hairline and the shadow.
+ * blurs nothing now that the header no longer floats over the page. And it
+ * would make this the app's only frosted chrome, against a split CLAUDE.md
+ * records as decided. Separation from the page comes from the hairline and the shadow.
  *
  * The wordmark is gone with the frames, and `APP_SHORT_NAME` went with it —
  * this was its only reader. The app names itself here through the mark's `alt`
@@ -135,12 +114,12 @@ const secondaryButton = `${buttonBase} border border-shell-line bg-white text-sh
 
 export function LandingHeader() {
   return (
-    <header className="pointer-events-none sticky top-0 z-30 pt-[env(safe-area-inset-top)]">
+    <header className="pt-[env(safe-area-inset-top)]">
       {/* 8 + 58 + 8 = 74. The horizontal padding is inert at every width the
           pill fits inside — it is centred and hugs its contents — and is here
           only as the second of the two narrow-viewport escapes. */}
       <div className="flex items-center justify-center px-3 py-2 min-[375px]:px-4">
-        <div className="pointer-events-auto flex shrink-0 items-center gap-3 rounded-card border border-shell-line/50 bg-white px-4 py-2 shadow-[0_6px_6px_rgba(0,0,0,0.08)]">
+        <div className="flex shrink-0 items-center gap-3 rounded-card border border-shell-line/50 bg-white px-4 py-2 shadow-[0_6px_6px_rgba(0,0,0,0.08)]">
           {/*
             A plain <img>, not next/image — same reasoning as HeaderNav, and
             `bg-shell-line` mirrors the design's own grey behind the photo, so a

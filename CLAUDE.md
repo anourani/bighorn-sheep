@@ -1628,33 +1628,23 @@ reading, but only the first kind is the lesson.
       `HeaderNav`'s argument: indistinguishable on an opaque rounded rectangle,
       and a filter buys a stacking context for nothing.
       `landing-header.test.ts` still pins it.
-    - **`pointer-events` no longer reaches the dialog by inheritance.** It used
-      to inherit `auto` from the pill, which made "hoist the modals to tidy the
-      tree" a real bug (they would have inherited the header's `none`). The
-      pair is still load-bearing for the dead band; the dialog inherits from
-      `body` and is clickable wherever it is mounted.
-    - Sticky plus `z-30` still makes the header a stacking context, but the
-      dialog is outside it and compares in the root context. The trap this
-      bullet warned about — something on `/` wanting `z-40` — is gone.
-  - **It is sticky, where it sat in flow for its whole life.** The old argument
-    was "the page is short"; it isn't — it carries the status band and the whole
-    standings table — and a floating pill only reads as floating if something
-    passes behind it. That is what makes `pointer-events-none` load-bearing
-    here, exactly as on `AppHeader`: the band spans the full shell while the
-    pill draws 338 of it. Measured at 393x380 with the page actually scrolling:
-    `elementFromPoint` in the gutter returns the title `<section>`, not the
-    `<header>`, while the pill still catches its own clicks.
-  - **The safe-area inset rides on the `<header>`, and `/app`'s answer does not
-    transfer.** `/` is reachable inside the installed PWA — the manifest is
-    `start_url: "/app"`, `scope: "/"`, `display: standalone`, and middleware
-    bounces a signed-out visitor off `/app` to here — so it renders under the
-    status bar with the root layout on `viewportFit: "cover"`. `/app` puts
-    `pt-[env(safe-area-inset-top)]` on its page WRAPPER, which works there only
-    because its header is not the pinned thing; on a sticky element that clears
-    the bar at scroll 0 and rides up under it afterwards. `PickStickyBar` is the
-    precedent that transfers — the inset goes on the pinned element. It must NOT
-    also go on `page.tsx`'s wrapper: that counts it twice, the trap
-    `--tab-bar-h` already documents.
+    - **`pointer-events` and `z-30` are gone from it.** Both existed only
+      while the header was sticky — a full-width band floating over the title
+      and the table needed to pass clicks through, and needed a z-index to sit
+      above them. In flow it overlaps nothing.
+  - **It is NOT sticky, and that diverges from `AppHeader` on purpose.** It sat
+    in flow for most of its life, went sticky for one redesign ("a floating pill
+    only reads as floating if something passes behind it"), and went back to
+    flow on the user's call: the landing pill scrolls away with the page rather
+    than riding over the standings table. `AppHeader` is still sticky.
+    `landing-header.test.ts` pins both halves.
+  - **The safe-area inset rides on the `<header>`.** `/` is reachable inside the
+    installed PWA — the manifest is `start_url: "/app"`, `scope: "/"`,
+    `display: standalone`, and middleware bounces a signed-out visitor off
+    `/app` to here — so it renders under the status bar with the root layout on
+    `viewportFit: "cover"`, and the header is the first thing that has to clear
+    it. It must NOT also go on `page.tsx`'s wrapper: that counts it twice, the
+    trap `--tab-bar-h` already documents.
   - **74px, not `HeaderNav`'s 70, and that is off a frame rather than a copy
     error.** This design pads evenly (`py-2`); the signed-in row is `pb-1 pt-2`.
     Nothing reads either number — no `--header-h`, no `scroll-mt`, nothing
