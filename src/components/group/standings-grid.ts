@@ -30,8 +30,8 @@ import { isAfterElimination } from "../../lib/league/post-elimination";
  * One cell of the grid.
  *
  * `result` is what the tile is TINTED by, and it is not simply the pick's
- * outcome: a win is tinted only in the week being played, while a loss is
- * tinted forever. `cellFor` resolves that distinction so the component can
+ * outcome: a win is tinted only in the week being played (and in the week the
+ * league was won), while a loss is tinted forever. `cellFor` resolves that distinction so the component can
  * paint what it is handed without re-deriving which week it is in.
  */
 export type WeekCell =
@@ -48,7 +48,16 @@ export type WeekCell =
    * `cellFor`.
    */
   | { kind: "missed" }
-  | { kind: "team"; teamId: TeamId; result?: "win" | "loss" | "push" };
+  | {
+      kind: "team";
+      teamId: TeamId;
+      result?: "win" | "loss" | "push";
+      /**
+       * The pick that won the league — the one settled win that keeps its green.
+       * Set only alongside `result: "win"`; see `championWeek` on `cellFor`.
+       */
+      champion?: true;
+    };
 
 /**
  * Derive one member's cell for one week, honoring the current-week privacy lock.
@@ -74,6 +83,12 @@ export function cellFor(
   rules: GroupRules,
   now: Date,
   hiddenSet: ReadonlySet<string>,
+  /**
+   * The week THIS member won the league in, or null — `championOf`'s answer,
+   * passed only for the champion's own row. Optional so every caller that has
+   * no champion to report is unchanged.
+   */
+  championWeek: number | null = null,
 ): WeekCell {
   /*
    * AN ELIMINATED ROW STOPS AT THE WEEK IT WENT OUT.
@@ -128,6 +143,15 @@ export function cellFor(
     // which case `history` already carries it as a loss. A `"pending"` pick is
     // untinted for the same reason: it is on the board, its outcome is not
     // known, and nothing about it is a strike yet.
+    //
+    // ONE exception: the week the league was won. That pick keeps its green for
+    // good, so the board shows at a glance when the winner was decided — even
+    // after the winner plays on. A push survived the week just as a win did, so
+    // it counts; a loss (survived on a spare strike) stays red, because the red
+    // tile is a strike and saying otherwise would be a lie about the record.
+    if (week === championWeek && (h.result === "win" || h.result === "push")) {
+      return { kind: "team", teamId: h.teamId, result: "win", champion: true };
+    }
     return { kind: "team", teamId: h.teamId, result: h.result === "loss" ? "loss" : undefined };
   }
   if (week === currentWeek) {

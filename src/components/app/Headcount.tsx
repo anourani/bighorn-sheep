@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { ChampionHeadcount } from "@/components/app/ChampionHeadcount";
 import { HeadcountGrid } from "@/components/app/HeadcountGrid";
 import { headcountLine, type HeadcountInput } from "@/lib/league/view";
 
@@ -31,6 +32,12 @@ export function Headcount({
   headcount: HeadcountInput;
   className?: string;
 }) {
+  // Once the league has a confirmed winner the whole card is REPLACED, in the
+  // same slot, by the champion card — the hosts never choose between the two,
+  // which is what keeps the landing page and /app/standings in step.
+  if (headcount.kind === "champion") {
+    return <ChampionHeadcount champion={headcount} className={className} />;
+  }
   const { lead, leadShort, primary, percent, percentLabel } = headcountLine(headcount);
 
   return (

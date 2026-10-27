@@ -633,6 +633,57 @@ reading, but only the first kind is the lesson.
 
 ## Things that are true now and weren't
 
+- **The pick that won the league stays GREEN for the rest of the season.** Every
+  other settled win goes plain once its week passes; the champion's winning-week
+  tile keeps the win tint so the board shows at a glance when the league was
+  decided. `championOf` (`src/lib/league/champion.ts`, a leaf) derives it from
+  `status` / `eliminatedWeek` alone, and `StandingsGrid` passes the week into
+  `cellFor` for the champion's row only. **No migration.** Four things:
+  - **The winning week is the RUNNER-UP's elimination week**, not anything read
+    off the champion. Each entry "lasted until" its `eliminatedWeek` (alive =
+    forever); the champion lasted strictly longest, and the week the field
+    emptied behind them is the second-longest number. That is what keeps it
+    right after the winner plays on.
+  - **The winner can still be marked ELIMINATED, and that is known and
+    deliberately out of scope.** The scorer has no notion of a winner, so the
+    inaugural champion lost the week after winning and went out like anyone
+    else — the headcount read "0 still standing", and 0020 hides his later
+    picks from the league. The champion is still found (he lasted longest); what
+    a winner's post-win weeks should mean is a separate decision.
+  - **No champion is drawn unless one is certain**: two or more alive, a tie at
+    the top (a wipeout), a one-entry league, or an eliminated row with no week
+    recorded all answer null. A guessed winner in the board's loudest colour is
+    worse than none.
+  - **A win or a push in that week goes green; a loss stays red.** A champion
+    who survived the week on a spare strike took a strike, and the red tile is
+    the record of it. The tile's title and `sr-only` text say "won the league",
+    because the green alone only says "win".
+  - **The headcount card is REPLACED by a champion card once there is a
+    confirmed winner** (PRD "Champion Headcount", variant 5b):
+    `src/components/app/ChampionHeadcount.tsx`, rendered by `Headcount` itself
+    when `HeadcountInput.kind === "champion"`, so neither host chooses. An
+    orange "1" tile, "We've crowned our champion.", the name, "Winner of the
+    2026/2027 Last Man Standing." ("26/27" on a phone, one line from 375px),
+    "W6 CLINCHED" and the cube field — one orange cube, the rest grey. Two
+    columns from `lg`, stacked below. `headcountFor` in `view.ts` is the one
+    producer, called by `StandingsClient` and `mapPublicSnapshot` alike.
+  - **"Confirmed" is `confirmedChampion`, and the green tile reads it too.**
+    `championOf` alone crowned whoever was left the moment the last rivals lost
+    — while the winner's own Monday-night game was still to play. The guard
+    requires the winner to have been scored past the clinching week, or to hold
+    a SETTLED result for it (history for a past week; the game itself, via
+    `viewCurrentPick` with no viewer, for the live one). One rule for both
+    surfaces, so the tile can never be green while the card is absent.
+  - **The rule is "outlasted everyone", NOT the PRD's "exactly one entry
+    alive"** — the user's call. Under the PRD's rule the inaugural champion's
+    Week 7 loss would un-crown him. Wipeouts and Week-18 multi-survivors still
+    show the ordinary tally, because `championOf` answers null for both.
+  - **The desktop cube field is plain CSS, not measured.** `championGridColumns`
+    clamps to 16-20 columns in at least two rows: the right column is roughly
+    456px at its narrowest, so 20 keeps a cube at `CUBE_DESKTOP.min`, and 16
+    stops a small league drawing giant squares. 31 entries → 16 columns of
+    ~26px, the design's number. The phone reuses `HeadcountGrid` with one alive.
+
 - **An ELIMINATED entry keeps picking, and nobody else can see what it picks.**
   A knocked-out entry used to get an inert grid and a red "You're eliminated, so
   picks are closed." It now picks week to week exactly as a living entry does,
@@ -1472,6 +1523,20 @@ reading, but only the first kind is the lesson.
     `aspect-square`**, so the two cannot be handed different numbers — including
     on a track `minmax` has shrunk. Do not add a fixed row height; it would
     un-square exactly that case.
+  - **From `lg` with 15 or more entries the cubes are RECTANGLES, and that one
+    case does take a fixed height.** `STRETCH_MIN_COUNT` in `headcount-grid.ts`:
+    at 30 entries a row of 24px squares stopped ~60% of the way across the
+    968px card, so past the threshold every track is `1fr` and the tile keeps
+    only the cube's 24px HEIGHT. The server knows the count, so an `auto-fit`
+    template paints it before hydration — `auto-fit`, not `auto-fill`, because
+    only the former collapses empty tracks and lets the tiles grow into them.
+    Once a league overflows one row, `stretchColumns` BALANCES the rows (38 →
+    19 + 19, 75 → 3 × 25) rather than filling greedily: a short last row of
+    `1fr` tracks would otherwise draw one tile alone under a full row. That
+    balancing is JS-only; a browser without it keeps `auto-fit`'s greedy rows.
+    Phones draw squares at every count. Measured at 1440: 30 entries are 30
+    tiles of 30.3 x 24 flush to both edges; 14 are still 24px squares; 38 are
+    two rows of 19 at 49.1 x 24.
   - **`HeadcountGrid` is the only file that takes `"use client"`.** The label row
     stays a Server Component, which is what keeps `lib/league/view.ts` — and the
     whole ranking apparatus it imports — out of the landing page's client bundle.
@@ -1747,7 +1812,9 @@ reading, but only the first kind is the lesson.
     frozen table readable: a red tile is the week somebody took a strike, while
     green on every survived week would be a wall of colour saying nothing. A
     settled push reads untinted like a win — it survived — and a tie in a league
-    that counts ties as losses arrives in `history` as a loss already.
+    that counts ties as losses arrives in `history` as a loss already. **One
+    settled win stays green: the pick that won the league** — see the champion
+    entry in "Things that are true now and weren't".
   - **A win has a fill at all for the first time.** The old grid painted `""` for
     a win and washed only loss/push/live, so the legend had no swatch to explain.
   - **A game in progress carries NO marker, and `WeekCell` has no `live` field.**

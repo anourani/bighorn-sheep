@@ -9,6 +9,7 @@ import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import type { Game } from "@/lib/nfl/types";
 import type { GroupRules, Member } from "@/lib/league/types";
 import { cellFor, scrollLeftForWeek, type WeekCell } from "@/components/group/standings-grid";
+import { confirmedChampion } from "@/lib/league/view";
 
 export interface RankedMember {
   member: Member;
@@ -115,6 +116,14 @@ export function StandingsGrid({
   const weeks: WeekColumn[] =
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
   const hiddenSet = new Set(hiddenPickUserIds);
+  // Who outlasted whom is a fact about every row at once, so it is derived here
+  // rather than per cell — through the same confirmed-winner rule the headcount
+  // card reads, so the green tile can never appear while the card does not. The
+  // practice table forces every row alive, so it never has a champion.
+  const champion = confirmedChampion(
+    ranked.map((r) => r.member),
+    { currentWeek, gameForTeam, rules, now },
+  );
   // Guarded on !preview for the same reason the header chip is: the practice
   // table's currentWeek is a preseason week number, and a previewed
   // regular-season column of the same number is a different week entirely.
@@ -335,6 +344,7 @@ export function StandingsGrid({
                                   rules,
                                   now,
                                   hiddenSet,
+                                  champion?.memberId === member.id ? champion.week : null,
                                 )
                           }
                         />
@@ -447,7 +457,9 @@ function WeekCellView({ cell }: { cell: WeekCell }) {
 
   const team = getTeam(cell.teamId);
   const box = cell.result ? RESULT_BOX[cell.result] : "";
-  const resultLabel = cell.result ?? "";
+  // The winning pick says so out loud: its green alone reads as "win", and the
+  // fact that matters is that it won the league.
+  const resultLabel = cell.champion ? "win, won the league" : (cell.result ?? "");
 
   return (
     <span
@@ -490,7 +502,9 @@ function Legend() {
       {/* New with the redesign. A win used to be painted as nothing at all, so
           there was no swatch to explain; it is now tinted for the week being
           played and goes plain once the week settles, which is what keeps a
-          long season from turning into a wall of green. */}
+          long season from turning into a wall of green. The one settled win that
+          stays green — the pick that won the league — is the same swatch, so it
+          needs no row of its own. */}
       <span className="inline-flex items-center gap-1.5">
         <span className={cn("h-3 w-3 rounded", RESULT_BOX.win)} /> Win
       </span>

@@ -122,3 +122,65 @@ export function cubeLayout(
   }
   return fallback;
 }
+
+/**
+ * From this many entries up, the DESKTOP grid stops drawing squares and
+ * stretches its tiles to fill the card's width — rectangles at the cube's own
+ * 24px height. Below it, a row of squares reads as a row of people; at 30, a
+ * 780px row of squares in a 968px card read as a strip that gave up 60% of the
+ * way across. Phones are untouched at every count: 18-20 squares already fill
+ * a phone row.
+ */
+export const STRETCH_MIN_COUNT = 15;
+
+/**
+ * How many columns a STRETCHED grid lays out in. Every track is `1fr`, so the
+ * tile width falls out of the column count and only the count is solved.
+ *
+ * One row whenever the league fits at the cube's own size; past that, the rows
+ * are BALANCED rather than filled greedily — 38 entries are 19 + 19, not
+ * 37 + 1. That keeps `orphanRow`'s rule for free, and on a stretched grid
+ * equal rows matter more than on a square one: a short last row of `1fr`
+ * tracks is the same width as the full rows above it, so a greedy 37 + 1
+ * would draw one tile alone under a full-width row.
+ *
+ * `minSize` is the narrowest a stretched tile may be, so the answer never
+ * exceeds what `columnsFor` fits at that size.
+ */
+export function stretchColumns(
+  count: number,
+  width: number,
+  minSize: number = CUBE_DESKTOP.max,
+  gap: number = CUBE_GAP,
+): number {
+  const max = columnsFor(width, minSize, gap);
+  if (count <= max) return Math.max(1, count);
+  const rows = Math.ceil(count / max);
+  return Math.ceil(count / rows);
+}
+
+/**
+ * The champion card's desktop cube field: how many columns its `1fr` tracks
+ * run in. One cube per entry, the winner first.
+ *
+ * The design draws TWO rows that fill the right-hand column — about 26px cubes
+ * at 31 entries. Two clamps keep that shape honest at other league sizes, and
+ * both are counts rather than measurements because the column's width is known
+ * well enough not to need JS: it is half the card, so roughly 456px at the
+ * narrowest desktop width.
+ *  - `CHAMPION_MAX_COLUMNS` (20) is the most columns that keep a cube at
+ *    `CUBE_DESKTOP.min` or larger in that 456px. A bigger league takes more
+ *    rows instead, balanced the way `stretchColumns` balances them.
+ *  - `CHAMPION_MIN_COLUMNS` (16) stops a small league drawing giant cubes: a
+ *    six-entry league would otherwise be two rows of three 150px squares.
+ */
+export const CHAMPION_MAX_COLUMNS = 20;
+export const CHAMPION_MIN_COLUMNS = 16;
+
+export function championGridColumns(total: number): number {
+  const rows = Math.max(2, Math.ceil(total / CHAMPION_MAX_COLUMNS));
+  return Math.min(
+    CHAMPION_MAX_COLUMNS,
+    Math.max(CHAMPION_MIN_COLUMNS, Math.ceil(total / rows)),
+  );
+}

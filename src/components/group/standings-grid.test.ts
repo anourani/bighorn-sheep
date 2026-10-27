@@ -117,6 +117,49 @@ describe("cellFor — settled weeks", () => {
   });
 });
 
+describe("cellFor — the week the league was won", () => {
+  const won = (m: Member, week: number, championWeek: number | null) =>
+    cellFor(m, "", week, WEEK, gameForTeam, RULES, NOW, new Set(), championWeek);
+
+  it("keeps the winning pick green after its week has passed", () => {
+    const m = member({
+      history: [
+        { week: 3, teamId: "kc", result: "win" },
+        { week: 4, teamId: "sf", result: "win" },
+      ],
+    });
+    expect(won(m, 4, 4)).toEqual({ kind: "team", teamId: "sf", result: "win", champion: true });
+  });
+
+  it("leaves the champion's other settled wins plain", () => {
+    // Only the one week is the exception — the rest of the row stays readable.
+    const m = member({
+      history: [
+        { week: 3, teamId: "kc", result: "win" },
+        { week: 4, teamId: "sf", result: "win" },
+      ],
+    });
+    expect(won(m, 3, 4)).toEqual({ kind: "team", teamId: "kc", result: undefined });
+  });
+
+  it("greens a push in the winning week — it survived the week", () => {
+    const m = member({ history: [{ week: 4, teamId: "gb", result: "push" }] });
+    expect(won(m, 4, 4)).toEqual({ kind: "team", teamId: "gb", result: "win", champion: true });
+  });
+
+  it("keeps a loss in the winning week red", () => {
+    // Survived on a spare strike: the red tile is the strike, and painting it
+    // green would be a lie about the record.
+    const m = member({ history: [{ week: 4, teamId: "buf", result: "loss" }] });
+    expect(won(m, 4, 4)).toEqual({ kind: "team", teamId: "buf", result: "loss" });
+  });
+
+  it("changes nothing without a champion week", () => {
+    const m = member({ history: [{ week: 4, teamId: "sf", result: "win" }] });
+    expect(won(m, 4, null)).toEqual(cell(m, 4));
+  });
+});
+
 describe("cellFor — the current week", () => {
   it("tints a win while its week is being played", () => {
     const m = member({ currentPick: { week: WEEK, teamId: "kc", gameId: "g1" } });

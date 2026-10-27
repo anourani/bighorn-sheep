@@ -3,14 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import type { HeadcountInput } from "@/lib/league/view";
+import type { HeadcountTally } from "@/lib/league/view";
 
-import { CUBE_DESKTOP, CUBE_GAP, CUBE_PHONE, cubeLayout, type CubeLayout } from "./headcount-grid";
+import {
+  CUBE_DESKTOP,
+  CUBE_GAP,
+  CUBE_PHONE,
+  STRETCH_MIN_COUNT,
+  cubeLayout,
+  stretchColumns,
+  type CubeLayout,
+} from "./headcount-grid";
+
+/** A solved layout: square cubes at a size, or stretched `1fr` tiles. */
+type GridLayout = CubeLayout | { size: "fill"; columns: number };
 
 /**
  * One square per member, still-standing first: accent for the living, grey for
  * the dead, wrapped into as many rows as the width needs. Figma cube atom
  * `3746:39826` — 20-24px from `lg`, 14-18px below it.
+ *
+ * From `lg` with {@link STRETCH_MIN_COUNT} or more entries the squares become
+ * RECTANGLES: still the cube's 24px tall, but stretched across the card's full
+ * width, so a 30-entry league fills its row rather than stopping 60% of the
+ * way across. Phones draw squares at every count.
  *
  * Its own module rather than an export from whichever section draws it, so a
  * signed-out landing page never risks pulling server-only league loading in to
@@ -29,7 +45,7 @@ export function HeadcountGrid({
   headcount,
   className,
 }: {
-  headcount: HeadcountInput;
+  headcount: HeadcountTally;
   className?: string;
 }) {
   const eliminated = headcount.kind === "season" ? headcount.eliminated : 0;
@@ -51,7 +67,9 @@ export function HeadcountGrid({
       : `${alive} entries joined, none eliminated`;
 
   const ref = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<CubeLayout | null>(null);
+  const [layout, setLayout] = useState<GridLayout | null>(null);
+  // Known on the server, so the first paint is already the right shape.
+  const stretch = total >= STRETCH_MIN_COUNT;
 
   /*
     The design's rule — never one cube alone on the last row — cannot be written
@@ -86,8 +104,10 @@ export function HeadcountGrid({
       // A hidden ancestor measures 0, which would resolve to one very tall
       // column. Leaving the state alone keeps the CSS fallback in charge.
       if (width <= 0) return;
-      const scale = wide.matches ? CUBE_DESKTOP : CUBE_PHONE;
-      const next = cubeLayout(total, width, scale);
+      const next: GridLayout =
+        stretch && wide.matches
+          ? { size: "fill", columns: stretchColumns(total, width) }
+          : cubeLayout(total, width, wide.matches ? CUBE_DESKTOP : CUBE_PHONE);
       // A resize fires for a phone's URL bar sliding away and for a dialog's
       // scroll lock too, and neither of those changes the answer.
       setLayout((prev) =>
@@ -107,7 +127,9 @@ export function HeadcountGrid({
       observer.disconnect();
       wide.removeEventListener("change", solve);
     };
-  }, [total]);
+  }, [total, stretch]);
+
+  const tile = cn("rounded-[2px] aspect-square", stretch && "lg:aspect-auto lg:h-6");
 
   return (
     /*
@@ -127,6 +149,14 @@ export function HeadcountGrid({
 
       The cube takes its width from the track and its height from `aspect-square`,
       so the two cannot be given different numbers — including on a shrunk track.
+
+      STRETCHED (desktop, 15+ entries) is the one exception, and it inverts
+      both: every track is `1fr`, so the width is whatever the row leaves, and
+      the height is FIXED at the cube's 24px because that is the one dimension
+      the design keeps. Before measurement an `auto-fit` template does it in
+      CSS alone — `auto-fit` collapses the empty tracks `auto-fill` would keep,
+      which is what lets the tiles grow into them. The measured pass only adds
+      `stretchColumns`' balanced rows once the league overflows one.
     */
     <div
       ref={ref}
@@ -135,19 +165,25 @@ export function HeadcountGrid({
       className={cn(
         "grid justify-start gap-0.5 [--cube:16px] lg:[--cube:24px]",
         "grid-cols-[repeat(auto-fill,var(--cube))]",
+        stretch && "lg:grid-cols-[repeat(auto-fit,minmax(var(--cube),1fr))]",
         className,
       )}
       style={
         layout
-          ? { gridTemplateColumns: `repeat(${layout.columns}, minmax(0, ${layout.size}px))` }
+          ? {
+              gridTemplateColumns:
+                layout.size === "fill"
+                  ? `repeat(${layout.columns}, minmax(0, 1fr))`
+                  : `repeat(${layout.columns}, minmax(0, ${layout.size}px))`,
+            }
           : undefined
       }
     >
       {Array.from({ length: alive }).map((_, i) => (
-        <span key={`alive-${i}`} className="aspect-square rounded-[2px] bg-accent" />
+        <span key={`alive-${i}`} className={cn(tile, "bg-accent")} />
       ))}
       {Array.from({ length: eliminated }).map((_, i) => (
-        <span key={`out-${i}`} className="aspect-square rounded-[2px] bg-shell-line" />
+        <span key={`out-${i}`} className={cn(tile, "bg-shell-line")} />
       ))}
     </div>
   );

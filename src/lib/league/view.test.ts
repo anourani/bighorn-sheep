@@ -7,7 +7,10 @@ import {
   orderPickerTeams,
   rankMembers,
   statusLabel,
+  confirmedChampion,
+  headcountFor,
   headcountLine,
+  seasonLabels,
   survivorCounts,
   teamScoreline,
   type TeamAvailability,
@@ -944,5 +947,143 @@ describe("teamScoreline", () => {
 
   it("is null for a team that is not in the game", () => {
     expect(teamScoreline(scored("final", 24, 20), "phi")).toBeNull();
+  });
+});
+
+describe("confirmedChampion", () => {
+  const W = 7; // the live week in every case below
+  const rules: GroupRules = { eliminationType: "single", tieRule: "push" };
+  const now = new Date("2025-10-20T12:00:00.000Z");
+
+  function entry(id: string, over: Partial<Member> = {}): Member {
+    return {
+      id,
+      userId: id,
+      entryNo: 1,
+      name: id,
+      firstName: id,
+      lastName: "",
+      favoriteAnimal: null,
+      phone: null,
+      role: "player",
+      status: "alive",
+      strikes: 0,
+      buyInPaid: false,
+      buyInPaidAt: null,
+      showPreseason: false,
+      eliminatedWeek: null,
+      history: [],
+      currentPick: null,
+      ...over,
+    };
+  }
+  const out = (id: string, week: number, over: Partial<Member> = {}) =>
+    entry(id, { status: "eliminated", eliminatedWeek: week, ...over });
+
+  /** The live week's one game, final or not, as the grid's index would hand it back. */
+  function liveGame(status: Game["status"], homeScore: number | null, awayScore: number | null) {
+    const g: Game = {
+      id: "g_sf_sea",
+      season: 2025,
+      seasonType: "regular",
+      week: W,
+      kickoff: "2025-10-19T20:00:00.000Z",
+      status,
+      home: "sf",
+      away: "sea",
+      homeScore,
+      awayScore,
+    };
+    return (week: number, teamId: TeamId) =>
+      week === W && (teamId === "sf" || teamId === "sea") ? g : undefined;
+  }
+  const noGames = () => undefined;
+  const ctx = (gameForTeam: (w: number, t: TeamId) => Game | undefined = noGames) => ({
+    currentWeek: W,
+    gameForTeam,
+    rules,
+    now,
+  });
+
+  it("crowns the winner who played on and went out later — the league's real case", () => {
+    // Daniel survived W6 when the last rivals went out, then lost W7.
+    const members = [out("daniel", 7), out("brady", 6), out("jack", 6), out("ali", 2)];
+    expect(confirmedChampion(members, ctx())).toEqual({ memberId: "daniel", week: 6 });
+  });
+
+  it("waits while the winner's own pick in the clinching week is unsettled", () => {
+    // Rivals went out in the live week; Daniel's game is still being played.
+    const members = [
+      entry("daniel", { currentPick: { week: W, teamId: "sf", gameId: "g_sf_sea" } }),
+      out("brady", W),
+    ];
+    expect(confirmedChampion(members, ctx(liveGame("in_progress", 7, 3)))).toBeNull();
+  });
+
+  it("crowns them the moment that game goes final in their favour", () => {
+    const members = [
+      entry("daniel", { currentPick: { week: W, teamId: "sf", gameId: "g_sf_sea" } }),
+      out("brady", W),
+    ];
+    expect(confirmedChampion(members, ctx(liveGame("final", 24, 10)))).toEqual({
+      memberId: "daniel",
+      week: W,
+    });
+  });
+
+  it("waits on a past clinching week the scorer never resolved", () => {
+    const members = [
+      entry("daniel", { history: [{ week: 5, teamId: "sf", result: "pending" }] }),
+      out("brady", 5),
+    ];
+    expect(confirmedChampion(members, ctx())).toBeNull();
+  });
+
+  it("counts entries, not people — a two-entry owner's other entry is just a rival", () => {
+    const members = [
+      entry("tim-1", { userId: "tim", history: [{ week: 5, teamId: "sf", result: "win" }] }),
+      out("tim-2", 5, { userId: "tim", entryNo: 2 }),
+      out("ali", 3),
+    ];
+    expect(confirmedChampion(members, ctx())).toEqual({ memberId: "tim-1", week: 5 });
+  });
+
+  it("has no champion after a wipeout, or while two are still standing", () => {
+    expect(confirmedChampion([out("a", 6), out("b", 6)], ctx())).toBeNull();
+    expect(confirmedChampion([entry("a"), entry("b")], ctx())).toBeNull();
+  });
+
+  describe("headcountFor", () => {
+    it("hands the slot the champion card once there is a confirmed winner", () => {
+      const members = [
+        out("daniel", 7, { name: "Daniel R." }),
+        out("brady", 6),
+        out("jack", 6),
+      ];
+      expect(headcountFor(members, ctx(), 2026)).toEqual({
+        kind: "champion",
+        winnerName: "Daniel R.",
+        clinchedWeek: 6, // the week the last rival went out — not the live week
+        total: 3,
+        season: 2026,
+      });
+    });
+
+    it("keeps today's tally otherwise", () => {
+      expect(headcountFor([entry("a"), entry("b"), out("c", 3)], ctx(), 2026)).toEqual({
+        kind: "season",
+        week: W,
+        alive: 2,
+        eliminated: 1,
+      });
+    });
+  });
+});
+
+describe("seasonLabels", () => {
+  it("names a season by both of its years, long and short", () => {
+    expect(seasonLabels(2026)).toEqual({ long: "2026/2027", short: "26/27" });
+    expect(seasonLabels(2099)).toEqual({ long: "2099/2100", short: "99/00" });
+    expect(seasonLabels(2008)).toEqual({ long: "2008/2009", short: "08/09" });
   });
 });
