@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { ChampionHeadcount } from "@/components/app/ChampionHeadcount";
 import { HeadcountGrid } from "@/components/app/HeadcountGrid";
 import { headcountLine, type HeadcountInput } from "@/lib/league/view";
 
@@ -31,7 +32,13 @@ export function Headcount({
   headcount: HeadcountInput;
   className?: string;
 }) {
-  const { lead, leadShort, primary, percent, percentLabel, champion } = headcountLine(headcount);
+  // Once the league has a confirmed winner the whole card is REPLACED, in the
+  // same slot, by the champion card — the hosts never choose between the two,
+  // which is what keeps the landing page and /app/standings in step.
+  if (headcount.kind === "champion") {
+    return <ChampionHeadcount champion={headcount} className={className} />;
+  }
+  const { lead, leadShort, primary, percent, percentLabel } = headcountLine(headcount);
 
   return (
     // 12px all round on a phone; 16 at the sides and underneath from `lg`, where
@@ -66,18 +73,8 @@ export function Headcount({
         </span>
         {/* 1.35 rather than the heading's 1.2: this is the taller of the two
             line boxes, so it alone sets the label row's height. */}
-        {/* `nowrap` holds "29 still standing 54%" together, and must let go for
-            the champion's sentence — which is a whole line on its own and would
-            run straight out of a phone card otherwise. Only the tally keeps it.
-            Below `lg` that sentence also drops onto its own line under the count
-            rather than squeezing in beside it; from `lg` the row has the room. */}
-        <div
-          className={cn(
-            "flex gap-1.5 text-sm font-medium leading-[1.35] tracking-[-0.01em]",
-            champion && "flex-col items-start gap-0.5 lg:flex-row lg:items-center lg:gap-1.5",
-          )}
-        >
-          <span className="whitespace-nowrap text-shell-ink">{primary}</span>
+        <div className="flex gap-1.5 whitespace-nowrap text-sm font-medium leading-[1.35] tracking-[-0.01em]">
+          <span className="text-shell-ink">{primary}</span>
           {percent ? (
             // Accent, where the muted half used to be — and the same pairing as
             // the heading one line up, for the same reason: a bare "54%" beside

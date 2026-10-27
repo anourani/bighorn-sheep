@@ -237,12 +237,14 @@ describe("mapPublicSnapshot", () => {
       snapshot({
         members: [
           member(),
+          member({ id: "m3" }),
           member({ id: "m2", status: "eliminated", eliminated_week: 3, strikes: 1 }),
         ],
       }),
       new Date(NOW),
     );
-    expect(out?.headcount).toMatchObject({ kind: "season", week: 6, alive: 1, eliminated: 1, total: 2 });
+    // Two still standing, so there is no winner yet and the tally stays.
+    expect(out?.headcount).toEqual({ kind: "season", week: 6, alive: 2, eliminated: 1 });
   });
 
   it("names the champion once one entry has outlasted the rest", () => {
@@ -258,7 +260,15 @@ describe("mapPublicSnapshot", () => {
       new Date(NOW),
     );
     const winner = out!.members.find((m) => m.status === "alive")!;
-    expect(out?.headcount).toMatchObject({ champion: { name: winner.name, season: out!.season } });
+    // The champion card replaces the tally. Week 3 is long settled, and the
+    // winner's missing pick there is a settled miss, so the title is confirmed.
+    expect(out?.headcount).toEqual({
+      kind: "champion",
+      winnerName: winner.name,
+      clinchedWeek: 3,
+      total: 2,
+      season: out!.season,
+    });
   });
 
   it("names no champion while two are still standing", () => {
@@ -266,7 +276,7 @@ describe("mapPublicSnapshot", () => {
       snapshot({ members: [member(), member({ id: "m2" })] }),
       new Date(NOW),
     );
-    expect(out?.headcount).not.toHaveProperty("champion.name");
+    expect(out?.headcount.kind).toBe("season");
   });
 
   it("never carries name parts, avatar, phone or buy-in through", () => {

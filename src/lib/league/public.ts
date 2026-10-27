@@ -5,7 +5,7 @@ import { resolveCurrentWeek, seasonPhase, type SeasonPhase } from "../game/seaso
 import { countdown } from "../time";
 import { buildGameIndex } from "./games";
 import { isAfterElimination } from "./post-elimination";
-import { headcountChampion, survivorCounts, type HeadcountInput } from "./view";
+import { headcountFor, type HeadcountInput } from "./view";
 import type { GroupRules, HistoryPick, Member } from "./types";
 
 /**
@@ -211,12 +211,7 @@ export function mapPublicSnapshot(raw: unknown, fallbackNow: Date): PublicLeague
           joined: members.length,
           startsIn: countdown(new Date(entryClosesAt), now).label,
         }
-      : {
-          kind: "season",
-          week: currentWeek,
-          ...survivorCounts(members),
-          champion: headcountChampion(members, season),
-        };
+      : headcountFor(members, { currentWeek, gameForTeam: idx.gameForTeam, rules, now }, season);
 
   return {
     leagueName,

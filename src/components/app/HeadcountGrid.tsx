@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import type { HeadcountInput } from "@/lib/league/view";
+import type { HeadcountTally } from "@/lib/league/view";
 
 import {
   CUBE_DESKTOP,
@@ -45,7 +45,7 @@ export function HeadcountGrid({
   headcount,
   className,
 }: {
-  headcount: HeadcountInput;
+  headcount: HeadcountTally;
   className?: string;
 }) {
   const eliminated = headcount.kind === "season" ? headcount.eliminated : 0;

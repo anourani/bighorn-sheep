@@ -8,12 +8,7 @@ import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta } from "@/components/group/InviteCta";
 import { Headcount } from "@/components/app/Headcount";
 import { buildGameIndex } from "@/lib/league/games";
-import {
-  headcountChampion,
-  rankMembers,
-  survivorCounts,
-  type HeadcountInput,
-} from "@/lib/league/view";
+import { headcountFor, rankMembers, type HeadcountInput } from "@/lib/league/view";
 import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
 import { countdown } from "@/lib/time";
 import type { LeagueData } from "@/lib/league/load";
@@ -84,15 +79,15 @@ export function StandingsClient({ data }: { data: LeagueData }) {
         startsIn: countdown(new Date(group.entryClosesAt), now).label,
       };
     }
-    const { alive, eliminated } = survivorCounts(data.members);
-    return {
-      kind: "season",
-      week: currentWeek,
-      alive,
-      eliminated,
-      champion: headcountChampion(data.members, group.season),
-    };
-  }, [isPreseason, data.members, group.entryClosesAt, group.season, now, currentWeek]);
+    // The champion card once the league has a confirmed winner, the tally
+    // otherwise — `headcountFor` is the one decision, shared with the public
+    // board so the two cannot disagree.
+    return headcountFor(
+      data.members,
+      { currentWeek, gameForTeam: idx.gameForTeam, rules: group.rules, now },
+      group.season,
+    );
+  }, [isPreseason, data.members, group.entryClosesAt, group.season, group.rules, idx, now, currentWeek]);
 
   /**
    * Practice standing, shaped as `Member[]` so the existing grid and ranking are

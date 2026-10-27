@@ -3,7 +3,7 @@ import { TEAMS } from "../nfl/teams";
 import { evaluateTeamPick } from "../game/elimination";
 import type { SeasonPhase } from "../game/season";
 import type { GroupRules, Member, PickResult, TeamRecord } from "./types";
-import { championOf } from "./champion";
+import { championOf, type Champion } from "./champion";
 
 /**
  * Pure view-model helpers shared by the screens. They turn raw members/games
@@ -405,25 +405,26 @@ export function rankMembers(members: readonly Member[], ctx: RankContext): Ranke
  * for: this is the section's data contract, and the countdown is what a
  * pre-season variant would most likely want back.
  */
-export type HeadcountInput =
+export type HeadcountTally =
   | { kind: "preseason"; joined: number; startsIn: string }
-  | {
-      kind: "season";
-      week: number;
-      alive: number;
-      eliminated: number;
-      /**
-       * The league's winner, once there is exactly one — see `championOf`.
-       * When set, the accent slot congratulates them instead of printing the
-       * eliminated share, which by then reads 100% and says nothing.
-       */
-      champion?: HeadcountChampion;
-    };
+  | { kind: "season"; week: number; alive: number; eliminated: number };
 
-export interface HeadcountChampion {
-  /** The winning entry's display name, as the standings board prints it. */
-  name: string;
-  /** The season's starting year — 2026 for the 2026/27 season. */
+/**
+ * The headcount slot's whole data contract: a tally, or — once the league has a
+ * confirmed winner — the champion card that REPLACES it (PRD "Champion
+ * Headcount", variant 5b). See `headcountFor`, the one producer both hosts call.
+ */
+export type HeadcountInput = HeadcountTally | HeadcountChampionInput;
+
+export interface HeadcountChampionInput {
+  kind: "champion";
+  /** The winning ENTRY's display name, as the standings board prints it. */
+  winnerName: string;
+  /** The week the last rival went out — not the current week. */
+  clinchedWeek: number;
+  /** Every entry in the league, the winner included: one cube each. */
+  total: number;
+  /** The season's starting year — 2026 for the 2026/2027 season. */
   season: number;
 }
 
@@ -454,12 +455,6 @@ export interface HeadcountLine {
    * the drawn span is hidden from it and this is what gets spoken.
    */
   percentLabel: string | null;
-  /**
-   * Whether `percent` is the champion's sentence rather than a share. The card
-   * lays that sentence out on its own line below `lg`, where a percentage sits
-   * beside the count.
-   */
-  champion: boolean;
 }
 
 /**
@@ -482,7 +477,7 @@ export function countNoun(n: number, singular: string, plural = `${singular}s`):
  * here ("29 joined"), not a countable noun, so it never inflects. Neither does
  * "still standing", which is why the season line stopped counting nouns too.
  */
-export function headcountLine(input: HeadcountInput): HeadcountLine {
+export function headcountLine(input: HeadcountTally): HeadcountLine {
   if (input.kind === "preseason") {
     return {
       lead: "Pre-season",
@@ -492,24 +487,6 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
       // print is zero. The section drops the span rather than draw that.
       percent: null,
       percentLabel: null,
-      champion: false,
-    };
-  }
-  if (input.champion) {
-    // The sentence is the whole message, so the drawn and the spoken forms are
-    // the same words — less the trophy, which a screen reader would announce
-    // as "trophy" in the middle of a congratulation.
-    const name = input.champion.name.trim();
-    const sentence = `Congratulations ${name} - Our ${seasonLabel(input.champion.season)} Champ!`;
-    return {
-      lead: `Week ${input.week}`,
-      leadShort: `W${input.week}`,
-      primary: `${input.alive} still standing`,
-      // A no-break space, so the trophy wraps WITH "Champ!" rather than being
-      // left alone on a line of its own — which it was at 393.
-      percent: `${sentence}\u00A0🏆`,
-      percentLabel: sentence,
-      champion: true,
     };
   }
   const total = input.alive + input.eliminated;
@@ -522,32 +499,99 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
     primary: `${input.alive} still standing`,
     percent,
     percentLabel: `${percent} eliminated`,
-    champion: false,
   };
 }
 
 /**
- * "2026/27" for the season that starts in 2026 — an NFL season spans New Year,
- * so it is named by both years. The second is two digits, zero-padded, so the
- * 2099 season is "2099/00" rather than "2099/0".
+ * An NFL season spans New Year, so it is named by both years: "2026/2027" where
+ * there is room and "26/27" where there is not (the champion card's phone line,
+ * which must stay on one line from 375px). Two-digit halves are zero-padded, so
+ * the 2099 season is "99/00" rather than "99/0".
  */
-export function seasonLabel(startYear: number): string {
-  return `${startYear}/${String((startYear + 1) % 100).padStart(2, "0")}`;
+export function seasonLabels(startYear: number): { long: string; short: string } {
+  const two = (y: number) => String(y % 100).padStart(2, "0");
+  return { long: `${startYear}/${startYear + 1}`, short: `${two(startYear)}/${two(startYear + 1)}` };
+}
+
+/** What `confirmedChampion` needs to read the clinching week's own result. */
+export interface ChampionContext {
+  currentWeek: number;
+  gameForTeam: (week: number, teamId: TeamId) => Game | undefined;
+  rules: GroupRules;
+  now: Date;
 }
 
 /**
- * The headcount's champion, or undefined while the league has none. One helper
- * for both hosts — the signed-in standings and the public board — so they can
- * never name different winners. `championOf` decides; this only looks up the
- * name it is drawn under.
+ * `championOf`, plus the one thing it cannot see: whether the winner has
+ * actually SURVIVED the week the field emptied in.
+ *
+ * `championOf` reads elimination weeks alone, so the moment the last rivals
+ * lose on Sunday it already names whoever is left — while that player's own
+ * Monday-night game is still to be played. Lose it and the week is a wipeout,
+ * not a title. So a champion is confirmed only when:
+ *  - they were scored PAST the clinching week (`eliminatedWeek > week` — the
+ *    league's real case: Daniel won W6, played on, went out in W7); or
+ *  - their own result for that week is settled. A past week reads `history`,
+ *    where a missing entry is a settled miss (the scorer already counted it); the
+ *    live week reads the game itself, through `viewCurrentPick` with no viewer —
+ *    the same no-privilege read `rankMembers` makes.
+ *
+ * The rule is "outlasted everyone", NOT the PRD's "exactly one entry alive" —
+ * confirmed with the user, because under that rule the winner's later loss
+ * would un-crown him. The PRD's wipeout and Week-18 multi-survivor exclusions
+ * hold here too: `championOf` answers null for both.
+ *
+ * ONE definition, read by the standings grid's green tile and the headcount
+ * card alike, so the two can never disagree about whether there is a winner.
  */
-export function headcountChampion(
-  members: readonly Pick<Member, "id" | "name" | "status" | "eliminatedWeek">[],
-  season: number,
-): HeadcountChampion | undefined {
+export function confirmedChampion(
+  members: readonly Member[],
+  ctx: ChampionContext,
+): Champion | null {
   const champion = championOf(members);
-  const member = champion ? members.find((m) => m.id === champion.memberId) : undefined;
-  return member ? { name: member.name, season } : undefined;
+  if (!champion) return null;
+  const winner = members.find((m) => m.id === champion.memberId);
+  if (!winner) return null;
+  if (typeof winner.eliminatedWeek === "number" && winner.eliminatedWeek > champion.week) {
+    return champion;
+  }
+  const week = champion.week;
+  if (week < ctx.currentWeek) {
+    const h = winner.history.find((x) => x.week === week);
+    return !h || h.result !== "pending" ? champion : null;
+  }
+  if (week === ctx.currentWeek) {
+    const pv = viewCurrentPick(winner, "", week, ctx.gameForTeam, ctx.rules, ctx.now);
+    const settled = pv.result === "win" || pv.result === "loss" || pv.result === "push";
+    return pv.hasPick && settled ? champion : null;
+  }
+  return null;
+}
+
+/**
+ * What the headcount slot draws: the champion card once `confirmedChampion`
+ * answers, the ordinary season tally otherwise. Both hosts — the signed-in
+ * standings and the public board — call this, so they cannot disagree. The
+ * pre-season branch is the hosts' own and never reaches here.
+ */
+export function headcountFor(
+  members: readonly Member[],
+  ctx: ChampionContext,
+  season: number,
+): HeadcountInput {
+  const champion = confirmedChampion(members, ctx);
+  const winner = champion ? members.find((m) => m.id === champion.memberId) : undefined;
+  if (champion && winner) {
+    return {
+      kind: "champion",
+      winnerName: winner.name,
+      clinchedWeek: champion.week,
+      total: members.length,
+      season,
+    };
+  }
+  const { alive, eliminated } = survivorCounts(members);
+  return { kind: "season", week: ctx.currentWeek, alive, eliminated };
 }
 
 /**

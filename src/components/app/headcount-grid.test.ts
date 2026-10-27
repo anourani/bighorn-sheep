@@ -8,6 +8,9 @@ import {
   cubeLayout,
   orphanRow,
   stretchColumns,
+  championGridColumns,
+  CHAMPION_MAX_COLUMNS,
+  CHAMPION_MIN_COLUMNS,
 } from "./headcount-grid";
 
 describe("columnsFor", () => {
@@ -164,6 +167,25 @@ describe("stretchColumns", () => {
       for (let count = 15; count <= 200; count += 1) {
         expect(orphanRow(count, stretchColumns(count, width))).toBe(false);
       }
+    }
+  });
+});
+
+describe("championGridColumns", () => {
+  it("draws the design's two rows — 16 columns at 31 entries", () => {
+    expect(championGridColumns(31)).toBe(16);
+  });
+
+  it("never draws giant cubes for a small league", () => {
+    expect(championGridColumns(3)).toBe(CHAMPION_MIN_COLUMNS);
+  });
+
+  it("adds balanced rows rather than shrinking cubes below the desktop minimum", () => {
+    expect(championGridColumns(40)).toBe(20); // 2 x 20
+    expect(championGridColumns(41)).toBe(16); // 3 rows: 16 + 16 + 9
+    expect(championGridColumns(120)).toBe(20); // 6 x 20
+    for (let n = 1; n <= 300; n += 1) {
+      expect(championGridColumns(n)).toBeLessThanOrEqual(CHAMPION_MAX_COLUMNS);
     }
   });
 });

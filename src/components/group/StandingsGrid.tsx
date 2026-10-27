@@ -9,7 +9,7 @@ import { getTeam, type TeamId } from "@/lib/nfl/teams";
 import type { Game } from "@/lib/nfl/types";
 import type { GroupRules, Member } from "@/lib/league/types";
 import { cellFor, scrollLeftForWeek, type WeekCell } from "@/components/group/standings-grid";
-import { championOf } from "@/lib/league/champion";
+import { confirmedChampion } from "@/lib/league/view";
 
 export interface RankedMember {
   member: Member;
@@ -117,9 +117,13 @@ export function StandingsGrid({
     columns ?? Array.from({ length: finalWeek }, (_, i) => ({ week: i + 1, label: String(i + 1) }));
   const hiddenSet = new Set(hiddenPickUserIds);
   // Who outlasted whom is a fact about every row at once, so it is derived here
-  // rather than per cell. The practice table forces every row alive, so it
-  // never has a champion.
-  const champion = championOf(ranked.map((r) => r.member));
+  // rather than per cell — through the same confirmed-winner rule the headcount
+  // card reads, so the green tile can never appear while the card does not. The
+  // practice table forces every row alive, so it never has a champion.
+  const champion = confirmedChampion(
+    ranked.map((r) => r.member),
+    { currentWeek, gameForTeam, rules, now },
+  );
   // Guarded on !preview for the same reason the header chip is: the practice
   // table's currentWeek is a preseason week number, and a previewed
   // regular-season column of the same number is a different week entirely.

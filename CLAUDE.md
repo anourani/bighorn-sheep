@@ -658,17 +658,31 @@ reading, but only the first kind is the lesson.
     who survived the week on a spare strike took a strike, and the red tile is
     the record of it. The tile's title and `sr-only` text say "won the league",
     because the green alone only says "win".
-  - **The headcount congratulates them by name.** Once `championOf` answers,
-    the accent slot that printed the eliminated share ("100%", which says
-    nothing by then) reads "Congratulations Daniel R. - Our 2026/27 Champ! 🏆",
-    on its own line under "N still standing" below `lg` and beside it from
-    `lg` (`HeadcountLine.champion` is what flips the tally to a column). `headcountChampion` in `view.ts` is the ONE lookup, called by
-    both hosts — `StandingsClient` and `mapPublicSnapshot` — so the signed-in
-    and the public board cannot name different winners. The season label is
-    `seasonLabel(group.season)`, derived rather than typed, so it is right next
-    year too. The trophy is drawn but not spoken, and sits after a no-break
-    space so it never wraps onto a line alone. The tally row's `whitespace-nowrap` moved onto
-    "N still standing" alone so the sentence can wrap on a phone.
+  - **The headcount card is REPLACED by a champion card once there is a
+    confirmed winner** (PRD "Champion Headcount", variant 5b):
+    `src/components/app/ChampionHeadcount.tsx`, rendered by `Headcount` itself
+    when `HeadcountInput.kind === "champion"`, so neither host chooses. An
+    orange "1" tile, "We've crowned our champion.", the name, "Winner of the
+    2026/2027 Last Man Standing." ("26/27" on a phone, one line from 375px),
+    "W6 CLINCHED" and the cube field — one orange cube, the rest grey. Two
+    columns from `lg`, stacked below. `headcountFor` in `view.ts` is the one
+    producer, called by `StandingsClient` and `mapPublicSnapshot` alike.
+  - **"Confirmed" is `confirmedChampion`, and the green tile reads it too.**
+    `championOf` alone crowned whoever was left the moment the last rivals lost
+    — while the winner's own Monday-night game was still to play. The guard
+    requires the winner to have been scored past the clinching week, or to hold
+    a SETTLED result for it (history for a past week; the game itself, via
+    `viewCurrentPick` with no viewer, for the live one). One rule for both
+    surfaces, so the tile can never be green while the card is absent.
+  - **The rule is "outlasted everyone", NOT the PRD's "exactly one entry
+    alive"** — the user's call. Under the PRD's rule the inaugural champion's
+    Week 7 loss would un-crown him. Wipeouts and Week-18 multi-survivors still
+    show the ordinary tally, because `championOf` answers null for both.
+  - **The desktop cube field is plain CSS, not measured.** `championGridColumns`
+    clamps to 16-20 columns in at least two rows: the right column is roughly
+    456px at its narrowest, so 20 keeps a cube at `CUBE_DESKTOP.min`, and 16
+    stops a small league drawing giant squares. 31 entries → 16 columns of
+    ~26px, the design's number. The phone reuses `HeadcountGrid` with one alive.
 
 - **An ELIMINATED entry keeps picking, and nobody else can see what it picks.**
   A knocked-out entry used to get an inert grid and a red "You're eliminated, so
