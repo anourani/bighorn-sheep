@@ -660,13 +660,14 @@ reading, but only the first kind is the lesson.
     because the green alone only says "win".
   - **The headcount congratulates them by name.** Once `championOf` answers,
     the accent slot that printed the eliminated share ("100%", which says
-    nothing by then) reads "Congratulations Daniel R. You're the 2026/27
-    Champ! 🏆". `headcountChampion` in `view.ts` is the ONE lookup, called by
+    nothing by then) reads "Congratulations Daniel R. - Our 2026/27 Champ! 🏆",
+    on its own line under "N still standing" below `lg` and beside it from
+    `lg` (`HeadcountLine.champion` is what flips the tally to a column). `headcountChampion` in `view.ts` is the ONE lookup, called by
     both hosts — `StandingsClient` and `mapPublicSnapshot` — so the signed-in
     and the public board cannot name different winners. The season label is
     `seasonLabel(group.season)`, derived rather than typed, so it is right next
-    year too. The trophy is drawn but not spoken; a name without its own
-    trailing period gets one. The tally row's `whitespace-nowrap` moved onto
+    year too. The trophy is drawn but not spoken, and sits after a no-break
+    space so it never wraps onto a line alone. The tally row's `whitespace-nowrap` moved onto
     "N still standing" alone so the sentence can wrap on a phone.
 
 - **An ELIMINATED entry keeps picking, and nobody else can see what it picks.**

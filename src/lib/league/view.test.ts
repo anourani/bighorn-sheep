@@ -796,6 +796,7 @@ describe("headcountLine", () => {
       primary: "29 still standing",
       percent: "34%",
       percentLabel: "34% eliminated",
+      champion: false,
     });
   });
 
@@ -809,6 +810,7 @@ describe("headcountLine", () => {
       // Nobody can be out yet, so the only number this could carry is 0%.
       percent: null,
       percentLabel: null,
+      champion: false,
     });
   });
 
@@ -955,18 +957,22 @@ describe("headcountLine — the champion", () => {
   it("congratulates the champion in place of the percentage", () => {
     const line = headcountLine({ ...won, champion: { name: "Daniel R.", season: 2026 } });
     expect(line.primary).toBe("0 still standing");
-    expect(line.percent).toBe("Congratulations Daniel R. You're the 2026/27 Champ! 🏆");
+    // No-break space before the trophy, so it never wraps onto a line alone.
+    expect(line.percent).toBe("Congratulations Daniel R. - Our 2026/27 Champ!\u00A0🏆");
     // Spoken without the trophy, which would be read out as a word.
-    expect(line.percentLabel).toBe("Congratulations Daniel R. You're the 2026/27 Champ!");
+    expect(line.percentLabel).toBe("Congratulations Daniel R. - Our 2026/27 Champ!");
+    expect(line.champion).toBe(true);
   });
 
-  it("adds the period a name without one needs", () => {
+  it("reads cleanly for a name with no trailing period", () => {
     const line = headcountLine({ ...won, champion: { name: "Ali", season: 2026 } });
-    expect(line.percentLabel).toBe("Congratulations Ali. You're the 2026/27 Champ!");
+    expect(line.percentLabel).toBe("Congratulations Ali - Our 2026/27 Champ!");
   });
 
   it("keeps the percentage while there is no champion", () => {
-    expect(headcountLine(won).percent).toBe("100%");
+    const line = headcountLine(won);
+    expect(line.percent).toBe("100%");
+    expect(line.champion).toBe(false);
   });
 });
 

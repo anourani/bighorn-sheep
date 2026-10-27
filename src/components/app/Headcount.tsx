@@ -31,7 +31,7 @@ export function Headcount({
   headcount: HeadcountInput;
   className?: string;
 }) {
-  const { lead, leadShort, primary, percent, percentLabel } = headcountLine(headcount);
+  const { lead, leadShort, primary, percent, percentLabel, champion } = headcountLine(headcount);
 
   return (
     // 12px all round on a phone; 16 at the sides and underneath from `lg`, where
@@ -68,8 +68,15 @@ export function Headcount({
             line boxes, so it alone sets the label row's height. */}
         {/* `nowrap` holds "29 still standing 54%" together, and must let go for
             the champion's sentence — which is a whole line on its own and would
-            run straight out of a phone card otherwise. Only the tally keeps it. */}
-        <div className="flex gap-1.5 text-sm font-medium leading-[1.35] tracking-[-0.01em]">
+            run straight out of a phone card otherwise. Only the tally keeps it.
+            Below `lg` that sentence also drops onto its own line under the count
+            rather than squeezing in beside it; from `lg` the row has the room. */}
+        <div
+          className={cn(
+            "flex gap-1.5 text-sm font-medium leading-[1.35] tracking-[-0.01em]",
+            champion && "flex-col items-start gap-0.5 lg:flex-row lg:items-center lg:gap-1.5",
+          )}
+        >
           <span className="whitespace-nowrap text-shell-ink">{primary}</span>
           {percent ? (
             // Accent, where the muted half used to be — and the same pairing as

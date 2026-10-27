@@ -454,6 +454,12 @@ export interface HeadcountLine {
    * the drawn span is hidden from it and this is what gets spoken.
    */
   percentLabel: string | null;
+  /**
+   * Whether `percent` is the champion's sentence rather than a share. The card
+   * lays that sentence out on its own line below `lg`, where a percentage sits
+   * beside the count.
+   */
+  champion: boolean;
 }
 
 /**
@@ -486,24 +492,24 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
       // print is zero. The section drops the span rather than draw that.
       percent: null,
       percentLabel: null,
+      champion: false,
     };
   }
   if (input.champion) {
     // The sentence is the whole message, so the drawn and the spoken forms are
     // the same words — less the trophy, which a screen reader would announce
     // as "trophy" in the middle of a congratulation.
-    //
-    // Names are usually "Daniel R." and so end the first sentence themselves;
-    // one that doesn't ("Ali") gets the period it needs rather than a run-on.
     const name = input.champion.name.trim();
-    const stop = name.endsWith(".") ? "" : ".";
-    const sentence = `Congratulations ${name}${stop} You're the ${seasonLabel(input.champion.season)} Champ!`;
+    const sentence = `Congratulations ${name} - Our ${seasonLabel(input.champion.season)} Champ!`;
     return {
       lead: `Week ${input.week}`,
       leadShort: `W${input.week}`,
       primary: `${input.alive} still standing`,
-      percent: `${sentence} 🏆`,
+      // A no-break space, so the trophy wraps WITH "Champ!" rather than being
+      // left alone on a line of its own — which it was at 393.
+      percent: `${sentence}\u00A0🏆`,
       percentLabel: sentence,
+      champion: true,
     };
   }
   const total = input.alive + input.eliminated;
@@ -516,6 +522,7 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
     primary: `${input.alive} still standing`,
     percent,
     percentLabel: `${percent} eliminated`,
+    champion: false,
   };
 }
 
