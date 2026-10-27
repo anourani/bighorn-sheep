@@ -7,7 +7,9 @@ import {
   orderPickerTeams,
   rankMembers,
   statusLabel,
+  headcountChampion,
   headcountLine,
+  seasonLabel,
   survivorCounts,
   teamScoreline,
   type TeamAvailability,
@@ -944,5 +946,58 @@ describe("teamScoreline", () => {
 
   it("is null for a team that is not in the game", () => {
     expect(teamScoreline(scored("final", 24, 20), "phi")).toBeNull();
+  });
+});
+
+describe("headcountLine — the champion", () => {
+  const won = { kind: "season" as const, week: 7, alive: 0, eliminated: 30 };
+
+  it("congratulates the champion in place of the percentage", () => {
+    const line = headcountLine({ ...won, champion: { name: "Daniel R.", season: 2026 } });
+    expect(line.primary).toBe("0 still standing");
+    expect(line.percent).toBe("Congratulations Daniel R. You're the 2026/27 Champ! 🏆");
+    // Spoken without the trophy, which would be read out as a word.
+    expect(line.percentLabel).toBe("Congratulations Daniel R. You're the 2026/27 Champ!");
+  });
+
+  it("adds the period a name without one needs", () => {
+    const line = headcountLine({ ...won, champion: { name: "Ali", season: 2026 } });
+    expect(line.percentLabel).toBe("Congratulations Ali. You're the 2026/27 Champ!");
+  });
+
+  it("keeps the percentage while there is no champion", () => {
+    expect(headcountLine(won).percent).toBe("100%");
+  });
+});
+
+describe("seasonLabel", () => {
+  it("names a season by both of its years", () => {
+    expect(seasonLabel(2026)).toBe("2026/27");
+    expect(seasonLabel(2099)).toBe("2099/00");
+    expect(seasonLabel(2008)).toBe("2008/09");
+  });
+});
+
+describe("headcountChampion", () => {
+  const row = (id: string, name: string, status: "alive" | "eliminated", week: number | null) => ({
+    id,
+    name,
+    status,
+    eliminatedWeek: week,
+  });
+
+  it("names the entry championOf picks", () => {
+    expect(
+      headcountChampion(
+        [row("a", "Daniel R.", "eliminated", 7), row("b", "Brady R.", "eliminated", 6)],
+        2026,
+      ),
+    ).toEqual({ name: "Daniel R.", season: 2026 });
+  });
+
+  it("is undefined while the league is still being played", () => {
+    expect(
+      headcountChampion([row("a", "A", "alive", null), row("b", "B", "alive", null)], 2026),
+    ).toBeUndefined();
   });
 });

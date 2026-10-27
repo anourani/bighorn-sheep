@@ -3,6 +3,7 @@ import { TEAMS } from "../nfl/teams";
 import { evaluateTeamPick } from "../game/elimination";
 import type { SeasonPhase } from "../game/season";
 import type { GroupRules, Member, PickResult, TeamRecord } from "./types";
+import { championOf } from "./champion";
 
 /**
  * Pure view-model helpers shared by the screens. They turn raw members/games
@@ -406,7 +407,25 @@ export function rankMembers(members: readonly Member[], ctx: RankContext): Ranke
  */
 export type HeadcountInput =
   | { kind: "preseason"; joined: number; startsIn: string }
-  | { kind: "season"; week: number; alive: number; eliminated: number };
+  | {
+      kind: "season";
+      week: number;
+      alive: number;
+      eliminated: number;
+      /**
+       * The league's winner, once there is exactly one — see `championOf`.
+       * When set, the accent slot congratulates them instead of printing the
+       * eliminated share, which by then reads 100% and says nothing.
+       */
+      champion?: HeadcountChampion;
+    };
+
+export interface HeadcountChampion {
+  /** The winning entry's display name, as the standings board prints it. */
+  name: string;
+  /** The season's starting year — 2026 for the 2026/27 season. */
+  season: number;
+}
 
 export interface HeadcountLine {
   /** The week's name, or "Pre-season". Spoken, never drawn — see `leadShort`. */
@@ -469,6 +488,24 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
       percentLabel: null,
     };
   }
+  if (input.champion) {
+    // The sentence is the whole message, so the drawn and the spoken forms are
+    // the same words — less the trophy, which a screen reader would announce
+    // as "trophy" in the middle of a congratulation.
+    //
+    // Names are usually "Daniel R." and so end the first sentence themselves;
+    // one that doesn't ("Ali") gets the period it needs rather than a run-on.
+    const name = input.champion.name.trim();
+    const stop = name.endsWith(".") ? "" : ".";
+    const sentence = `Congratulations ${name}${stop} You're the ${seasonLabel(input.champion.season)} Champ!`;
+    return {
+      lead: `Week ${input.week}`,
+      leadShort: `W${input.week}`,
+      primary: `${input.alive} still standing`,
+      percent: `${sentence} 🏆`,
+      percentLabel: sentence,
+    };
+  }
   const total = input.alive + input.eliminated;
   // The share ELIMINATED, not the share left. An empty league is 0/0, and NaN
   // reaches the screen as "NaN%" with nothing anywhere to say why.
@@ -480,6 +517,30 @@ export function headcountLine(input: HeadcountInput): HeadcountLine {
     percent,
     percentLabel: `${percent} eliminated`,
   };
+}
+
+/**
+ * "2026/27" for the season that starts in 2026 — an NFL season spans New Year,
+ * so it is named by both years. The second is two digits, zero-padded, so the
+ * 2099 season is "2099/00" rather than "2099/0".
+ */
+export function seasonLabel(startYear: number): string {
+  return `${startYear}/${String((startYear + 1) % 100).padStart(2, "0")}`;
+}
+
+/**
+ * The headcount's champion, or undefined while the league has none. One helper
+ * for both hosts — the signed-in standings and the public board — so they can
+ * never name different winners. `championOf` decides; this only looks up the
+ * name it is drawn under.
+ */
+export function headcountChampion(
+  members: readonly Pick<Member, "id" | "name" | "status" | "eliminatedWeek">[],
+  season: number,
+): HeadcountChampion | undefined {
+  const champion = championOf(members);
+  const member = champion ? members.find((m) => m.id === champion.memberId) : undefined;
+  return member ? { name: member.name, season } : undefined;
 }
 
 /**

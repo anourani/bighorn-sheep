@@ -242,7 +242,31 @@ describe("mapPublicSnapshot", () => {
       }),
       new Date(NOW),
     );
-    expect(out?.headcount).toEqual({ kind: "season", week: 6, alive: 1, eliminated: 1, total: 2 });
+    expect(out?.headcount).toMatchObject({ kind: "season", week: 6, alive: 1, eliminated: 1, total: 2 });
+  });
+
+  it("names the champion once one entry has outlasted the rest", () => {
+    // One alive, one out: the board already has its winner, so the headcount
+    // congratulates them instead of printing the eliminated share.
+    const out = mapPublicSnapshot(
+      snapshot({
+        members: [
+          member(),
+          member({ id: "m2", status: "eliminated", eliminated_week: 3, strikes: 1 }),
+        ],
+      }),
+      new Date(NOW),
+    );
+    const winner = out!.members.find((m) => m.status === "alive")!;
+    expect(out?.headcount).toMatchObject({ champion: { name: winner.name, season: out!.season } });
+  });
+
+  it("names no champion while two are still standing", () => {
+    const out = mapPublicSnapshot(
+      snapshot({ members: [member(), member({ id: "m2" })] }),
+      new Date(NOW),
+    );
+    expect(out?.headcount).not.toHaveProperty("champion.name");
   });
 
   it("never carries name parts, avatar, phone or buy-in through", () => {

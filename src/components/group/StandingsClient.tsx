@@ -8,7 +8,12 @@ import { LeagueRulesModal } from "@/components/group/LeagueRulesModal";
 import { InviteCta } from "@/components/group/InviteCta";
 import { Headcount } from "@/components/app/Headcount";
 import { buildGameIndex } from "@/lib/league/games";
-import { rankMembers, survivorCounts, type HeadcountInput } from "@/lib/league/view";
+import {
+  headcountChampion,
+  rankMembers,
+  survivorCounts,
+  type HeadcountInput,
+} from "@/lib/league/view";
 import { PRE_WEEK, weekShortLabel } from "@/lib/nfl/calendar";
 import { countdown } from "@/lib/time";
 import type { LeagueData } from "@/lib/league/load";
@@ -80,8 +85,14 @@ export function StandingsClient({ data }: { data: LeagueData }) {
       };
     }
     const { alive, eliminated } = survivorCounts(data.members);
-    return { kind: "season", week: currentWeek, alive, eliminated };
-  }, [isPreseason, data.members, group.entryClosesAt, now, currentWeek]);
+    return {
+      kind: "season",
+      week: currentWeek,
+      alive,
+      eliminated,
+      champion: headcountChampion(data.members, group.season),
+    };
+  }, [isPreseason, data.members, group.entryClosesAt, group.season, now, currentWeek]);
 
   /**
    * Practice standing, shaped as `Member[]` so the existing grid and ranking are
